@@ -25,9 +25,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className={styles.layout}>
       <Sidebar />
-      <main className={styles.mainContent}>
-        {children}
-      </main>
+      <div className={styles.mobileWrapper}>
+        <main className={styles.mainContent}>
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
