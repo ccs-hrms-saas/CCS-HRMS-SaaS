@@ -95,15 +95,29 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({ success: true, action: 'check_in', message: 'Checked In Successfully!' })
     } else if (!existingRecord.check_out) {
-      // Second tap = Check Out
+      // Second tap = Check Out — also save checkout photo
+      let checkout_photo_url: string | null = null
+      if (photo_base64) {
+        const base64Data = photo_base64.replace(/^data:image\/\w+;base64,/, '')
+        const buffer = Buffer.from(base64Data, 'base64')
+        const fileName = `${user_id}/${today}_checkout_${Date.now()}.jpg`
+        const { data: uploadData } = await supabaseAdmin.storage
+          .from('attendance-photos')
+          .upload(fileName, buffer, { contentType: 'image/jpeg', upsert: true })
+        if (uploadData) {
+          const { data: urlData } = supabaseAdmin.storage.from('attendance-photos').getPublicUrl(fileName)
+          checkout_photo_url = urlData.publicUrl
+        }
+      }
       await supabaseAdmin
         .from('attendance_records')
-        .update({ check_out: new Date().toISOString() })
+        .update({ check_out: new Date().toISOString(), checkout_photo_url })
         .eq('id', existingRecord.id)
       return NextResponse.json({ success: true, action: 'check_out', message: 'Checked Out Successfully!' })
     } else {
       return NextResponse.json({ success: false, error: 'Attendance already completed for today.' }, { status: 409 })
     }
+
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
