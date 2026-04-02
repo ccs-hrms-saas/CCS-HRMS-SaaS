@@ -7,18 +7,21 @@ import { useAuth } from "@/context/AuthContext";
 import styles from "./Sidebar.module.css";
 
 const adminNav = [
-  { href: "/dashboard/admin",               icon: "🏠", label: "Dashboard"   },
-  { href: "/dashboard/admin/users",         icon: "👥", label: "Users"       },
-  { href: "/dashboard/admin/attendance",    icon: "📋", label: "Attendance"  },
-  { href: "/dashboard/admin/leaves",        icon: "📅", label: "Leaves"      },
-  { href: "/dashboard/admin/announcements", icon: "📢", label: "Posts"       },
-  { href: "/dashboard/admin/reports",       icon: "📊", label: "Reports"     },
+  { href: "/dashboard/admin",               icon: "🏠", label: "Dashboard"      },
+  { href: "/dashboard/admin/users",         icon: "👥", label: "Users"          },
+  { href: "/dashboard/admin/attendance",    icon: "📋", label: "Attendance"     },
+  { href: "/dashboard/admin/leaves",        icon: "📅", label: "Leave Approvals"},
+  { href: "/dashboard/admin/announcements", icon: "📢", label: "Announcements"  },
+  { href: "/dashboard/admin/policies",      icon: "📜", label: "HR Policies"    },
+  { href: "/dashboard/admin/leave-settings",icon: "⚙️", label: "Leave Settings" },
+  { href: "/dashboard/admin/reports",       icon: "📊", label: "Reports"        },
 ];
 
 const employeeNav = [
   { href: "/dashboard/employee",            icon: "🏠", label: "Home"        },
   { href: "/dashboard/employee/attendance", icon: "📋", label: "Attendance"  },
   { href: "/dashboard/employee/leaves",     icon: "📅", label: "Leaves"      },
+  { href: "/dashboard/employee/policies",   icon: "📜", label: "Policies"    },
   { href: "/dashboard/employee/pin",        icon: "🔐", label: "My PIN"      },
 ];
 
