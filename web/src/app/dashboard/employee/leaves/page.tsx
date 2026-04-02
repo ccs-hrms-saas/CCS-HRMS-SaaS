@@ -1,84 +1,173 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import { getLeaveDaysCount } from "@/lib/dateUtils";
 import styles from "../../dashboard.module.css";
 
 export default function EmployeeLeaves() {
   const { profile } = useAuth();
   const [leaves, setLeaves] = useState<any[]>([]);
-  const [form, setForm] = useState({ type: "Casual", start_date: "", end_date: "", reason: "" });
+  const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
+  
+  const [form, setForm] = useState({ type: "", start_date: "", end_date: "", reason: "" });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const load = async () => {
+  const loadData = async () => {
     if (!profile) return;
-    const { data } = await supabase
-      .from("leave_requests")
-      .select("*")
-      .eq("user_id", profile.id)
-      .order("created_at", { ascending: false });
-    setLeaves(data ?? []);
+    
+    // Fetch leave requests
+    const resLeaves = await supabase.from("leave_requests").select("*").eq("user_id", profile.id).order("created_at", { ascending: false });
+    setLeaves(resLeaves.data ?? []);
+
+    // Fetch dynamic leave types
+    const resTypes = await supabase.from("leave_types").select("*").order("name");
+    const types = resTypes.data ?? [];
+    setLeaveTypes(types);
+    if (types.length > 0 && !form.type) {
+      setForm(prev => ({ ...prev, type: types[0].name }));
+    }
   };
 
-  useEffect(() => { load(); }, [profile]);
+  useEffect(() => { loadData(); }, [profile]);
+
+  const selectedTypeObj = leaveTypes.find(t => t.name === form.type);
+  const leaveDays = getLeaveDaysCount(form.start_date, form.end_date, selectedTypeObj?.count_holidays ?? false);
+  
+  const needsAttachment = selectedTypeObj?.requires_attachment && leaveDays >= (selectedTypeObj.requires_attachment_after_days ?? 2);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile) return;
+    if (!profile || !selectedTypeObj) return;
+
+    if (needsAttachment && !attachedFile) {
+      setErrorMsg(`A medical certificate/document is required for ${form.type}s of ${selectedTypeObj.requires_attachment_after_days} or more days.`);
+      return;
+    }
+
     setSaving(true);
-    await supabase.from("leave_requests").insert({ ...form, user_id: profile.id });
-    setForm({ type: "Casual", start_date: "", end_date: "", reason: "" });
+    setErrorMsg("");
+
+    let attachment_url = null;
+    let is_violation = false;
+    let violation_reason = null;
+
+    if (attachedFile) {
+      // Upload file to bucket
+      const fileName = `${profile.id}/${Date.now()}_${attachedFile.name.replace(/[^a-zA-Z0-9.\-]/g, "_")}`;
+      const { data: uploadData, error: uploadErr } = await supabase.storage.from("medical-certificates").upload(fileName, attachedFile);
+      
+      if (uploadErr) {
+        setErrorMsg("Failed to upload document: " + uploadErr.message);
+        setSaving(false);
+        return;
+      }
+      const { data: urlData } = supabase.storage.from("medical-certificates").getPublicUrl(fileName);
+      attachment_url = urlData.publicUrl;
+    } else if (needsAttachment && !attachedFile) {
+      // Theoretically already blocked above, but if admin forces policy change:
+      is_violation = true;
+      violation_reason = `Missing required document for ${leaveDays} days of ${form.type}`;
+    }
+
+    await supabase.from("leave_requests").insert({ 
+      user_id: profile.id,
+      type: form.type,
+      start_date: form.start_date,
+      end_date: form.end_date,
+      reason: form.reason,
+      attachment_url,
+      is_violation,
+      violation_reason
+    });
+
+    setForm({ type: leaveTypes[0]?.name ?? "", start_date: "", end_date: "", reason: "" });
+    setAttachedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    
     setSuccess(true);
-    setTimeout(() => setSuccess(false), 3000);
-    await load();
+    setTimeout(() => setSuccess(false), 4000);
+    await loadData();
     setSaving(false);
   };
 
-  const statusStyle = (s: string) =>
-    s === "approved" ? styles.badgeSuccess : s === "rejected" ? styles.badgeDanger : styles.badgeWarning;
+  const statusStyle = (s: string) => s === "approved" ? styles.badgeSuccess : s === "rejected" ? styles.badgeDanger : styles.badgeWarning;
 
   return (
     <div className="animate-fade-in">
       <div className={styles.pageHeader}>
         <h1>My Leaves</h1>
-        <p>Apply for leave and track your requests</p>
+        <p>Apply for leave and upload required documents</p>
       </div>
 
       <div className={styles.twoCol}>
         <div>
           <div className="glass-panel" style={{ padding: 28 }}>
-            <h2 style={{ marginBottom: 20, fontSize: "1rem" }}>Apply for Leave</h2>
+            <h2 style={{ marginBottom: 20, fontSize: "1.1rem" }}>Apply for Leave</h2>
+            
             {success && (
               <div style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", color: "var(--success)", padding: "12px 16px", borderRadius: 10, marginBottom: 20, fontSize: "0.88rem" }}>
                 ✅ Leave request submitted successfully!
               </div>
             )}
+            
+            {errorMsg && (
+              <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--danger)", padding: "12px 16px", borderRadius: 10, marginBottom: 20, fontSize: "0.88rem" }}>
+                ⚠️ {errorMsg}
+              </div>
+            )}
+
             <form onSubmit={submit}>
               <div className={styles.formGroup}>
                 <label>Leave Type</label>
                 <select className="premium-input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
-                  <option>Casual</option>
-                  <option>Sick</option>
-                  <option>Earned</option>
-                  <option>Half Day</option>
-                  <option>Emergency</option>
+                  {leaveTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                 </select>
+                {selectedTypeObj && (
+                  <div style={{fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 6}}>
+                    {selectedTypeObj.count_holidays ? 'Holidays/Weekends included in count.' : 'Only working days counted.'}
+                  </div>
+                )}
               </div>
-              <div className={styles.formGroup}>
-                <label>From Date</label>
-                <input type="date" className="premium-input" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} required />
+              <div style={{display: 'flex', gap: 16}}>
+                <div className={styles.formGroup} style={{flex: 1}}>
+                  <label>From Date</label>
+                  <input type="date" className="premium-input" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} required />
+                </div>
+                <div className={styles.formGroup} style={{flex: 1}}>
+                  <label>To Date</label>
+                  <input type="date" className="premium-input" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} required />
+                </div>
               </div>
-              <div className={styles.formGroup}>
-                <label>To Date</label>
-                <input type="date" className="premium-input" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} required />
-              </div>
+              
+              {form.start_date && form.end_date && leaveDays > 0 && (
+                <div style={{marginBottom: 16, fontSize: '0.9rem', color: 'var(--accent-primary)', fontWeight: 600}}>
+                  Total leave duration: {leaveDays} days
+                </div>
+              )}
+
+              {needsAttachment && (
+                 <div className={styles.formGroup} style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", padding: 16, borderRadius: 12 }}>
+                  <label style={{color: '#f59e0b', fontSize: '0.9rem', marginBottom: 10}}>
+                    ⚠️ {selectedTypeObj.name} longer than {selectedTypeObj.requires_attachment_after_days - 1} days requires a supporting document.
+                  </label>
+                  <input type="file" ref={fileInputRef} onChange={e => setAttachedFile(e.target.files?.[0] ?? null)} className="premium-input" accept=".jpg,.jpeg,.png,.pdf" style={{padding: 10}} required={needsAttachment} />
+                  <span style={{display: 'block', marginTop: 8, fontSize:'0.75rem', color:'var(--text-secondary)'}}>Max size: 5MB. PDF, JPG, PNG accepted.</span>
+                 </div>
+              )}
+
               <div className={styles.formGroup}>
                 <label>Reason</label>
-                <textarea className="premium-input" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder="Brief reason for leave..." rows={3} />
+                <textarea className="premium-input" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder="Brief reason for your absence..." rows={3} required />
               </div>
-              <button type="submit" className={styles.primaryBtn} style={{ width: "100%" }} disabled={saving}>
+
+              <button type="submit" className={styles.primaryBtn} disabled={saving || leaveDays <= 0}>
                 {saving ? "Submitting..." : "📤 Submit Request"}
               </button>
             </form>
@@ -86,15 +175,17 @@ export default function EmployeeLeaves() {
         </div>
 
         <div>
-          <h2 style={{ marginBottom: 16, fontSize: "1rem" }}>My Requests</h2>
+           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 }}>
+             <h2 style={{ fontSize: "1.1rem" }}>My Requests Explorer</h2>
+           </div>
           <div className={`glass-panel ${styles.tableWrap}`}>
             <table>
               <thead>
                 <tr>
                   <th>Type</th>
-                  <th>From</th>
-                  <th>To</th>
+                  <th>Dates</th>
                   <th>Status</th>
+                  <th>Doc</th>
                 </tr>
               </thead>
               <tbody>
@@ -102,10 +193,19 @@ export default function EmployeeLeaves() {
                   <tr><td colSpan={4} style={{ textAlign: "center", color: "var(--text-secondary)", padding: "24px" }}>No leave requests yet.</td></tr>
                 ) : leaves.map((l) => (
                   <tr key={l.id}>
-                    <td>{l.type}</td>
-                    <td>{l.start_date}</td>
-                    <td>{l.end_date}</td>
+                    <td>
+                      <div style={{fontWeight: 600}}>{l.type}</div>
+                      {l.is_violation && <div style={{fontSize:'0.65rem', color: 'var(--danger)'}}>Rule Violation</div>}
+                    </td>
+                    <td style={{fontSize: '0.85rem'}}>
+                      {new Date(l.start_date).toLocaleDateString("en-IN", {month: 'short', day:'numeric'})} - {new Date(l.end_date).toLocaleDateString("en-IN", {month: 'short', day:'numeric'})}
+                    </td>
                     <td><span className={`${styles.statBadge} ${statusStyle(l.status)}`}>{l.status}</span></td>
+                    <td>
+                      {l.attachment_url ? (
+                         <a href={l.attachment_url} target="_blank" rel="noopener noreferrer" style={{color: 'var(--accent-primary)', fontSize: '1.2rem', textDecoration: 'none'}} title="View Document">📄</a>
+                      ) : <span style={{color:'var(--text-secondary)'}}>—</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
