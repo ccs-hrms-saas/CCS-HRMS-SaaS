@@ -1,5 +1,6 @@
 .layout {
   display: flex;
+  flex-direction: row;
   min-height: 100vh;
   background: var(--bg-gradient);
 }
@@ -9,6 +10,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: hidden;
 }
 
 .mainContent {
@@ -19,17 +21,22 @@
 }
 
 @media (max-width: 768px) {
+  .layout {
+    flex-direction: column;
+  }
   .mobileWrapper {
     flex: 1;
-    width: 100%;
+    width: 100vw;
+    max-width: 100%;
   }
   .mainContent {
-    padding: 16px;
-    padding-bottom: 90px; /* space for bottom nav */
+    padding: 16px 16px 100px; /* 100px bottom padding for bottom nav */
     max-height: none;
-    overflow-y: visible;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
+
 
 .loadingScreen {
   display: flex;
