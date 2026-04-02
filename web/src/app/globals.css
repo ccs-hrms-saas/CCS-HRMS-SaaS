@@ -1,19 +1,21 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --bg-dark: #0f111a;
-  --bg-gradient: linear-gradient(135deg, #0f111a 0%, #1a1e2d 100%);
-  --accent-primary: #6366f1;
+  --bg-dark:       #0f111a;
+  --bg-secondary:  #13161f;   /* solid dark — used for modals/drawers/dropdowns */
+  --bg-gradient:   linear-gradient(135deg, #0f111a 0%, #1a1e2d 100%);
+  --accent-primary:   #6366f1;
   --accent-secondary: #ec4899;
-  --text-primary: #ffffff;
+  --text-primary:   #ffffff;
   --text-secondary: #94a3b8;
-  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-bg:     rgba(255, 255, 255, 0.05);
   --glass-border: rgba(255, 255, 255, 0.1);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
   --success: #10b981;
-  --danger: #ef4444;
+  --danger:  #ef4444;
   --warning: #f59e0b;
 }
+
 
 * {
   box-sizing: border-box;

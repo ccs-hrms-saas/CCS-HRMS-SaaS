@@ -92,8 +92,9 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.6);
-  backdropFilter: blur(4px);
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 100;
   display: flex;
   align-items: center;
@@ -102,7 +103,7 @@
 }
 
 .drawer {
-  background: var(--bg-secondary);
+  background: #13161f;
   border: 1px solid var(--glass-border);
   border-radius: 20px;
   padding: 32px;
@@ -110,6 +111,7 @@
   max-width: 460px;
   max-height: 90vh;
   overflow-y: auto;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.8);
 }
 
 .drawerHeader {
@@ -145,11 +147,13 @@
 }
 
 .confirmModal {
-  background: var(--bg-secondary);
-  border: 1px solid rgba(239,68,68,0.3);
+  background: #13161f;
+  border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: 20px;
   padding: 36px;
   width: 100%;
   max-width: 420px;
   text-align: center;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.8);
 }
+
