@@ -8,7 +8,7 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    const { user_id, full_name, email } = await req.json()
+    const { user_id, full_name, email, password } = await req.json()
 
     if (!user_id) return NextResponse.json({ error: 'Missing user_id' }, { status: 400 })
 
@@ -21,9 +21,12 @@ export async function POST(req: NextRequest) {
       if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 500 })
     }
 
-    // Update email in auth if provided
-    if (email) {
-      const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(user_id, { email })
+    // Update email and/or password in auth if provided
+    if (email || password) {
+      const updates: { email?: string; password?: string } = {}
+      if (email) updates.email = email
+      if (password) updates.password = password
+      const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(user_id, updates)
       if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 })
     }
 
@@ -32,3 +35,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
+

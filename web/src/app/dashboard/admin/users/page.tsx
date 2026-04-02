@@ -24,12 +24,12 @@ export default function AdminUsers() {
   const [error, setError]       = useState("");
   const [success, setSuccess]   = useState("");
 
-  // Edit state
-  const [editUser, setEditUser]   = useState<Profile | null>(null);
-  const [editName, setEditName]   = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError]   = useState("");
+  const [editUser, setEditUser]       = useState<Profile | null>(null);
+  const [editName, setEditName]       = useState("");
+  const [editEmail, setEditEmail]     = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [editSaving, setEditSaving]   = useState(false);
+  const [editError, setEditError]     = useState("");
 
   // Delete confirm state
   const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null);
@@ -69,6 +69,7 @@ export default function AdminUsers() {
     setEditUser(u);
     setEditName(u.full_name);
     setEditEmail("");
+    setEditPassword("");
     setEditError("");
   };
 
@@ -83,6 +84,7 @@ export default function AdminUsers() {
         user_id: editUser.id,
         full_name: editName,
         email: editEmail || undefined,
+        password: editPassword || undefined,
       }),
     });
     const json = await res.json();
@@ -242,6 +244,10 @@ export default function AdminUsers() {
               <div className={styles.formGroup}>
                 <label>New Email <span style={{ color:"var(--text-secondary)", fontSize:"0.8rem" }}>(leave blank to keep current)</span></label>
                 <input type="email" className="premium-input" value={editEmail} onChange={e=>setEditEmail(e.target.value)} placeholder="new@email.com" />
+              </div>
+              <div className={styles.formGroup}>
+                <label>Reset Password <span style={{ color:"var(--text-secondary)", fontSize:"0.8rem" }}>(leave blank to keep current)</span></label>
+                <input type="password" className="premium-input" value={editPassword} onChange={e=>setEditPassword(e.target.value)} placeholder="New password (min 6 chars)" minLength={6} />
               </div>
               <button type="submit" className={styles.primaryBtn} disabled={editSaving}>{editSaving?"Saving…":"💾 Save Changes"}</button>
             </form>
