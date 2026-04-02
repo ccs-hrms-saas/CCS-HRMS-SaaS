@@ -35,10 +35,12 @@ export default function EmployeeSelect() {
     setRefreshing(false);
   };
 
-  // Reload every time the screen comes into focus (catches admin deletions/additions)
+  // Reload on focus + auto-refresh every 30 seconds
   useFocusEffect(
     useCallback(() => {
-      load();
+      load(); // immediate load on focus
+      const interval = setInterval(() => load(), 30000); // refresh every 30s
+      return () => clearInterval(interval); // cleanup on blur
     }, [])
   );
 
