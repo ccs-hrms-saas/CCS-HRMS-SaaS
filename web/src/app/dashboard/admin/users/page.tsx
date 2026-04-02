@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
 import styles from "../../dashboard.module.css";
 import userStyles from "./users.module.css";
 
@@ -17,6 +18,7 @@ interface Profile {
 const emptyForm = { full_name: "", email: "", password: "", role: "employee", manager_id: "" };
 
 export default function AdminUsers() {
+  const { profile }               = useAuth();
   const [users, setUsers]       = useState<Profile[]>([]);
   const [loading, setLoading]   = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -35,6 +37,8 @@ export default function AdminUsers() {
   // Deactivate / permanent delete targets
   const [deactivateTarget, setDeactivateTarget] = useState<Profile | null>(null);
   const [permDeleteTarget, setPermDeleteTarget] = useState<Profile | null>(null);
+  const [compOffTarget, setCompOffTarget]       = useState<Profile | null>(null);
+  const [compOffForm, setCompOffForm]           = useState({ days: 1, expires_in: 30, reason: "Weekend Support" });
   const [actionLoading, setActionLoading]       = useState(false);
 
   const load = async () => {
@@ -117,6 +121,29 @@ export default function AdminUsers() {
     setTimeout(() => setSuccess(""), 4000);
   };
 
+  /* ── Grant Comp Off ── */
+  const handleGrantCompOff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!compOffTarget || !profile) return;
+    setActionLoading(true);
+    
+    // Calculate expiry date
+    const d = new Date();
+    d.setDate(d.getDate() + compOffForm.expires_in);
+
+    await supabase.from("comp_off_grants").insert({
+      user_id: compOffTarget.id,
+      granted_by: profile.id,
+      days_granted: compOffForm.days,
+      expires_on: d.toISOString().split("T")[0],
+      reason: compOffForm.reason
+    });
+
+    setSuccess(`🎁 Granted ${compOffForm.days} Comp-Off day(s) to ${compOffTarget.full_name}.`);
+    setCompOffTarget(null); setActionLoading(false);
+    setTimeout(() => setSuccess(""), 4000);
+  };
+
   /* ── Role / Manager inline ── */
   const updateRole    = async (id: string, role: string) => { await supabase.from("profiles").update({ role }).eq("id", id); load(); };
   const updateManager = async (id: string, mgr: string) => { await supabase.from("profiles").update({ manager_id: mgr || null }).eq("id", id); load(); };
@@ -141,7 +168,12 @@ export default function AdminUsers() {
             : <span className={`${styles.statBadge} ${roleStyle(u.role)}`}>{u.role}</span>}
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          {!inactive && <button onClick={() => openEdit(u)} className={userStyles.editBtn} title="Edit">✏️</button>}
+          {!inactive && (
+             <>
+               <button onClick={() => setCompOffTarget(u)} className={userStyles.editBtn} title="Grant Comp Off" style={{ background: "rgba(16,185,129,0.1)", borderColor: "rgba(16,185,129,0.3)", color: "var(--success)" }}>🎁</button>
+               <button onClick={() => openEdit(u)} className={userStyles.editBtn} title="Edit">✏️</button>
+             </>
+          )}
           {inactive
             ? <>
                 <button onClick={() => handleRestore(u)} className={userStyles.editBtn} title="Re-hire" style={{ fontSize: "0.75rem" }}>↩ Restore</button>
@@ -334,6 +366,35 @@ export default function AdminUsers() {
           </div>
         </div>
       )}
+      {/* ── Comp-Off Grant Modal ── */}
+      {compOffTarget && (
+        <div className={userStyles.overlay} onClick={() => setCompOffTarget(null)}>
+          <div className={userStyles.drawer} style={{maxWidth: 420}} onClick={e => e.stopPropagation()}>
+            <div className={userStyles.drawerHeader}>
+              <h2 style={{ fontSize: "1.1rem" }}>🎁 Grant Comp-Off to {compOffTarget.full_name?.split(" ")[0]}</h2>
+              <button onClick={() => setCompOffTarget(null)} className={userStyles.closeBtn}>✕</button>
+            </div>
+            <form onSubmit={handleGrantCompOff}>
+              <div className={styles.formGroup}>
+                <label>Days</label>
+                <input type="number" step="0.5" className="premium-input" value={compOffForm.days} onChange={e => setCompOffForm({...compOffForm, days: Number(e.target.value)})} required />
+              </div>
+               <div className={styles.formGroup}>
+                <label>Expires In (Days)</label>
+                <input type="number" className="premium-input" value={compOffForm.expires_in} onChange={e => setCompOffForm({...compOffForm, expires_in: Number(e.target.value)})} required />
+              </div>
+               <div className={styles.formGroup}>
+                <label>Reason / Project Worked</label>
+                <textarea className="premium-input" rows={2} value={compOffForm.reason} onChange={e => setCompOffForm({...compOffForm, reason: e.target.value})} required />
+              </div>
+              <button type="submit" className={styles.primaryBtn} disabled={actionLoading} style={{width:'100%', background: "linear-gradient(90deg, #10b981, #059669)"}}>
+                {actionLoading ? "Granting..." : "Grant Comp-Off"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
