@@ -20,7 +20,7 @@ function generatePIN(secret: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { user_id, pin, photo_base64 } = await req.json()
+    const { user_id, pin, photo_url: incomingPhotoUrl } = await req.json()
 
     if (!user_id || !pin) {
       return NextResponse.json({ error: 'Missing user_id or pin' }, { status: 400 })
@@ -64,21 +64,8 @@ export async function POST(req: NextRequest) {
       .eq('date', today)
       .single()
 
-    let photo_url: string | null = null
-
-    // 4. Upload photo if provided
-    if (photo_base64) {
-      const base64Data = photo_base64.replace(/^data:image\/\w+;base64,/, '')
-      const buffer = Buffer.from(base64Data, 'base64')
-      const fileName = `${user_id}/${today}_${Date.now()}.jpg`
-      const { data: uploadData } = await supabaseAdmin.storage
-        .from('attendance-photos')
-        .upload(fileName, buffer, { contentType: 'image/jpeg', upsert: true })
-      if (uploadData) {
-        const { data: urlData } = supabaseAdmin.storage.from('attendance-photos').getPublicUrl(fileName)
-        photo_url = urlData.publicUrl
-      }
-    }
+    // 4. Use photo URL sent from mobile (photo was uploaded directly to Supabase Storage)
+    const photo_url: string | null = incomingPhotoUrl ?? null
 
     // 5. Check in or Check out
     if (!existingRecord || !existingRecord.check_in) {
@@ -95,20 +82,8 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({ success: true, action: 'check_in', message: 'Checked In Successfully!' })
     } else if (!existingRecord.check_out) {
-      // Second tap = Check Out — also save checkout photo
-      let checkout_photo_url: string | null = null
-      if (photo_base64) {
-        const base64Data = photo_base64.replace(/^data:image\/\w+;base64,/, '')
-        const buffer = Buffer.from(base64Data, 'base64')
-        const fileName = `${user_id}/${today}_checkout_${Date.now()}.jpg`
-        const { data: uploadData } = await supabaseAdmin.storage
-          .from('attendance-photos')
-          .upload(fileName, buffer, { contentType: 'image/jpeg', upsert: true })
-        if (uploadData) {
-          const { data: urlData } = supabaseAdmin.storage.from('attendance-photos').getPublicUrl(fileName)
-          checkout_photo_url = urlData.publicUrl
-        }
-      }
+      // Second tap = Check Out — use checkout photo URL from mobile
+      const checkout_photo_url: string | null = incomingPhotoUrl ?? null
       await supabaseAdmin
         .from('attendance_records')
         .update({ check_out: new Date().toISOString(), checkout_photo_url })

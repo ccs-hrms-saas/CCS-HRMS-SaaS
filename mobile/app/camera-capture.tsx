@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { supabase } from '../lib/supabase';
 
 export default function CameraCapture() {
   const { user_id, name, pin } = useLocalSearchParams<{ user_id: string; name: string; pin: string }>();
@@ -17,7 +18,6 @@ export default function CameraCapture() {
       requestPermission();
       return;
     }
-    // 3-second countdown then auto capture
     const timer = setInterval(() => {
       setCountdown(c => {
         if (c <= 1) {
@@ -37,20 +37,46 @@ export default function CameraCapture() {
     setProcessing(true);
 
     try {
-      let photo_base64: string | null = null;
+      let photo_url: string | null = null;
 
-      // Take photo
+      // 1. Take photo
       if (cameraRef.current) {
-        const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.5 });
-        photo_base64 = photo?.base64 ? `data:image/jpeg;base64,${photo.base64}` : null;
+        const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.4 });
+
+        if (photo?.base64) {
+          // 2. Upload directly to Supabase Storage (bypasses Vercel 1MB limit)
+          const today = new Date().toISOString().split('T')[0];
+          const fileName = `${user_id}/${today}_${Date.now()}.jpg`;
+
+          // Convert base64 to binary
+          const byteCharacters = atob(photo.base64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('attendance-photos')
+            .upload(fileName, byteArray, { contentType: 'image/jpeg', upsert: true });
+
+          if (uploadError) {
+            console.warn('Photo upload failed:', uploadError.message);
+          } else if (uploadData) {
+            const { data: urlData } = supabase.storage
+              .from('attendance-photos')
+              .getPublicUrl(fileName);
+            photo_url = urlData.publicUrl;
+          }
+        }
       }
 
-      // Call attendance API
+      // 3. Call attendance API with just the URL (no heavy base64)
       const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
       const res = await fetch(`${apiUrl}/api/mark-attendance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id, pin, photo_base64 }),
+        body: JSON.stringify({ user_id, pin, photo_url }),
       });
 
       const data = await res.json();
@@ -58,25 +84,16 @@ export default function CameraCapture() {
       if (res.ok && data.success) {
         router.replace({
           pathname: '/result',
-          params: {
-            success: 'true',
-            action: data.action,
-            name: name!,
-            message: data.message,
-          },
+          params: { success: 'true', action: data.action, name: name!, message: data.message },
         });
       } else {
         router.replace({
           pathname: '/result',
-          params: {
-            success: 'false',
-            name: name!,
-            message: data.error ?? 'Something went wrong.',
-          },
+          params: { success: 'false', name: name!, message: data.error ?? 'Something went wrong.' },
         });
       }
     } catch (err: any) {
-      Alert.alert('Network Error', 'Could not connect to server. Make sure the web app is running and both devices are on the same WiFi.');
+      Alert.alert('Error', err.message ?? 'Could not connect to server.');
       router.back();
     }
   };
@@ -87,7 +104,7 @@ export default function CameraCapture() {
     return (
       <View style={[styles.container, styles.center]}>
         <Text style={styles.permText}>📷 Camera permission is required for attendance photos.</Text>
-        <Text style={[styles.permText, { color: '#6366f1', marginTop: 12 }]}>Please allow camera access in your device settings.</Text>
+        <Text style={[styles.permText, { color: '#6366f1', marginTop: 12 }]}>Please allow camera access in device settings.</Text>
       </View>
     );
   }
@@ -95,19 +112,16 @@ export default function CameraCapture() {
   return (
     <View style={styles.container}>
       <CameraView ref={cameraRef} style={styles.camera} facing="front">
-        {/* Overlay */}
         <View style={styles.overlay}>
           <Text style={styles.nameLabel}>{name}</Text>
           {processing ? (
-            <Text style={styles.countdownText}>Processing…</Text>
+            <Text style={styles.countdownText}>⏳</Text>
           ) : (
             <>
               <Text style={styles.countdownText}>{countdown}</Text>
               <Text style={styles.countdownSub}>Look at the camera</Text>
             </>
           )}
-
-          {/* Face guide circle */}
           <View style={styles.faceGuide} />
         </View>
       </CameraView>
@@ -120,45 +134,9 @@ const styles = StyleSheet.create({
   camera: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center', padding: 40 },
   permText: { color: '#94a3b8', textAlign: 'center', fontSize: 16, lineHeight: 24 },
-
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  nameLabel: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 20,
-    textShadowColor: '#000',
-    textShadowRadius: 4,
-    textShadowOffset: { width: 0, height: 1 },
-  },
-
-  faceGuide: {
-    position: 'absolute',
-    width: 220,
-    height: 280,
-    borderRadius: 120,
-    borderWidth: 3,
-    borderColor: 'rgba(99,102,241,0.7)',
-    borderStyle: 'dashed',
-  },
-
-  countdownText: {
-    color: '#6366f1',
-    fontSize: 72,
-    fontWeight: '900',
-    textShadowColor: '#000',
-    textShadowRadius: 8,
-    textShadowOffset: { width: 0, height: 2 },
-  },
-  countdownSub: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 16,
-    marginTop: 8,
-  },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'center', justifyContent: 'center' },
+  nameLabel: { color: '#fff', fontSize: 22, fontWeight: '700', marginBottom: 20, textShadowColor: '#000', textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
+  faceGuide: { position: 'absolute', width: 220, height: 280, borderRadius: 120, borderWidth: 3, borderColor: 'rgba(99,102,241,0.7)', borderStyle: 'dashed' },
+  countdownText: { color: '#6366f1', fontSize: 72, fontWeight: '900', textShadowColor: '#000', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } },
+  countdownSub: { color: 'rgba(255,255,255,0.7)', fontSize: 16, marginTop: 8 },
 });
