@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, TextInput, FlatList, TouchableOpacity,
-  StyleSheet, SafeAreaView, ActivityIndicator,
+  StyleSheet, SafeAreaView, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { supabase } from '../lib/supabase';
 
 interface Employee {
@@ -15,23 +16,32 @@ interface Employee {
 export default function EmployeeSelect() {
   const router = useRouter();
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [filtered, setFiltered] = useState<Employee[]>([]);
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [filtered, setFiltered]   = useState<Employee[]>([]);
+  const [search, setSearch]       = useState('');
+  const [loading, setLoading]     = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, full_name, role')
-        .eq('role', 'employee')
-        .order('full_name');
-      setEmployees(data ?? []);
-      setFiltered(data ?? []);
-      setLoading(false);
-    };
-    load();
-  }, []);
+  const load = async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name, role')
+      .eq('role', 'employee')
+      .order('full_name');
+    setEmployees(data ?? []);
+    setFiltered(data ?? []);
+    setLoading(false);
+    setRefreshing(false);
+  };
+
+  // Reload every time the screen comes into focus (catches admin deletions/additions)
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [])
+  );
+
 
   useEffect(() => {
     const q = search.toLowerCase();
@@ -75,6 +85,7 @@ export default function EmployeeSelect() {
       ) : (
         <FlatList
           data={filtered}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#6366f1" />}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
