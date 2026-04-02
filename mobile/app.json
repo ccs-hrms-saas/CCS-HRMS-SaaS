@@ -15,7 +15,10 @@
         "backgroundImage": "./assets/images/android-icon-background.png"
       },
       "package": "com.ccs.hrms.kiosk",
-      "permissions": ["android.permission.CAMERA"]
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -28,6 +31,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "72ba7d89-e22c-4d00-abc4-ae83a946a9fd"
+      }
     }
   }
 }

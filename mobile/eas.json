@@ -1,0 +1,28 @@
+{
+  "cli": {
+    "version": ">= 18.0.0"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://mkaowowwignznfkxcpeu.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1rYW93b3d3aWduem5ma3hjcGV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwOTY4MTgsImV4cCI6MjA5MDY3MjgxOH0.46eyPoGaOvKfaX3vOpPSwJPNeb6n9G5sR1dCWTfjl4g",
+        "EXPO_PUBLIC_API_URL": "https://ccs-hrms.vercel.app"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://mkaowowwignznfkxcpeu.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1rYW93b3d3aWduem5ma3hjcGV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwOTY4MTgsImV4cCI6MjA5MDY3MjgxOH0.46eyPoGaOvKfaX3vOpPSwJPNeb6n9G5sR1dCWTfjl4g",
+        "EXPO_PUBLIC_API_URL": "https://ccs-hrms.vercel.app"
+      }
+    }
+  }
+}
