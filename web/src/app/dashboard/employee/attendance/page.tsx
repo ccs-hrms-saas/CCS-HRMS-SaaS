@@ -53,7 +53,7 @@ export default function EmployeeAttendance() {
   const totalWorkdays = Array.from({ length: daysInMonth }, (_, i) => {
     const d = new Date(year, month, i + 1);
     return d.getDay() !== 0 && d.getDay() !== 6 ? 1 : 0;
-  }).reduce((a, b) => a + b, 0);
+  }).reduce((acc: number, val: number) => acc + val, 0);
 
   return (
     <div className="animate-fade-in">
