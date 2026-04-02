@@ -28,6 +28,7 @@ export default function EmployeeSelect() {
       .from('profiles')
       .select('id, full_name, role')
       .eq('role', 'employee')
+      .eq('is_active', true)
       .order('full_name');
     setEmployees(data ?? []);
     setFiltered(data ?? []);
