@@ -12,13 +12,19 @@ export async function DELETE(req: NextRequest) {
     if (!user_id) return NextResponse.json({ error: 'Missing user_id' }, { status: 400 })
 
     if (permanent) {
-      // PERMANENT DELETE — only for already-inactive employees
+      // Delete all related records first (FK constraints)
+      await supabaseAdmin.from('attendance_records').delete().eq('user_id', user_id)
+      await supabaseAdmin.from('leave_requests').delete().eq('user_id', user_id)
+      await supabaseAdmin.from('totp_secrets').delete().eq('user_id', user_id)
+
+      // Now delete the profile row
       const { error: profileErr } = await supabaseAdmin
         .from('profiles').delete().eq('id', user_id)
-      if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 500 })
+      if (profileErr) return NextResponse.json({ error: `Profile: ${profileErr.message}` }, { status: 500 })
 
+      // Finally delete the auth user
       const { error: authErr } = await supabaseAdmin.auth.admin.deleteUser(user_id)
-      if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 })
+      if (authErr) return NextResponse.json({ error: `Auth: ${authErr.message}` }, { status: 500 })
 
       return NextResponse.json({ success: true, action: 'permanently_deleted' })
     }
