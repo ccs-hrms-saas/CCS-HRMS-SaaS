@@ -2,37 +2,36 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 20px;
-  margin-bottom: 32px;
 }
 
 .userCard {
   padding: 20px;
+  border-radius: 16px;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .userCard:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  transform: translateY(-2px);
 }
 
 .userCardHeader {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   margin-bottom: 16px;
 }
 
 .userAvatar {
   width: 46px;
   height: 46px;
-  min-width: 46px;
-  border-radius: 12px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   font-weight: 700;
   color: white;
+  flex-shrink: 0;
 }
 
 .userCardName {
@@ -44,60 +43,73 @@
   text-overflow: ellipsis;
 }
 
-.deleteBtn {
-  background: none;
-  border: 1px solid rgba(239,68,68,0.2);
-  color: var(--danger);
-  cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.deleteBtn:hover { background: rgba(239,68,68,0.15); }
-
 .userCardBody {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .fieldRow {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .fieldRow label {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
 }
 
-/* Slide-in Drawer */
+.editBtn, .deleteBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255,255,255,0.05);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.editBtn:hover {
+  background: rgba(99,102,241,0.15);
+  border-color: rgba(99,102,241,0.4);
+}
+
+.deleteBtn:hover {
+  background: rgba(239,68,68,0.15);
+  border-color: rgba(239,68,68,0.4);
+}
+
+/* Overlay and Panels */
 .overlay {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(4px);
+  backdropFilter: blur(4px);
   z-index: 100;
   display: flex;
-  justify-content: flex-end;
-  animation: fadeIn 0.2s ease;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
 }
 
 .drawer {
-  width: 100%;
-  max-width: 480px;
-  height: 100vh;
-  background: #1a1e2d;
-  border-left: 1px solid var(--glass-border);
+  background: var(--bg-secondary);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
   padding: 32px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 90vh;
   overflow-y: auto;
-  animation: slideIn 0.3s ease;
 }
 
 .drawerHeader {
@@ -113,28 +125,31 @@
 }
 
 .closeBtn {
-  background: var(--glass-bg);
+  background: none;
   border: 1px solid var(--glass-border);
-  color: var(--text-primary);
-  width: 36px;
-  height: 36px;
+  color: var(--text-secondary);
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: all 0.2s;
 }
 
-.closeBtn:hover { background: rgba(239,68,68,0.15); color: var(--danger); }
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+.closeBtn:hover {
+  background: rgba(255,255,255,0.06);
+  color: white;
 }
 
-@keyframes slideIn {
-  from { transform: translateX(100%); }
-  to   { transform: translateX(0); }
+.confirmModal {
+  background: var(--bg-secondary);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 20px;
+  padding: 36px;
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
 }
