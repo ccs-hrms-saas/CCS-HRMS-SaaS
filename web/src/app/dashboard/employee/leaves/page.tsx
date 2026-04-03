@@ -12,6 +12,7 @@ export default function EmployeeLeaves() {
   const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
   const [balances, setBalances] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<Set<string>>(new Set());
+  const [userGender, setUserGender] = useState("");
   
   const [form, setForm] = useState({ type: "", start_date: "", end_date: "", reason: "" });
   const [saving, setSaving] = useState(false);
@@ -26,23 +27,29 @@ export default function EmployeeLeaves() {
   const loadData = async () => {
     if (!profile) return;
     
-    const [resLeaves, resTypes, resHols, resBals] = await Promise.all([
+    const [resLeaves, resTypes, resHols, resBals, profRes] = await Promise.all([
       supabase.from("leave_requests").select("*").eq("user_id", profile.id).order("created_at", { ascending: false }),
       supabase.from("leave_types").select("*").order("name"),
       supabase.from("company_holidays").select("date"),
-      supabase.from("leave_balances").select("*, leave_types(name, max_days_per_year)").eq("user_id", profile.id).eq("financial_year", currentFY)
+      supabase.from("leave_balances").select("*, leave_types(name, max_days_per_year)").eq("user_id", profile.id).eq("financial_year", currentFY),
+      supabase.from("profiles").select("gender").eq("id", profile.id).single()
     ]);
     
     setLeaves(resLeaves.data ?? []);
-    setLeaveTypes(resTypes.data ?? []);
+    
+    // Filter leave types
+    const gender = profRes.data?.gender || "Male";
+    setUserGender(gender);
+    const validTypes = (resTypes.data ?? []).filter((t: any) => t.name !== "Menstruation Leave" || gender === "Female");
+    setLeaveTypes(validTypes);
     setBalances(resBals.data ?? []);
 
     const hSet = new Set<string>();
     (resHols.data ?? []).forEach(h => hSet.add(h.date));
     setHolidays(hSet);
 
-    if (resTypes.data && resTypes.data.length > 0 && !form.type) {
-      setForm(prev => ({ ...prev, type: resTypes.data[0].name }));
+    if (validTypes.length > 0 && !form.type) {
+      setForm(prev => ({ ...prev, type: validTypes[0].name }));
     }
   };
 
@@ -61,6 +68,20 @@ export default function EmployeeLeaves() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile || !selectedTypeObj) return;
+
+    // Strict Rule: Menstruation limit 1 per month, no overlap.
+    if (form.type === "Menstruation Leave") {
+       if (leaveDays > 1) { setErrorMsg("Menstruation Leave is strictly limited to 1 day per month."); return; }
+       
+       const reqMonth = new Date(form.start_date).getMonth();
+       const reqYear = new Date(form.start_date).getFullYear();
+       
+       const alreadyTaken = leaves.find(l => l.type === "Menstruation Leave" && l.status !== "rejected" && new Date(l.start_date).getMonth() === reqMonth && new Date(l.start_date).getFullYear() === reqYear);
+       if (alreadyTaken) {
+         setErrorMsg("You have already utilized your Menstruation Leave for this calendar month.");
+         return;
+       }
+    }
 
     if (usesBalance && leaveDays > remainingBal) {
       setErrorMsg(`Insufficient balance for ${form.type}. Requested: ${leaveDays}, Available: ${remainingBal}`);

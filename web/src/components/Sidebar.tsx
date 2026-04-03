@@ -15,15 +15,18 @@ const adminNav = [
   { href: "/dashboard/admin/policies",      icon: "📜", label: "HR Policies"    },
   { href: "/dashboard/admin/leave-settings",icon: "⚙️", label: "Leave Settings" },
   { href: "/dashboard/admin/holidays",      icon: "🎉", label: "Holidays"       },
+  { href: "/dashboard/admin/payroll",       icon: "💸", label: "Payroll"        },
   { href: "/dashboard/admin/reports",       icon: "📊", label: "Reports"        },
 ];
 
 const employeeNav = [
-  { href: "/dashboard/employee",            icon: "🏠", label: "Home"        },
-  { href: "/dashboard/employee/attendance", icon: "📋", label: "Attendance"  },
-  { href: "/dashboard/employee/leaves",     icon: "📅", label: "Leaves"      },
-  { href: "/dashboard/employee/policies",   icon: "📜", label: "Policies"    },
-  { href: "/dashboard/employee/pin",        icon: "🔐", label: "My PIN"      },
+  { href: "/dashboard/employee",            icon: "🏠", label: "Dashboard"     },
+  { href: "/dashboard/employee/attendance", icon: "⏱️", label: "Attendance"    },
+  { href: "/dashboard/employee/leaves",     icon: "📅", label: "Leaves"        },
+  { href: "/dashboard/employee/profile",    icon: "👤", label: "My Profile"    },
+  { href: "/dashboard/employee/payslips",   icon: "💸", label: "My Payslips"   },
+  { href: "/dashboard/employee/policies",   icon: "📜", label: "Policies"      },
+  { href: "/dashboard/employee/pin",        icon: "🔐", label: "My PIN"        },
 ];
 
 export default function Sidebar() {

@@ -15,7 +15,10 @@ interface Profile {
   left_on: string | null;
 }
 
-const emptyForm = { full_name: "", email: "", password: "", role: "employee", manager_id: "" };
+const emptyForm = { 
+  full_name: "", email: "", password: "", role: "employee", manager_id: "",
+  phone_number: "", gender: "Male", designation: "", joining_date: "", remuneration: "" 
+};
 
 export default function AdminUsers() {
   const { profile }               = useAuth();
@@ -26,6 +29,7 @@ export default function AdminUsers() {
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState("");
   const [success, setSuccess]   = useState("");
+  const [letterFile, setLetterFile] = useState<File | null>(null);
 
   const [editUser, setEditUser]             = useState<Profile | null>(null);
   const [editName, setEditName]             = useState("");
@@ -59,15 +63,27 @@ export default function AdminUsers() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true); setError(""); setSuccess("");
+    
+    let joining_letter_url = null;
+    if (letterFile) {
+       const uFileName = `${Date.now()}_${letterFile.name.replace(/[^a-zA-Z0-9.\-]/g, "_")}`;
+       const { error: fErr } = await supabase.storage.from("employee-documents").upload(`joining_letters/${uFileName}`, letterFile);
+       if (fErr) { setError("Failed to upload joining letter: " + fErr.message); setSaving(false); return; }
+       const { data: urlData } = supabase.storage.from("employee-documents").getPublicUrl(`joining_letters/${uFileName}`);
+       joining_letter_url = urlData.publicUrl;
+    }
+
+    const payload = { ...form, joining_letter_url };
+
     const res = await fetch("/api/create-user", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     });
     const json = await res.json();
     if (!res.ok) { setError(json.error || "Failed to create user"); }
     else {
       setSuccess(`✅ ${form.full_name} added successfully!`);
-      setForm(emptyForm); setShowForm(false); await load();
+      setForm(emptyForm); setLetterFile(null); setShowForm(false); await load();
       setTimeout(() => setSuccess(""), 4000);
     }
     setSaving(false);
@@ -301,31 +317,84 @@ export default function AdminUsers() {
       {/* ── Add Employee Drawer ── */}
       {showForm && (
         <div className={userStyles.overlay} onClick={() => setShowForm(false)}>
-          <div className={userStyles.drawer} onClick={e => e.stopPropagation()}>
-            <div className={userStyles.drawerHeader}>
+          <div className="drawer" style={{maxWidth: 600, overflowY: 'auto'}} onClick={e => e.stopPropagation()}>
+            <div className="drawerHeader">
               <h2>Add New Employee</h2>
-              <button onClick={() => setShowForm(false)} className={userStyles.closeBtn}>✕</button>
+              <button onClick={() => setShowForm(false)} className="closeBtn">✕</button>
             </div>
-            {error && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--danger)", padding: "12px 16px", borderRadius: 10, marginBottom: 20, fontSize: "0.85rem" }}>⚠️ {error}</div>}
-            <form onSubmit={handleCreate}>
-              <div className={styles.formGroup}><label>Full Name *</label><input className="premium-input" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} required /></div>
-              <div className={styles.formGroup}><label>Email *</label><input type="email" className="premium-input" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required /></div>
-              <div className={styles.formGroup}><label>Temporary Password *</label><input type="password" className="premium-input" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required minLength={6} /></div>
-              <div className={styles.formGroup}>
-                <label>Role *</label>
-                <select className="premium-input" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                  <option value="employee">Employee</option><option value="admin">Admin</option><option value="superadmin">Super Admin</option>
-                </select>
+            {error && <div style={{ color: "var(--danger)", background: "rgba(239,68,68,0.1)", padding: 12, borderRadius: 8, marginBottom: 16 }}>{error}</div>}
+            <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{display: 'flex', gap: 16}}>
+                <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                  <label>Full Name *</label>
+                  <input className="premium-input" placeholder="e.g. Jane Doe" value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})} required />
+                </div>
+                <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                  <label>Email *</label>
+                  <input type="email" className="premium-input" placeholder="jane@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} required />
+                </div>
               </div>
-              {form.role === "employee" && (
-                <div className={styles.formGroup}><label>Reports To</label>
-                  <select className="premium-input" value={form.manager_id} onChange={e => setForm({ ...form, manager_id: e.target.value })}>
-                    <option value="">— No Manager —</option>
-                    {managers.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+
+              <div style={{display: 'flex', gap: 16}}>
+                <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                   <label>Phone Number</label>
+                   <input className="premium-input" placeholder="+1..." value={form.phone_number} onChange={e => setForm({...form, phone_number: e.target.value})} />
+                </div>
+                 <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                   <label>Gender *</label>
+                   <select className="premium-input" value={form.gender} onChange={e => setForm({...form, gender: e.target.value})}>
+                     <option>Male</option><option>Female</option><option>Other</option>
+                   </select>
+                 </div>
+              </div>
+
+              <div style={{display: 'flex', gap: 16}}>
+                 <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                    <label>Designation *</label>
+                    <input className="premium-input" placeholder="e.g. Software Engineer" value={form.designation} onChange={e => setForm({...form, designation: e.target.value})} required />
+                 </div>
+                 <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                    <label>Joining Date *</label>
+                    <input type="date" className="premium-input" value={form.joining_date} onChange={e => setForm({...form, joining_date: e.target.value})} required />
+                 </div>
+              </div>
+
+              <div style={{display: 'flex', gap: 16}}>
+                 <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                    <label>Remuneration (Monthly) *</label>
+                    <input type="number" className="premium-input" placeholder="0.00" value={form.remuneration} onChange={e => setForm({...form, remuneration: e.target.value})} required />
+                 </div>
+                 <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                    <label>Joining Letter (PDF/Doc)</label>
+                    <input type="file" className="premium-input" style={{padding: 10}} accept=".pdf,.doc,.docx" onChange={e => setLetterFile(e.target.files?.[0] ?? null)} />
+                 </div>
+              </div>
+
+              <div style={{display: 'flex', gap: 16}}>
+                <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                  <label>Temporary Password *</label>
+                  <input type="password" className="premium-input" placeholder="Min 6 chars" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required minLength={6} />
+                </div>
+                <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                  <label>System Role *</label>
+                  <select className="premium-input" value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
+                    <option value="employee">Employee</option>
+                    <option value="admin">Admin</option>
+                    <option value="superadmin">Super Admin</option>
                   </select>
                 </div>
-              )}
-              <button type="submit" className={styles.primaryBtn} disabled={saving}>{saving ? "Creating…" : "✅ Create Employee Account"}</button>
+              </div>
+              
+              <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                <label>Manager</label>
+                <select className="premium-input" value={form.manager_id} onChange={e => setForm({...form, manager_id: e.target.value})}>
+                  <option value="">-- No Manager --</option>
+                  {managers.map(m => (<option key={m.id} value={m.id}>{m.full_name}</option>))}
+                </select>
+              </div>
+              <button type="submit" className={styles.primaryBtn} disabled={saving} style={{ marginTop: 8 }}>
+                {saving ? "Creating Profile..." : "Create User Profile"}
+              </button>
             </form>
           </div>
         </div>

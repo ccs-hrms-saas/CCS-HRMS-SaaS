@@ -147,11 +147,21 @@ export default function AdminReports() {
 
     const adjustedTarget = Math.max(0, baseTargetHours - totalLeaveDeductionHours);
 
-    // 3. Calculate actual hours clocked
-    const actualHours = attendance.reduce((sum, r) => sum + hrsNum(r.check_in, r.check_out), 0);
+    // 3. Calculate actual hours clocked and formal surplus
+    let actualHours = 0;
+    let formalSurplus = 0;
+    
+    attendance.forEach(r => {
+      const hrsClocked = hrsNum(r.check_in, r.check_out);
+      actualHours += hrsClocked;
+      if (hrsClocked > 9.0) {
+        formalSurplus += (hrsClocked - 8.5);
+      }
+    });
+
     const deficitSurplus = actualHours - adjustedTarget;
 
-    return { targetWorkingDays, baseTargetHours, totalLeaveDeductionHours, adjustedTarget, actualHours, deficitSurplus };
+    return { targetWorkingDays, baseTargetHours, totalLeaveDeductionHours, adjustedTarget, actualHours, deficitSurplus, formalSurplus };
   };
 
   const downloadEmployee = () => {
@@ -168,7 +178,8 @@ export default function AdminReports() {
         "Approved Leaves (Deduction Hrs)": s.totalLeaveDeductionHours.toFixed(2),
         "Adjusted Target (Hrs)": s.adjustedTarget.toFixed(2),
         "Actual Clocked (Hrs)": s.actualHours.toFixed(2),
-        "Deficit/Surplus (Hrs)": s.deficitSurplus.toFixed(2)
+        "Standard Deficit/Surplus (Hrs)": s.deficitSurplus.toFixed(2),
+        "Formal Comp-Off Surplus (Hrs >9/day)": s.formalSurplus.toFixed(2)
       });
 
       sheets.push({
