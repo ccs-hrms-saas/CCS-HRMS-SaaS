@@ -7,7 +7,7 @@ import styles from "../dashboard.module.css";
 
 export default function EmployeeDashboard() {
   const { profile } = useAuth();
-  const [stats, setStats] = useState({ presentDays: 0, totalHours: 0, pendingLeaves: 0, approvedLeaves: 0 });
+  const [stats, setStats] = useState({ presentDays: 0, totalHours: 0, targetHours: 0, surplusDeficit: 0, pendingLeaves: 0, approvedLeaves: 0 });
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,11 +19,13 @@ export default function EmployeeDashboard() {
       const from = new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 1).toISOString().split("T")[0];
       const to = new Date().toISOString().split("T")[0];
 
-      const [attnData, leavePending, leaveApproved, announcementsData] = await Promise.all([
+      const [attnData, leavePending, leaveApprovedRes, announcementsData, holsRes, typesRes] = await Promise.all([
         supabase.from("attendance_records").select("*").eq("user_id", profile.id).gte("date", from).lte("date", to),
         supabase.from("leave_requests").select("id", { count: "exact" }).eq("user_id", profile.id).eq("status", "pending"),
-        supabase.from("leave_requests").select("id", { count: "exact" }).eq("user_id", profile.id).eq("status", "approved"),
+        supabase.from("leave_requests").select("*").eq("user_id", profile.id).eq("status", "approved").gte("start_date", from).lte("end_date", to),
         supabase.from("announcements").select("*, profiles(full_name)").order("created_at", { ascending: false }).limit(5),
+        supabase.from("company_holidays").select("date").gte("date", from).lte("date", to),
+        supabase.from("leave_types").select("*")
       ]);
 
       const records = attnData.data ?? [];
@@ -34,11 +36,36 @@ export default function EmployeeDashboard() {
         return sum;
       }, 0);
 
+      const { getWorkingDaysInMonth, isWorkingDay, getLeaveDaysCount } = await import("@/lib/dateUtils");
+      const hols = new Set<string>();
+      (holsRes.data ?? []).forEach(h => hols.add(h.date));
+
+      let targetWorkingDays = 0;
+      let curr = new Date(from);
+      const endD = new Date(to);
+      while (curr <= endD) { if (isWorkingDay(curr, hols)) targetWorkingDays++; curr.setDate(curr.getDate() + 1); }
+      
+      let baseTargetHours = targetWorkingDays * 8.5;
+      let deductedHours = 0;
+      const leaveApproved = leaveApprovedRes.data ?? [];
+      const lTypes = typesRes.data ?? [];
+      
+      leaveApproved.forEach(l => {
+         const tObj = lTypes.find(t => t.name === l.type);
+         const days = getLeaveDaysCount(l.start_date, l.end_date, tObj?.count_holidays ?? false, hols);
+         deductedHours += (days * (tObj ? Number(tObj.deduction_hours) : 8.5));
+      });
+      
+      const targetHours = Math.max(0, baseTargetHours - deductedHours);
+      const totalHoursNum = Math.round(totalHours * 10) / 10;
+
       setStats({
         presentDays: records.filter(r => r.check_in).length,
-        totalHours: Math.round(totalHours * 10) / 10,
+        totalHours: totalHoursNum,
+        targetHours: Math.round(targetHours * 10) / 10,
+        surplusDeficit: Math.round((totalHoursNum - targetHours) * 10) / 10,
         pendingLeaves: leavePending.count ?? 0,
-        approvedLeaves: leaveApproved.count ?? 0,
+        approvedLeaves: leaveApproved.length,
       });
       setAttendance(records.slice(-7).reverse());
       setAnnouncements(announcementsData.data ?? []);
@@ -60,10 +87,10 @@ export default function EmployeeDashboard() {
 
       <div className={styles.statsGrid}>
         {[
-          { icon: "✅", value: stats.presentDays, label: "Days Present (this month)", badge: "This Month", cls: "badgeSuccess" },
-          { icon: "⏱️", value: `${stats.totalHours}h`, label: "Hours Worked", badge: "This Month", cls: "badgeInfo" },
-          { icon: "📅", value: stats.pendingLeaves, label: "Pending Leave Requests", badge: "Awaiting", cls: "badgeWarning" },
-          { icon: "🎉", value: stats.approvedLeaves, label: "Leaves Approved", badge: "This Year", cls: "badgeSuccess" },
+          { icon: "🎯", value: `${stats.targetHours}h`, label: "Target Required", badge: "Demanded", cls: "badgeWarning" },
+          { icon: "⏱️", value: `${stats.totalHours}h`, label: "Hours Clocked", badge: "This Month", cls: "badgeInfo" },
+          { icon: stats.surplusDeficit >= 0 ? "🚀" : "📉", value: `${Math.abs(stats.surplusDeficit)}h`, label: stats.surplusDeficit >= 0 ? "Surplus Time" : "Deficit Time", badge: stats.surplusDeficit >= 0 ? "Ahead" : "Behind", cls: stats.surplusDeficit >= 0 ? "badgeSuccess" : "badgeDanger" },
+          { icon: "📅", value: stats.approvedLeaves, label: "Leaves Taken", badge: "This Month", cls: "badgeSuccess" },
         ].map((s) => (
           <div key={s.label} className={`glass-panel ${styles.statCard}`}>
             <div className={styles.statIcon}>{s.icon}</div>

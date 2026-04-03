@@ -6,7 +6,7 @@ import * as XLSX from "xlsx";
 import styles from "../../dashboard.module.css";
 import { getLeaveDaysCount, isWorkingDay } from "@/lib/dateUtils";
 
-type Tab = "attendance" | "leaves" | "employee";
+type Tab = "attendance" | "leaves" | "employee" | "balances";
 
 export default function AdminReports() {
   const [tab, setTab]             = useState<Tab>("attendance");
@@ -17,6 +17,7 @@ export default function AdminReports() {
   const [fromDate, setFromDate]   = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().split("T")[0]; });
   const [toDate, setToDate]       = useState(() => new Date().toISOString().split("T")[0]);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [currentFY, setCurrentFY] = useState(() => new Date().getMonth() < 3 ? new Date().getFullYear() - 1 : new Date().getFullYear());
   const [records, setRecords]     = useState<any[]>([]);
   const [loading, setLoading]     = useState(false);
 
@@ -64,6 +65,22 @@ export default function AdminReports() {
         return { emp, attendance: atRes.data ?? [], leaves: lvRes.data ?? [] };
       }));
       setRecords(results);
+
+    } else if (tab === "balances") {
+      const { data } = await supabase.from("leave_balances")
+        .select("*, profiles(id, full_name), leave_types(name)")
+        .eq("financial_year", currentFY)
+        .in("user_id", ids);
+        
+      // Group by user
+      const userBals: Record<string, any> = {};
+      (data ?? []).forEach(b => {
+        const uId = b.profiles?.id;
+        if (!uId) return;
+        if (!userBals[uId]) userBals[uId] = { empName: b.profiles.full_name, balances: [] };
+        userBals[uId].balances.push(b);
+      });
+      setRecords(Object.values(userBals));
     }
     setLoading(false);
   };
@@ -93,6 +110,20 @@ export default function AdminReports() {
   const downloadLeaves = () => {
     const rows = records.map(r => ({ Employee: r.profiles?.full_name ?? "—", "Leave Type": r.type, From: r.start_date, To: r.end_date, Days: days(r.start_date, r.end_date), Reason: r.reason ?? "—", Status: r.status, "Applied On": r.created_at ? new Date(r.created_at).toLocaleDateString("en-IN") : "—" }));
     exportXlsx([{ sheet: "Leave Applications", rows }], `Leaves_${fromDate}_to_${toDate}`);
+  };
+
+  const downloadBalances = () => {
+    const rows = records.map(r => {
+      const rowData: any = { Employee: r.empName, "Financial Year": currentFY };
+      r.balances.forEach((b: any) => {
+         const t = b.leave_types?.name?.replace(" Leave","") ?? "Unknown";
+         rowData[`${t} Accrued`] = b.accrued;
+         rowData[`${t} Used`] = b.used;
+         rowData[`${t} Balance`] = b.accrued - b.used;
+      });
+      return rowData;
+    });
+    exportXlsx([{ sheet: "Leave Balances", rows }], `Leave_Balances_FY${currentFY}`);
   };
 
   const calculateSummary = (attendance: any[], leaves: any[]) => {
@@ -167,13 +198,26 @@ export default function AdminReports() {
       <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
         {tabBtn("attendance", "📋 Attendance")}
         {tabBtn("leaves",     "📅 Leave Applications")}
+        {tabBtn("balances",   "💰 Leave Ledgers")}
         {tabBtn("employee",   "👤 Full Employee Report")}
       </div>
 
       <div className="glass-panel" style={{ padding: 24, marginBottom: 24 }}>
         <div style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div className={styles.formGroup} style={{ marginBottom: 0 }}><label>From Date</label><input type="date" className="premium-input" value={fromDate} onChange={e => setFromDate(e.target.value)} /></div>
-          <div className={styles.formGroup} style={{ marginBottom: 0 }}><label>To Date</label><input type="date" className="premium-input" value={toDate} onChange={e => setToDate(e.target.value)} /></div>
+          
+          {tab !== "balances" && (
+            <>
+              <div className={styles.formGroup} style={{ marginBottom: 0 }}><label>From Date</label><input type="date" className="premium-input" value={fromDate} onChange={e => setFromDate(e.target.value)} /></div>
+              <div className={styles.formGroup} style={{ marginBottom: 0 }}><label>To Date</label><input type="date" className="premium-input" value={toDate} onChange={e => setToDate(e.target.value)} /></div>
+            </>
+          )}
+
+          {tab === "balances" && (
+            <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+              <label>Financial Year</label>
+              <input type="number" className="premium-input" value={currentFY} onChange={e => setCurrentFY(Number(e.target.value))} />
+            </div>
+          )}
           
           <div className={styles.formGroup} style={{ marginBottom: 0, position: "relative" }}>
             <label>Employees</label>
@@ -205,6 +249,7 @@ export default function AdminReports() {
           
           {tab === "attendance" && records.length > 0 && <button className={styles.primaryBtn} onClick={downloadAttendance} style={{ width: "auto", padding: "14px 24px", background: "linear-gradient(90deg,#10b981,#059669)" }}>📥 Download Excel</button>}
           {tab === "leaves" && records.length > 0 && <button className={styles.primaryBtn} onClick={downloadLeaves} style={{ width: "auto", padding: "14px 24px", background: "linear-gradient(90deg,#10b981,#059669)" }}>📥 Download Excel</button>}
+          {tab === "balances" && records.length > 0 && <button className={styles.primaryBtn} onClick={downloadBalances} style={{ width: "auto", padding: "14px 24px", background: "linear-gradient(90deg,#10b981,#059669)" }}>📥 Download Excel</button>}
           {tab === "employee" && records.length > 0 && <button className={styles.primaryBtn} onClick={downloadEmployee} style={{ width: "auto", padding: "14px 24px", background: "linear-gradient(90deg,#10b981,#059669)" }}>📥 Download ({records.length} {records.length === 1 ? "Employee" : "Employees"})</button>}
         </div>
       </div>
@@ -237,6 +282,25 @@ export default function AdminReports() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {tab === "balances" && (
+        <div style={{ display: "grid", gap: 20, gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
+          {records.length === 0 && !loading && <div style={{ color: "var(--text-secondary)" }}>No balances found.</div>}
+          {records.map((r: any) => (
+            <div key={r.empName} className="glass-panel" style={{ padding: 20 }}>
+               <h3 style={{ marginBottom: 16, fontSize: "1.1rem", borderBottom: '1px solid var(--glass-border)', paddingBottom: 8 }}>{r.empName}</h3>
+               {r.balances.map((b: any) => (
+                 <div key={b.id} style={{display: 'flex', justifyContent: 'space-between', marginBottom: 12, alignItems: 'center'}}>
+                    <span style={{fontSize: '0.9rem', color: 'var(--text-secondary)'}}>{b.leave_types?.name}</span>
+                    <span style={{fontSize: '1.2rem', fontWeight: 600, color: (b.accrued - b.used) <= 0 ? 'var(--danger)' : 'var(--success)'}}>
+                      {(b.accrued - b.used).toFixed(1)} <span style={{fontSize: '0.75rem', fontWeight: 400, color:'var(--text-secondary)'}}>/ {b.accrued} acc</span>
+                    </span>
+                 </div>
+               ))}
+            </div>
+          ))}
         </div>
       )}
 

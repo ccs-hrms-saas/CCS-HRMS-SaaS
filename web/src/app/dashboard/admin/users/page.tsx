@@ -39,6 +39,8 @@ export default function AdminUsers() {
   const [permDeleteTarget, setPermDeleteTarget] = useState<Profile | null>(null);
   const [compOffTarget, setCompOffTarget]       = useState<Profile | null>(null);
   const [compOffForm, setCompOffForm]           = useState({ days: 1, expires_in: 30, reason: "Weekend Support" });
+  const [creditTarget, setCreditTarget]         = useState<Profile | null>(null);
+  const [creditForm, setCreditForm]             = useState({ type_name: "Earned Leave (EL)", days: 1, add_to_used: false });
   const [actionLoading, setActionLoading]       = useState(false);
 
   const load = async () => {
@@ -144,6 +146,41 @@ export default function AdminUsers() {
     setTimeout(() => setSuccess(""), 4000);
   };
 
+  /* ── Credit Leave Balance ── */
+  const handleCreditLeave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!creditTarget || !profile) return;
+    setActionLoading(true);
+    
+    // Get leave type ID securely
+    const { data: lt } = await supabase.from("leave_types").select("id").eq("name", creditForm.type_name).single();
+    if (!lt) { setError("Leave type not found"); setActionLoading(false); return; }
+
+    const fy = new Date().getMonth() < 3 ? new Date().getFullYear() - 1 : new Date().getFullYear();
+
+    // Fetch existing ledger
+    const { data: existing } = await supabase.from("leave_balances")
+      .select("*").eq("user_id", creditTarget.id).eq("leave_type_id", lt.id).eq("financial_year", fy).single();
+
+    if (existing) {
+      const updatePayload: any = creditForm.add_to_used 
+        ? { used: existing.used + creditForm.days }
+        : { accrued: existing.accrued + creditForm.days };
+      await supabase.from("leave_balances").update(updatePayload).eq("id", existing.id);
+    } else {
+       const insertPayload: any = {
+         user_id: creditTarget.id, leave_type_id: lt.id, financial_year: fy,
+         accrued: creditForm.add_to_used ? 0 : creditForm.days,
+         used: creditForm.add_to_used ? creditForm.days : 0
+       };
+       await supabase.from("leave_balances").insert(insertPayload);
+    }
+
+    setSuccess(`💳 Credited ${creditForm.days} ${creditForm.type_name}(s) to ${creditTarget.full_name}.`);
+    setCreditTarget(null); setActionLoading(false);
+    setTimeout(() => setSuccess(""), 4000);
+  };
+
   /* ── Role / Manager inline ── */
   const updateRole    = async (id: string, role: string) => { await supabase.from("profiles").update({ role }).eq("id", id); load(); };
   const updateManager = async (id: string, mgr: string) => { await supabase.from("profiles").update({ manager_id: mgr || null }).eq("id", id); load(); };
@@ -170,6 +207,7 @@ export default function AdminUsers() {
         <div style={{ display: "flex", gap: 6 }}>
           {!inactive && (
              <>
+               <button onClick={() => setCreditTarget(u)} className={userStyles.editBtn} title="Credit Leaves" style={{ background: "rgba(99,102,241,0.1)", borderColor: "rgba(99,102,241,0.3)", color: "var(--accent-primary)" }}>💳</button>
                <button onClick={() => setCompOffTarget(u)} className={userStyles.editBtn} title="Grant Comp Off" style={{ background: "rgba(16,185,129,0.1)", borderColor: "rgba(16,185,129,0.3)", color: "var(--success)" }}>🎁</button>
                <button onClick={() => openEdit(u)} className={userStyles.editBtn} title="Edit">✏️</button>
              </>
@@ -389,6 +427,47 @@ export default function AdminUsers() {
               </div>
               <button type="submit" className={styles.primaryBtn} disabled={actionLoading} style={{width:'100%', background: "linear-gradient(90deg, #10b981, #059669)"}}>
                 {actionLoading ? "Granting..." : "Grant Comp-Off"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Credit Leave Ledger Modal ── */}
+      {creditTarget && (
+        <div className={userStyles.overlay} onClick={() => setCreditTarget(null)}>
+          <div className={userStyles.drawer} style={{maxWidth: 420}} onClick={e => e.stopPropagation()}>
+            <div className={userStyles.drawerHeader}>
+              <h2 style={{ fontSize: "1.1rem" }}>💳 Adjust Leave Ledger for {creditTarget.full_name?.split(" ")[0]}</h2>
+              <button onClick={() => setCreditTarget(null)} className={userStyles.closeBtn}>✕</button>
+            </div>
+            <div style={{fontSize: "0.8rem", color: "var(--text-secondary)", marginBottom: 16}}>
+              Modify the accrued/used balance for this employee for the active financial year.
+            </div>
+            {error && <div style={{color: 'var(--danger)', marginBottom: 10, fontSize: '0.85rem'}}>{error}</div>}
+            <form onSubmit={handleCreditLeave}>
+              <div className={styles.formGroup}>
+                <label>Leave Type</label>
+                <select className="premium-input" value={creditForm.type_name} onChange={e => setCreditForm({...creditForm, type_name: e.target.value})}>
+                  <option>Earned Leave (EL)</option>
+                  <option>Casual Leave (CL)</option>
+                  <option>Sick Leave (SL)</option>
+                </select>
+              </div>
+              <div className={styles.formGroup}>
+                <label>Action</label>
+                <select className="premium-input" value={creditForm.add_to_used ? "used" : "accrued"} onChange={e => setCreditForm({...creditForm, add_to_used: e.target.value === "used"})}>
+                  <option value="accrued">Adding to Accrued (Giving them leaves)</option>
+                  <option value="used">Adding to Used (Deducting leaves manually)</option>
+                </select>
+              </div>
+              <div className={styles.formGroup}>
+                <label>Amount (Days)</label>
+                <input type="number" step="0.5" className="premium-input" value={creditForm.days} onChange={e => setCreditForm({...creditForm, days: Number(e.target.value)})} required />
+              </div>
+              
+              <button type="submit" className={styles.primaryBtn} disabled={actionLoading} style={{width:'100%', background: "linear-gradient(90deg, #6366f1, #4f46e5)"}}>
+                {actionLoading ? "Processing..." : "Update Ledger Balance"}
               </button>
             </form>
           </div>
