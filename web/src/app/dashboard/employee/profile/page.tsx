@@ -31,13 +31,37 @@ export default function EmployeeProfile() {
 
   const handleUpload = async (file: File, bucket: string, pathPrefix: string, column: string) => {
     if (!profile) return;
+    setSaving(true);
+    setSuccess(`Uploading ${pathPrefix.replace('_', ' ')}... Please wait.`);
+    
+    // Clear the input so selecting the same file again works
+    if (pathPrefix === "aadhar_front" && aadharFrontRef.current) aadharFrontRef.current.value = "";
+    if (pathPrefix === "aadhar_back" && aadharBackRef.current) aadharBackRef.current.value = "";
+    if (pathPrefix === "pan_card" && panRef.current) panRef.current.value = "";
+    if (pathPrefix === "avatar" && avatarRef.current) avatarRef.current.value = "";
+
     const fileName = `${pathPrefix}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.\-]/g, "_")}`;
-    const { error } = await supabase.storage.from(bucket).upload(`${profile.id}/${fileName}`, file);
-    if (error) { alert("Upload failed: " + error.message); return; }
+    const { error } = await supabase.storage.from(bucket).upload(`${profile.id}/${fileName}`, file, { upsert: true });
+    
+    if (error) { 
+        alert("Upload failed: " + error.message); 
+        setSuccess("");
+        setSaving(false);
+        return; 
+    }
     
     const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(`${profile.id}/${fileName}`);
-    await supabase.from("profiles").update({ [column]: urlData.publicUrl }).eq("id", profile.id);
-    loadData();
+    const { error: dbErr } = await supabase.from("profiles").update({ [column]: urlData.publicUrl }).eq("id", profile.id);
+    
+    if (dbErr) {
+        alert("Database link failed: " + dbErr.message);
+    } else {
+        setSuccess("✅ Document uploaded successfully!");
+    }
+    
+    await loadData();
+    setTimeout(() => setSuccess(""), 4000);
+    setSaving(false);
   };
 
   const submitMeta = async (e: React.FormEvent) => {
