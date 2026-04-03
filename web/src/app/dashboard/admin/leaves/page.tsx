@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { getLeaveDaysCount, getCurrentFinancialYear } from "@/lib/dateUtils";
 import styles from "../../dashboard.module.css";
 
 export default function AdminLeaves() {
@@ -19,8 +20,40 @@ export default function AdminLeaves() {
 
   useEffect(() => { load(); }, []);
 
-  const updateStatus = async (id: string, status: "approved" | "rejected") => {
-    await supabase.from("leave_requests").update({ status }).eq("id", id);
+  const updateStatus = async (l: any, status: "approved" | "rejected") => {
+    // We must track transitions to update ledger
+    const oldStatus = l.status;
+    
+    // 1. Update status
+    await supabase.from("leave_requests").update({ status }).eq("id", l.id);
+    
+    // 2. Adjust Ledger
+    if (oldStatus !== status) {
+        // Fetch all holidays
+        const { data: hRes } = await supabase.from("company_holidays").select("date");
+        const hols = new Set<string>();
+        (hRes ?? []).forEach(h => hols.add(h.date));
+
+        // Fetch Leave Type configs
+        const { data: typeRes } = await supabase.from("leave_types").select("*").eq("name", l.type).single();
+        const typeId = typeRes?.id;
+        const countHolidays = typeRes?.count_holidays ?? false;
+        
+        if (typeId && l.type !== "Menstruation Leave" && l.type !== "Leave Without Pay (LWP)") {
+            const days = getLeaveDaysCount(l.start_date, l.end_date, countHolidays, hols);
+            // Fetch current balance
+            const fy = getCurrentFinancialYear();
+            const { data: bal } = await supabase.from("leave_balances").select("*").eq("user_id", l.user_id).eq("leave_type_id", typeId).eq("financial_year", fy).single();
+            
+            if (bal) {
+                let newUsed = Number(bal.used);
+                if (status === "approved" && oldStatus !== "approved") newUsed += days;
+                if (oldStatus === "approved" && status !== "approved") newUsed -= days;
+                await supabase.from("leave_balances").update({ used: Math.max(0, newUsed) }).eq("id", bal.id);
+            }
+        }
+    }
+
     load();
   };
 
@@ -61,13 +94,16 @@ export default function AdminLeaves() {
                 <td style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.reason ?? "—"}</td>
                 <td><span className={`${styles.statBadge} ${statusStyle(l.status)}`}>{l.status}</span></td>
                 <td>
-                  {l.status === "pending" && (
-                    <>
-                      <button className={`${styles.actionBtn} ${styles.approveBtn}`} onClick={() => updateStatus(l.id, "approved")}>✓ Approve</button>
-                      <button className={`${styles.actionBtn} ${styles.rejectBtn}`} onClick={() => updateStatus(l.id, "rejected")}>✗ Reject</button>
-                    </>
+                  {l.status === "pending" ? (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => updateStatus(l, "approved")} className={styles.primaryBtn} style={{ padding: "6px 12px", background: "var(--success)", borderColor: "var(--success)" }}>Approve</button>
+                      <button onClick={() => updateStatus(l, "rejected")} className={styles.secondaryBtn} style={{ padding: "6px 12px", color: "var(--danger)" }}>Reject</button>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                      {l.status === "approved" && <button onClick={() => updateStatus(l, "rejected")} className={styles.secondaryBtn} style={{ padding: "4px 8px", fontSize: "0.75rem", color: "var(--danger)" }}>Revoke</button>}
+                    </span>
                   )}
-                  {l.status !== "pending" && <span style={{ color: "var(--text-secondary)", fontSize: "0.82rem" }}>Done</span>}
                 </td>
               </tr>
             ))}

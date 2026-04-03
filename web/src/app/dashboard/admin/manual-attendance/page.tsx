@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import styles from "../../dashboard.module.css";
 import { useAuth } from "@/context/AuthContext";
+import { getLeaveDaysCount, getCurrentFinancialYear } from "@/lib/dateUtils";
 
 export default function ManualAttendance() {
   const { profile } = useAuth();
@@ -83,8 +84,24 @@ export default function ManualAttendance() {
            status: "approved"
        });
 
+       if (!lvErr && leaveType !== "Menstruation Leave" && leaveType !== "Leave Without Pay (LWP)") {
+           const { data: hRes } = await supabase.from("company_holidays").select("date");
+           const hols = new Set<string>();
+           (hRes ?? []).forEach(h => hols.add(h.date));
+
+           const { data: typeRes } = await supabase.from("leave_types").select("*").eq("name", leaveType).single();
+           if (typeRes) {
+               const days = getLeaveDaysCount(date, date, typeRes.count_holidays, hols);
+               const fy = getCurrentFinancialYear();
+               const { data: bal } = await supabase.from("leave_balances").select("*").eq("user_id", userId).eq("leave_type_id", typeRes.id).eq("financial_year", fy).single();
+               if (bal) {
+                   await supabase.from("leave_balances").update({ used: Number(bal.used) + days }).eq("id", bal.id);
+               }
+           }
+       }
+
        if (lvErr) setError(lvErr.message);
-       else setSuccess("✅ Leave successfully injected for " + date);
+       else setSuccess("✅ Leave successfully injected & ledger updated for " + date);
     }
     
     setSaving(false);
