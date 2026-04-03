@@ -46,14 +46,27 @@ export default function ManualAttendance() {
           outISO = new Date(`${date}T${checkOut}:00`).toISOString();
        }
 
-       // Upsert attendance record
-       const { error: attErr } = await supabase.from("attendance_records").upsert({
-           user_id: userId,
-           date: date,
-           check_in: inISO,
-           check_out: outISO,
-           photo_url: "manual_override_admin" // Just a tracker that it was manual
-       }, { onConflict: "user_id, date" });
+       // Check if exists
+       const { data: existing } = await supabase.from("attendance_records").select("id").eq("user_id", userId).eq("date", date).maybeSingle();
+
+       let attErr;
+       if (existing) {
+          const res = await supabase.from("attendance_records").update({
+             check_in: inISO,
+             check_out: outISO,
+             photo_url: "manual_override_admin"
+          }).eq("id", existing.id);
+          attErr = res.error;
+       } else {
+          const res = await supabase.from("attendance_records").insert({
+             user_id: userId,
+             date: date,
+             check_in: inISO,
+             check_out: outISO,
+             photo_url: "manual_override_admin"
+          });
+          attErr = res.error;
+       }
 
        if (attErr) setError(attErr.message);
        else setSuccess("✅ Attendance successfully overridden & recorded for " + date);
