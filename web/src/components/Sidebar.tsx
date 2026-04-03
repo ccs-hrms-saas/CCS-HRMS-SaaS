@@ -13,6 +13,7 @@ const adminNav = [
   { href: "/dashboard/admin/leaves",        icon: "📅", label: "Leave Approvals"},
   { href: "/dashboard/admin/announcements", icon: "📢", label: "Announcements"  },
   { href: "/dashboard/admin/policies",      icon: "📜", label: "HR Policies"    },
+  { href: "/dashboard/admin/manual-attendance", icon: "🛠️", label: "Overrides" },
   { href: "/dashboard/admin/leave-settings",icon: "⚙️", label: "Leave Settings" },
   { href: "/dashboard/admin/holidays",      icon: "🎉", label: "Holidays"       },
   { href: "/dashboard/admin/payroll",       icon: "💸", label: "Payroll"        },

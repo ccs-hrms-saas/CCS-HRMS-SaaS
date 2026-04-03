@@ -23,7 +23,7 @@ export default function EmployeePayslips() {
     setVerifying(true); setError("");
 
     const { error: authErr } = await supabase.auth.signInWithPassword({
-      email: profile.email,
+      email: (profile as any).email,
       password: password
     });
 
