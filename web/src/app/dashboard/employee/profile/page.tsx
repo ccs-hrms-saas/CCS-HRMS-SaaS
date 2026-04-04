@@ -9,6 +9,7 @@ import Image from "next/image";
 export default function EmployeeProfile() {
   const { profile } = useAuth();
   const [data, setData] = useState<any>(null);
+  const [appraisals, setAppraisals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
@@ -22,6 +23,9 @@ export default function EmployeeProfile() {
     if (!profile) return;
     const { data: pData } = await supabase.from("profiles").select("*, manager:profiles!manager_id(full_name)").eq("id", profile.id).single();
     setData(pData || {});
+    // Load appraisal letters
+    const { data: aData } = await supabase.from("employee_appraisals").select("*").eq("user_id", profile.id).order("appraisal_date", { ascending: false });
+    setAppraisals(aData ?? []);
     setLoading(false);
   };
 
@@ -120,12 +124,41 @@ export default function EmployeeProfile() {
               <div><small style={{ color: "var(--text-secondary)" }}>Gender</small><div style={{ fontWeight: 500 }}>{data.gender || "—"}</div></div>
               <div><small style={{ color: "var(--text-secondary)" }}>Reporting Manager</small><div style={{ fontWeight: 500 }}>{data.manager?.full_name || "—"}</div></div>
               <div><small style={{ color: "var(--text-secondary)" }}>Joining Date</small><div style={{ fontWeight: 500 }}>{data.joining_date ? new Date(data.joining_date).toLocaleDateString("en-IN") : "—"}</div></div>
+              {data.remuneration && (
+                <div style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 10, padding: "10px 14px" }}>
+                  <small style={{ color: "var(--accent-primary)", fontWeight: 600 }}>Monthly Remuneration</small>
+                  <div style={{ fontWeight: 700, fontSize: "1.15rem", marginTop: 2 }}>₹{Number(data.remuneration).toLocaleString("en-IN")}</div>
+                </div>
+              )}
               {data.joining_letter_url && (
                 <div><small style={{ color: "var(--text-secondary)" }}>Joining Letter</small><div><a href={data.joining_letter_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent-primary)", fontWeight: 600, textDecoration: "none" }}>📄 View Document</a></div></div>
               )}
             </div>
           </div>
-        </div>
+
+          {/* Appraisal Letters */}
+          {appraisals.length > 0 && (
+            <div className="glass-panel" style={{ padding: 24 }}>
+              <h3 style={{ marginBottom: 16, fontSize: "1.05rem", borderBottom: '1px solid var(--glass-border)', paddingBottom: 10 }}>📈 Appraisal Letters</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {appraisals.map((a, i) => (
+                  <div key={a.id ?? i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "rgba(255,255,255,0.03)", borderRadius: 10, border: "1px solid var(--glass-border)" }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>Appraisal Letter</div>
+                      <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: 2 }}>
+                        {a.appraisal_date ? new Date(a.appraisal_date).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : ""}
+                      </div>
+                    </div>
+                    <a href={a.letter_url} target="_blank" rel="noopener noreferrer"
+                      style={{ color: "var(--accent-primary)", fontWeight: 600, textDecoration: "none", fontSize: "0.85rem", padding: "6px 14px", border: "1px solid rgba(99,102,241,0.4)", borderRadius: 8, background: "rgba(99,102,241,0.08)" }}>
+                      📄 View
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>{/* END LEFT COLUMN */}
 
         {/* RIGHT COLUMN: Employee Updatable Forms */}
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
