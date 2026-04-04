@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import styles from "../../dashboard.module.css";
 
@@ -14,6 +14,7 @@ export default function AdminPolicies() {
   const [form, setForm]         = useState({ title: "", category: CATEGORIES[0], content: "" });
   const [saving, setSaving]     = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     const { data } = await supabase.from("hr_policies").select("*").order("created_at", { ascending: false });
@@ -23,8 +24,8 @@ export default function AdminPolicies() {
 
   useEffect(() => { load(); }, []);
 
-  const openNew  = () => { setEditing(null); setForm({ title: "", category: CATEGORIES[0], content: "" }); setShowForm(true); };
-  const openEdit = (p: any) => { setEditing(p); setForm({ title: p.title, category: p.category, content: p.content }); setShowForm(true); };
+  const openNew  = () => { setEditing(null); setForm({ title: "", category: CATEGORIES[0], content: "" }); setShowForm(true); setTimeout(() => modalRef.current?.scrollTo(0, 0), 50); };
+  const openEdit = (p: any) => { setEditing(p); setForm({ title: p.title, category: p.category, content: p.content }); setShowForm(true); setTimeout(() => modalRef.current?.scrollTo(0, 0), 50); };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
@@ -93,7 +94,7 @@ export default function AdminPolicies() {
       {/* Form drawer */}
       {showForm && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setShowForm(false)}>
-          <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--glass-border)", borderRadius: 20, padding: 32, width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+          <div ref={modalRef} style={{ background: "var(--bg-secondary)", border: "1px solid var(--glass-border)", borderRadius: 20, padding: 32, width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h2 style={{ fontSize: "1.1rem", fontWeight: 700 }}>{editing ? "Edit Policy" : "New Policy"}</h2>
               <button onClick={() => setShowForm(false)} style={{ background: "none", border: "1px solid var(--glass-border)", color: "var(--text-secondary)", width: 34, height: 34, borderRadius: 8, cursor: "pointer" }}>✕</button>
@@ -111,7 +112,7 @@ export default function AdminPolicies() {
               </div>
               <div className={styles.formGroup}>
                 <label>Content *</label>
-                <textarea className="premium-input" value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} required rows={10} placeholder="Write the full policy text here…" style={{ resize: "vertical", lineHeight: 1.7 }} />
+                <textarea className="premium-input" value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} required rows={7} placeholder="Write the full policy text here…" style={{ resize: "vertical", lineHeight: 1.7 }} />
               </div>
               <button type="submit" className={styles.primaryBtn} disabled={saving}>{saving ? "Saving…" : "📋 Publish Policy"}</button>
             </form>
