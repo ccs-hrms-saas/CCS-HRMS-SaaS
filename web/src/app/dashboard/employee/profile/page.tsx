@@ -13,6 +13,7 @@ export default function EmployeeProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
 
   const avatarRef = useRef<HTMLInputElement>(null);
   const aadharFrontRef = useRef<HTMLInputElement>(null);
@@ -85,19 +86,26 @@ export default function EmployeeProfile() {
   const submitMeta = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    await supabase.from("profiles").update({
+    const { error } = await supabase.from("profiles").update({
       emergency_contact: data.emergency_contact,
-      father_name: data.father_name,
-      mother_name: data.mother_name,
-      address: data.address,
-      aadhar_number: data.aadhar_number,
-      pan_number: data.pan_number,
-      bank_name: data.bank_name,
+      father_name:       data.father_name,
+      mother_name:       data.mother_name,
+      address:           data.address,
+      aadhar_number:     data.aadhar_number,
+      pan_number:        data.pan_number,
+      bank_name:         data.bank_name,
       bank_account_number: data.bank_account_number,
-      bank_ifsc: data.bank_ifsc,
+      bank_ifsc:         data.bank_ifsc,
     }).eq("id", profile!.id);
-    setSuccess("Profile updated successfully!");
-    setTimeout(() => setSuccess(""), 4000);
+
+    if (error) {
+      setSuccess("\u274c Save failed: " + error.message);
+    } else {
+      await loadData();          // <- refresh from DB
+      setIsEditing(false);       // <- go back to display mode
+      setSuccess("\u2705 Profile saved successfully!");
+      setTimeout(() => setSuccess(""), 5000);
+    }
     setSaving(false);
   };
 
@@ -178,35 +186,84 @@ export default function EmployeeProfile() {
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           
           <div className="glass-panel" style={{ padding: 32 }}>
-            <h3 style={{ marginBottom: 24, fontSize: "1.2rem" }}>Complete Your Profile</h3>
-            {success && <div style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", color: "var(--success)", padding: "12px 16px", borderRadius: 10, marginBottom: 20, fontSize: "0.9rem" }}>{success}</div>}
-            
-            <form onSubmit={submitMeta}>
-              <div style={{display: 'flex', gap: 16}}>
-                <div className={styles.formGroup} style={{flex: 1}}><label>Father's Name</label><input className="premium-input" name="father_name" value={data.father_name || ""} onChange={handleChange} /></div>
-                <div className={styles.formGroup} style={{flex: 1}}><label>Mother's Name</label><input className="premium-input" name="mother_name" value={data.mother_name || ""} onChange={handleChange} /></div>
-              </div>
-              <div style={{display: 'flex', gap: 16}}>
-                <div className={styles.formGroup} style={{flex: 1}}><label>Emergency Contact No.</label><input className="premium-input" name="emergency_contact" value={data.emergency_contact || ""} onChange={handleChange} /></div>
-                <div className={styles.formGroup} style={{flex: 1}}><label>Full Address</label><input className="premium-input" name="address" value={data.address || ""} onChange={handleChange} /></div>
-              </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+              <h3 style={{ fontSize: "1.2rem", margin: 0 }}>My Information</h3>
+              {!isEditing && (
+                <button onClick={() => setIsEditing(true)}
+                  style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid rgba(99,102,241,0.4)", background: "rgba(99,102,241,0.1)", color: "var(--accent-primary)", cursor: "pointer", fontWeight: 600, fontSize: "0.85rem", fontFamily: "Outfit, sans-serif" }}>
+                  ✏️ Edit
+                </button>
+              )}
+            </div>
 
-              <h4 style={{marginTop: 16, marginBottom: 16, color: 'var(--text-secondary)', borderBottom: '1px solid var(--glass-border)', paddingBottom: 8}}>Bank Details</h4>
-              <div style={{display: 'flex', gap: 16}}>
-                <div className={styles.formGroup} style={{flex: 1}}><label>Bank Name</label><input className="premium-input" name="bank_name" value={data.bank_name || ""} onChange={handleChange} /></div>
-                <div className={styles.formGroup} style={{flex: 1}}><label>Account Number</label><input className="premium-input" name="bank_account_number" type="password" placeholder="••••••••" value={data.bank_account_number || ""} onChange={handleChange} /></div>
-                <div className={styles.formGroup} style={{flex: 1}}><label>IFSC Code</label><input className="premium-input" name="bank_ifsc" value={data.bank_ifsc || ""} onChange={handleChange} /></div>
+            {success && (
+              <div style={{ background: success.startsWith("❌") ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.1)", border: `1px solid ${success.startsWith("❌") ? "rgba(239,68,68,0.3)" : "rgba(16,185,129,0.3)"}`, color: success.startsWith("❌") ? "var(--danger)" : "var(--success)", padding: "12px 16px", borderRadius: 10, marginBottom: 20, fontSize: "0.9rem" }}>
+                {success}
               </div>
+            )}
 
-              <h4 style={{marginTop: 16, marginBottom: 16, color: 'var(--text-secondary)', borderBottom: '1px solid var(--glass-border)', paddingBottom: 8}}>Identity & Compliance</h4>
-              <div style={{display: 'flex', gap: 16}}>
-                <div className={styles.formGroup} style={{flex: 1}}><label>Aadhar Number</label><input className="premium-input" name="aadhar_number" value={data.aadhar_number || ""} onChange={handleChange} /></div>
-                <div className={styles.formGroup} style={{flex: 1}}><label>PAN Number</label><input className="premium-input" name="pan_number" value={data.pan_number || ""} onChange={handleChange} style={{textTransform: 'uppercase'}} /></div>
+            {/* ── READ-ONLY DISPLAY VIEW ── */}
+            {!isEditing && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {[
+                  { label: "Father's Name",      value: data.father_name },
+                  { label: "Mother's Name",       value: data.mother_name },
+                  { label: "Emergency Contact",   value: data.emergency_contact },
+                  { label: "Full Address",        value: data.address },
+                  { label: "Bank Name",           value: data.bank_name },
+                  { label: "Account Number",      value: data.bank_account_number ? "••••••" + String(data.bank_account_number).slice(-4) : null },
+                  { label: "IFSC Code",           value: data.bank_ifsc },
+                  { label: "Aadhar Number",       value: data.aadhar_number ? String(data.aadhar_number).replace(/\d(?=\d{4})/g, "•") : null },
+                  { label: "PAN Number",          value: data.pan_number },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ padding: "12px 14px", background: "rgba(255,255,255,0.02)", borderRadius: 10, border: "1px solid var(--glass-border)" }}>
+                    <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>{label}</div>
+                    <div style={{ fontWeight: 600, fontSize: "0.92rem", color: value ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                      {value || <span style={{ fontStyle: "italic", fontWeight: 400 }}>Not filled</span>}
+                    </div>
+                  </div>
+                ))}
               </div>
-              
-              <button type="submit" className={styles.primaryBtn} disabled={saving}>{saving ? "Saving..." : "💾 Save Details"}</button>
-            </form>
+            )}
+
+            {/* ── EDIT FORM ── */}
+            {isEditing && (
+              <form onSubmit={submitMeta}>
+                <div style={{display: "flex", gap: 16}}>
+                  <div className={styles.formGroup} style={{flex: 1}}><label>Father's Name</label><input className="premium-input" name="father_name" value={data.father_name || ""} onChange={handleChange} /></div>
+                  <div className={styles.formGroup} style={{flex: 1}}><label>Mother's Name</label><input className="premium-input" name="mother_name" value={data.mother_name || ""} onChange={handleChange} /></div>
+                </div>
+                <div style={{display: "flex", gap: 16}}>
+                  <div className={styles.formGroup} style={{flex: 1}}><label>Emergency Contact No.</label><input className="premium-input" name="emergency_contact" value={data.emergency_contact || ""} onChange={handleChange} /></div>
+                  <div className={styles.formGroup} style={{flex: 1}}><label>Full Address</label><input className="premium-input" name="address" value={data.address || ""} onChange={handleChange} /></div>
+                </div>
+
+                <h4 style={{marginTop: 16, marginBottom: 16, color: "var(--text-secondary)", borderBottom: "1px solid var(--glass-border)", paddingBottom: 8}}>Bank Details</h4>
+                <div style={{display: "flex", gap: 16}}>
+                  <div className={styles.formGroup} style={{flex: 1}}><label>Bank Name</label><input className="premium-input" name="bank_name" value={data.bank_name || ""} onChange={handleChange} /></div>
+                  <div className={styles.formGroup} style={{flex: 1}}><label>Account Number</label><input className="premium-input" name="bank_account_number" value={data.bank_account_number || ""} onChange={handleChange} placeholder="Account number" /></div>
+                  <div className={styles.formGroup} style={{flex: 1}}><label>IFSC Code</label><input className="premium-input" name="bank_ifsc" value={data.bank_ifsc || ""} onChange={handleChange} /></div>
+                </div>
+
+                <h4 style={{marginTop: 16, marginBottom: 16, color: "var(--text-secondary)", borderBottom: "1px solid var(--glass-border)", paddingBottom: 8}}>Identity & Compliance</h4>
+                <div style={{display: "flex", gap: 16}}>
+                  <div className={styles.formGroup} style={{flex: 1}}><label>Aadhar Number</label><input className="premium-input" name="aadhar_number" value={data.aadhar_number || ""} onChange={handleChange} /></div>
+                  <div className={styles.formGroup} style={{flex: 1}}><label>PAN Number</label><input className="premium-input" name="pan_number" value={data.pan_number || ""} onChange={handleChange} style={{textTransform: "uppercase"}} /></div>
+                </div>
+
+                <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                  <button type="submit" className={styles.primaryBtn} disabled={saving} style={{ flex: 1 }}>
+                    {saving ? "Saving..." : "💾 Save Changes"}
+                  </button>
+                  <button type="button" onClick={() => { setIsEditing(false); loadData(); }}
+                    style={{ flex: "0 0 auto", padding: "14px 20px", borderRadius: 12, border: "1px solid var(--glass-border)", background: "var(--glass-bg)", color: "var(--text-secondary)", cursor: "pointer", fontFamily: "Outfit, sans-serif", fontSize: "0.9rem" }}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
+
 
           {/* Secure Document Vault */}
           <div className="glass-panel" style={{ padding: 32 }}>
