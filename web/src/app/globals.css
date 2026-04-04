@@ -108,3 +108,16 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.5s ease forwards;
 }
+
+/* ── Rich text policy content render styles ── */
+.policy-content { color: var(--text-secondary); line-height: 1.8; font-size: 0.92rem; }
+.policy-content h2 { font-size: 1.15rem; font-weight: 700; color: white; margin: 18px 0 8px; }
+.policy-content h3 { font-size: 1rem; font-weight: 700; color: white; margin: 14px 0 6px; }
+.policy-content p  { margin: 0 0 10px 0; }
+.policy-content ul, .policy-content ol { padding-left: 24px; margin: 8px 0 12px; }
+.policy-content li { margin-bottom: 5px; }
+.policy-content strong { color: white; font-weight: 700; }
+.policy-content em { font-style: italic; }
+.policy-content s  { text-decoration: line-through; }
+.policy-content blockquote { border-left: 3px solid var(--accent-primary); padding-left: 14px; margin: 12px 0; color: var(--text-secondary); font-style: italic; }
+.policy-content hr { border: none; border-top: 1px solid var(--glass-border); margin: 18px 0; }

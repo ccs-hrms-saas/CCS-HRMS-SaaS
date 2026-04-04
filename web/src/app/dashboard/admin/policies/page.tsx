@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import styles from "../../dashboard.module.css";
+import RichEditor from "@/components/RichEditor";
 
 const CATEGORIES = ["Leave Policy", "Code of Conduct", "Office Rules", "Benefits & Perks", "Safety", "General"];
 
@@ -83,9 +84,9 @@ export default function AdminPolicies() {
                   <button onClick={() => setDeleteTarget(p)} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "var(--danger)", cursor: "pointer", fontSize: "0.82rem" }}>🗑</button>
                 </div>
               </div>
-              <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, whiteSpace: "pre-wrap", margin: 0, fontSize: "0.9rem" }}>
-                {p.content.length > 300 ? p.content.slice(0, 300) + "…" : p.content}
-              </p>
+              <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, margin: 0, fontSize: "0.9rem" }}
+                 dangerouslySetInnerHTML={{ __html: p.content.length > 400 ? p.content.slice(0, 400) + "…" : p.content }}
+              />
             </div>
           ))}
         </div>
@@ -112,7 +113,11 @@ export default function AdminPolicies() {
               </div>
               <div className={styles.formGroup}>
                 <label>Content *</label>
-                <textarea className="premium-input" value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} required rows={7} placeholder="Write the full policy text here…" style={{ resize: "vertical", lineHeight: 1.7 }} />
+                <RichEditor
+                  value={form.content}
+                  onChange={(html) => setForm({ ...form, content: html })}
+                  placeholder="Write the full policy text here… Use headings, bullets, and bold to format!"
+                />
               </div>
               <button type="submit" className={styles.primaryBtn} disabled={saving}>{saving ? "Saving…" : "📋 Publish Policy"}</button>
             </form>

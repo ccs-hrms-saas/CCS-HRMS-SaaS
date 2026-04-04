@@ -65,9 +65,9 @@ export default function EmployeePolicies() {
                 <span style={{ color: "var(--text-secondary)", fontSize: "1.2rem", flexShrink: 0 }}>{expanded === p.id ? "▲" : "▼"}</span>
               </div>
               {expanded === p.id && (
-                <div style={{ marginTop: 16, color: "var(--text-secondary)", lineHeight: 1.8, whiteSpace: "pre-wrap", fontSize: "0.9rem", borderTop: "1px solid var(--glass-border)", paddingTop: 16 }}>
-                  {p.content}
-                </div>
+                <div style={{ marginTop: 16, borderTop: "1px solid var(--glass-border)", paddingTop: 16 }}
+                     className="policy-content"
+                     dangerouslySetInnerHTML={{ __html: p.content }} />
               )}
             </div>
           ))}
