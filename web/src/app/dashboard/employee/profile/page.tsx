@@ -36,37 +36,51 @@ export default function EmployeeProfile() {
   const handleUpload = async (file: File, bucket: string, pathPrefix: string, column: string) => {
     if (!profile) return;
     setSaving(true);
-    setSuccess(`Uploading ${pathPrefix.replace('_', ' ')}... Please wait.`);
-    
-    // Clear the input so selecting the same file again works
-    if (pathPrefix === "aadhar_front" && aadharFrontRef.current) aadharFrontRef.current.value = "";
-    if (pathPrefix === "aadhar_back" && aadharBackRef.current) aadharBackRef.current.value = "";
-    if (pathPrefix === "pan_card" && panRef.current) panRef.current.value = "";
-    if (pathPrefix === "avatar" && avatarRef.current) avatarRef.current.value = "";
+    setSuccess(`Uploading ${pathPrefix.replace(/_/g, ' ')}... Please wait.`);
 
+    // Reset input so selecting the same file again works
+    const refMap: Record<string, React.RefObject<HTMLInputElement | null>> = {
+      aadhar_front: aadharFrontRef, aadhar_back: aadharBackRef, pan_card: panRef, avatar: avatarRef
+    };
+    const ref = refMap[pathPrefix];
+    if (ref?.current) ref.current.value = "";
+
+    // 1. Upload file to Supabase Storage
     const fileName = `${pathPrefix}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.\-]/g, "_")}`;
-    const { error } = await supabase.storage.from(bucket).upload(`${profile.id}/${fileName}`, file, { upsert: true });
-    
-    if (error) { 
-        alert("Upload failed: " + error.message); 
-        setSuccess("");
-        setSaving(false);
-        return; 
+    const storagePath = `${profile.id}/${fileName}`;
+    const { error: storageErr } = await supabase.storage.from(bucket).upload(storagePath, file, { upsert: true });
+
+    if (storageErr) {
+      setSuccess(`❌ Storage upload failed: ${storageErr.message}`);
+      setSaving(false);
+      return;
     }
-    
-    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(`${profile.id}/${fileName}`);
-    const { error: dbErr } = await supabase.from("profiles").update({ [column]: urlData.publicUrl }).eq("id", profile.id);
-    
-    if (dbErr) {
-        alert("Database link failed: " + dbErr.message);
-    } else {
-        setSuccess("✅ Document uploaded successfully!");
+
+    // 2. Get the public URL
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+    const publicUrl = urlData.publicUrl;
+
+    // 3. Save URL to profiles table via secure admin API (bypasses RLS)
+    const res = await fetch("/api/update-doc-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: profile.id, column, value: publicUrl })
+    });
+    const json = await res.json();
+
+    if (!res.ok) {
+      setSuccess(`❌ Failed to save: ${json.error}`);
+      setSaving(false);
+      return;
     }
-    
-    await loadData();
+
+    // 4. Immediately update local state so UI reflects change without full reload
+    setData((prev: any) => ({ ...prev, [column]: publicUrl }));
+    setSuccess("✅ Document uploaded and saved successfully!");
     setTimeout(() => setSuccess(""), 4000);
     setSaving(false);
   };
+
 
   const submitMeta = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,36 +210,58 @@ export default function EmployeeProfile() {
 
           {/* Secure Document Vault */}
           <div className="glass-panel" style={{ padding: 32 }}>
-             <h3 style={{ marginBottom: 24, fontSize: "1.2rem" }}>Secure Document Vault</h3>
-             <input type="file" ref={aadharFrontRef} accept="image/*,.pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "employee-documents", "aadhar_front", "aadhar_front_url"); }} />
-             <input type="file" ref={aadharBackRef} accept="image/*,.pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "employee-documents", "aadhar_back", "aadhar_back_url"); }} />
-             <input type="file" ref={panRef} accept="image/*,.pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "employee-documents", "pan_card", "pan_url"); }} />
-             
-             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 16, background: "rgba(255,255,255,0.03)", borderRadius: 12, border: "1px solid var(--glass-border)" }}>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>Aadhar Card (Front)</div>
-                    <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>{data.aadhar_front_url ? "Uploaded ✅" : "Missing"}</div>
-                  </div>
-                  {data.aadhar_front_url ? <a href={data.aadhar_front_url} target="_blank" rel="noopener noreferrer" className={styles.secondaryBtn} style={{textDecoration:'none', padding: "8px 16px"}}>View Current</a> : <button onClick={() => aadharFrontRef.current?.click()} className={styles.primaryBtn} style={{width: 'auto', padding: "8px 16px"}}>Upload</button>}
-                </div>
+            <h3 style={{ marginBottom: 8, fontSize: "1.2rem" }}>Secure Document Vault</h3>
+            <p style={{ fontSize: "0.82rem", color: "var(--text-secondary)", marginBottom: 24 }}>Upload your KYC documents. Only visible to you and HR Admin.</p>
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 16, background: "rgba(255,255,255,0.03)", borderRadius: 12, border: "1px solid var(--glass-border)" }}>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>Aadhar Card (Back)</div>
-                    <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>{data.aadhar_back_url ? "Uploaded ✅" : "Missing"}</div>
-                  </div>
-                  {data.aadhar_back_url ? <a href={data.aadhar_back_url} target="_blank" rel="noopener noreferrer" className={styles.secondaryBtn} style={{textDecoration:'none', padding: "8px 16px"}}>View Current</a> : <button onClick={() => aadharBackRef.current?.click()} className={styles.primaryBtn} style={{width: 'auto', padding: "8px 16px"}}>Upload</button>}
-                </div>
+            {/* Success/progress banner inside vault too */}
+            {success && saving === false && success.startsWith("✅") && (
+              <div style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", color: "var(--success)", padding: "10px 14px", borderRadius: 10, marginBottom: 16, fontSize: "0.88rem" }}>{success}</div>
+            )}
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 16, background: "rgba(255,255,255,0.03)", borderRadius: 12, border: "1px solid var(--glass-border)" }}>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>PAN Card</div>
-                    <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>{data.pan_url ? "Uploaded ✅" : "Missing"}</div>
+            <input type="file" ref={aadharFrontRef} accept="image/*,.pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "employee-documents", "aadhar_front", "aadhar_front_url"); }} />
+            <input type="file" ref={aadharBackRef}  accept="image/*,.pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "employee-documents", "aadhar_back",  "aadhar_back_url"); }} />
+            <input type="file" ref={panRef}          accept="image/*,.pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "employee-documents", "pan_card",    "pan_url"); }} />
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {[
+                { label: "Aadhar Card (Front)", url: data.aadhar_front_url, ref: aadharFrontRef },
+                { label: "Aadhar Card (Back)",  url: data.aadhar_back_url,  ref: aadharBackRef },
+                { label: "PAN Card",            url: data.pan_url,          ref: panRef },
+              ].map(({ label, url, ref }) => (
+                <div key={label} style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 16px", background: "rgba(255,255,255,0.03)", borderRadius: 12, border: `1px solid ${url ? "rgba(16,185,129,0.3)" : "var(--glass-border)"}` }}>
+                  {/* Thumbnail or placeholder */}
+                  <div style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", background: "rgba(255,255,255,0.05)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--glass-border)" }}>
+                    {url ? (
+                      url.match(/\.(jpg|jpeg|png|webp|gif)(\?|$)/i)
+                        ? <img src={url} alt={label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        : <span style={{ fontSize: "1.8rem" }}>📄</span>
+                    ) : <span style={{ fontSize: "1.8rem", opacity: 0.3 }}>🪪</span>}
                   </div>
-                  {data.pan_url ? <a href={data.pan_url} target="_blank" rel="noopener noreferrer" className={styles.secondaryBtn} style={{textDecoration:'none', padding: "8px 16px"}}>View Current</a> : <button onClick={() => panRef.current?.click()} className={styles.primaryBtn} style={{width: 'auto', padding: "8px 16px"}}>Upload</button>}
+
+                  {/* Info */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>{label}</div>
+                    <div style={{ fontSize: "0.78rem", marginTop: 3, color: url ? "var(--success)" : "var(--danger)" }}>
+                      {url ? "✅ Uploaded" : "❌ Not uploaded yet"}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                    {url && (
+                      <a href={url} target="_blank" rel="noopener noreferrer"
+                        style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(99,102,241,0.4)", background: "rgba(99,102,241,0.1)", color: "var(--accent-primary)", fontWeight: 600, textDecoration: "none", fontSize: "0.82rem" }}>
+                        View
+                      </a>
+                    )}
+                    <button onClick={() => ref.current?.click()} disabled={saving}
+                      style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${url ? "rgba(100,116,139,0.4)" : "rgba(99,102,241,0.5)"}`, background: url ? "rgba(100,116,139,0.1)" : "rgba(99,102,241,0.15)", color: url ? "var(--text-secondary)" : "var(--accent-primary)", cursor: saving ? "not-allowed" : "pointer", fontWeight: 600, fontSize: "0.82rem", fontFamily: "Outfit, sans-serif" }}>
+                      {saving ? "Uploading…" : url ? "Replace" : "Upload"}
+                    </button>
+                  </div>
                 </div>
-             </div>
+              ))}
+            </div>
           </div>
         </div>
 
