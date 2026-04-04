@@ -31,10 +31,9 @@ export default function AdminUsers() {
   const [success, setSuccess]   = useState("");
   const [letterFile, setLetterFile] = useState<File | null>(null);
 
-  const [editUser, setEditUser]             = useState<Profile | null>(null);
-  const [editName, setEditName]             = useState("");
-  const [editEmail, setEditEmail]           = useState("");
-  const [editPassword, setEditPassword]     = useState("");
+  const [editUser, setEditUser]             = useState<any | null>(null);
+  const [editForm, setEditForm]             = useState<any>({});
+  const [editLetterFile, setEditLetterFile] = useState<File | null>(null);
   const [editSaving, setEditSaving]         = useState(false);
   const [editError, setEditError]           = useState("");
 
@@ -90,17 +89,44 @@ export default function AdminUsers() {
   };
 
   /* ── Edit ── */
-  const openEdit = (u: Profile) => { setEditUser(u); setEditName(u.full_name); setEditEmail(""); setEditPassword(""); setEditError(""); };
+  const openEdit = (u: any) => { setEditUser(u); setEditLetterFile(null); setEditError(""); setEditForm({ full_name: u.full_name, phone_number: u.phone_number || "", gender: u.gender || "Male", designation: u.designation || "", joining_date: u.joining_date ? u.joining_date.split("T")[0] : "", remuneration: u.remuneration || "", new_email: "", new_password: "" }); };
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault(); if (!editUser) return;
     setEditSaving(true); setEditError("");
-    const res = await fetch("/api/update-user", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: editUser.id, full_name: editName, email: editEmail || undefined, password: editPassword || undefined }),
-    });
-    const json = await res.json();
-    if (!res.ok) { setEditError(json.error || "Update failed"); }
-    else { setEditUser(null); setSuccess("✅ Employee updated!"); await load(); setTimeout(() => setSuccess(""), 4000); }
+    
+    // --- Upload joining letter if provided ---
+    let joining_letter_url = editUser.joining_letter_url;
+    if (editLetterFile) {
+      const uFileName = `${Date.now()}_${editLetterFile.name.replace(/[^a-zA-Z0-9.\-]/g, "_")}`;
+      const { error: fErr } = await supabase.storage.from("employee-documents").upload(`joining_letters/${uFileName}`, editLetterFile);
+      if (!fErr) {
+        const { data: urlData } = supabase.storage.from("employee-documents").getPublicUrl(`joining_letters/${uFileName}`);
+        joining_letter_url = urlData.publicUrl;
+      }
+    }
+
+    // --- Update profile table fields ---
+    await supabase.from("profiles").update({
+      full_name:     editForm.full_name,
+      phone_number:  editForm.phone_number,
+      gender:        editForm.gender,
+      designation:   editForm.designation,
+      joining_date:  editForm.joining_date || null,
+      remuneration:  editForm.remuneration ? Number(editForm.remuneration) : null,
+      joining_letter_url,
+    }).eq("id", editUser.id);
+
+    // --- Update auth account if email/password supplied ---
+    if (editForm.new_email || editForm.new_password) {
+      const res = await fetch("/api/update-user", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: editUser.id, full_name: editForm.full_name, email: editForm.new_email || undefined, password: editForm.new_password || undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setEditError(json.error || "Account update failed"); setEditSaving(false); return; }
+    }
+    
+    setEditUser(null); setSuccess("✅ Employee profile updated!"); await load(); setTimeout(() => setSuccess(""), 4000);
     setEditSaving(false);
   };
 
@@ -403,23 +429,78 @@ export default function AdminUsers() {
       {/* ── Edit Employee Drawer ── */}
       {editUser && (
         <div className={userStyles.overlay} onClick={() => setEditUser(null)}>
-          <div className={userStyles.drawer} onClick={e => e.stopPropagation()}>
+          <div className={userStyles.drawer} style={{ maxWidth: 620, overflowY: "auto", maxHeight: "92vh" }} onClick={e => e.stopPropagation()}>
             <div className={userStyles.drawerHeader}>
-              <h2>Edit Employee</h2>
+              <h2>Edit Profile — {editUser.full_name}</h2>
               <button onClick={() => setEditUser(null)} className={userStyles.closeBtn}>✕</button>
             </div>
             {editError && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--danger)", padding: "12px 16px", borderRadius: 10, marginBottom: 20, fontSize: "0.85rem" }}>⚠️ {editError}</div>}
-            <form onSubmit={handleEdit}>
-              <div className={styles.formGroup}><label>Full Name *</label><input className="premium-input" value={editName} onChange={e => setEditName(e.target.value)} required /></div>
-              <div className={styles.formGroup}>
-                <label>New Email <span style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>(leave blank to keep current)</span></label>
-                <input type="email" className="premium-input" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="new@email.com" />
+            
+            <form onSubmit={handleEdit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+              {/* Work Profile — Admin Fillable */}
+              <div style={{ padding: "12px 14px", background: "rgba(99,102,241,0.06)", borderRadius: 10, border: "1px solid rgba(99,102,241,0.15)", marginBottom: 4 }}>
+                <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--accent-primary)", marginBottom: 12, textTransform: "uppercase", letterSpacing: 1 }}>📋 Work Profile</div>
+                
+                <div style={{ display: "flex", gap: 14 }}>
+                  <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                    <label>Full Name *</label>
+                    <input className="premium-input" value={editForm.full_name} onChange={e => setEditForm({...editForm, full_name: e.target.value})} required />
+                  </div>
+                  <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                    <label>Phone Number</label>
+                    <input className="premium-input" placeholder="+91..." value={editForm.phone_number} onChange={e => setEditForm({...editForm, phone_number: e.target.value})} />
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 14, marginTop: 14 }}>
+                  <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                    <label>Gender</label>
+                    <select className="premium-input" value={editForm.gender} onChange={e => setEditForm({...editForm, gender: e.target.value})}>
+                      <option>Male</option><option>Female</option><option>Other</option>
+                    </select>
+                  </div>
+                  <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                    <label>Designation</label>
+                    <input className="premium-input" placeholder="e.g. Software Engineer" value={editForm.designation} onChange={e => setEditForm({...editForm, designation: e.target.value})} />
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 14, marginTop: 14 }}>
+                  <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                    <label>Joining Date</label>
+                    <input type="date" className="premium-input" value={editForm.joining_date} onChange={e => setEditForm({...editForm, joining_date: e.target.value})} />
+                  </div>
+                  <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                    <label>Monthly Remuneration (₹)</label>
+                    <input type="number" className="premium-input" placeholder="0.00" value={editForm.remuneration} onChange={e => setEditForm({...editForm, remuneration: e.target.value})} />
+                  </div>
+                </div>
+
+                <div className={styles.formGroup} style={{ marginBottom: 0, marginTop: 14 }}>
+                  <label>Joining Letter {editUser.joining_letter_url && <a href={editUser.joining_letter_url} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8, fontSize: "0.78rem", color: "var(--accent-primary)" }}>📄 View Current</a>}</label>
+                  <input type="file" className="premium-input" style={{ padding: 10 }} accept=".pdf,.doc,.docx" onChange={e => setEditLetterFile(e.target.files?.[0] ?? null)} />
+                </div>
               </div>
-              <div className={styles.formGroup}>
-                <label>Reset Password <span style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>(leave blank to keep current)</span></label>
-                <input type="password" className="premium-input" value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="Min 6 characters" minLength={6} />
+
+              {/* Account Settings */}
+              <div style={{ padding: "12px 14px", background: "rgba(239,68,68,0.05)", borderRadius: 10, border: "1px solid rgba(239,68,68,0.12)" }}>
+                <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#f87171", marginBottom: 12, textTransform: "uppercase", letterSpacing: 1 }}>🔐 Account Settings <span style={{ color: "var(--text-secondary)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(Leave blank to keep unchanged)</span></div>
+                <div style={{ display: "flex", gap: 14 }}>
+                  <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                    <label>New Email</label>
+                    <input type="email" className="premium-input" placeholder="new@email.com" value={editForm.new_email} onChange={e => setEditForm({...editForm, new_email: e.target.value})} />
+                  </div>
+                  <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                    <label>Reset Password</label>
+                    <input type="password" className="premium-input" placeholder="Min 6 chars" value={editForm.new_password} onChange={e => setEditForm({...editForm, new_password: e.target.value})} minLength={6} />
+                  </div>
+                </div>
               </div>
-              <button type="submit" className={styles.primaryBtn} disabled={editSaving}>{editSaving ? "Saving…" : "💾 Save Changes"}</button>
+
+              <button type="submit" className={styles.primaryBtn} disabled={editSaving} style={{ marginTop: 4 }}>
+                {editSaving ? "Saving Changes…" : "💾 Save All Changes"}
+              </button>
             </form>
           </div>
         </div>
