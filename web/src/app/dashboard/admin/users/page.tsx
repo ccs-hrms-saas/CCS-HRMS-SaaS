@@ -36,6 +36,8 @@ export default function AdminUsers() {
   const [editLetterFile, setEditLetterFile] = useState<File | null>(null);
   const [editSaving, setEditSaving]         = useState(false);
   const [editError, setEditError]           = useState("");
+  // Each row: { date: string, file: File|null, existingUrl?: string }
+  const [appraisalRows, setAppraisalRows]   = useState<{ date: string; file: File | null; existingUrl?: string }[]>([]);
 
   // Deactivate / permanent delete targets
   const [deactivateTarget, setDeactivateTarget] = useState<Profile | null>(null);
@@ -89,7 +91,13 @@ export default function AdminUsers() {
   };
 
   /* ── Edit ── */
-  const openEdit = (u: any) => { setEditUser(u); setEditLetterFile(null); setEditError(""); setEditForm({ full_name: u.full_name, phone_number: u.phone_number || "", gender: u.gender || "Male", designation: u.designation || "", joining_date: u.joining_date ? u.joining_date.split("T")[0] : "", remuneration: u.remuneration || "", new_email: "", new_password: "" }); };
+  const openEdit = async (u: any) => {
+    setEditUser(u); setEditLetterFile(null); setEditError("");
+    setEditForm({ full_name: u.full_name, phone_number: u.phone_number || "", gender: u.gender || "Male", designation: u.designation || "", joining_date: u.joining_date ? u.joining_date.split("T")[0] : "", remuneration: u.remuneration || "", new_email: "", new_password: "" });
+    // Load existing appraisals
+    const { data: existing } = await supabase.from("employee_appraisals").select("*").eq("user_id", u.id).order("appraisal_date", { ascending: false });
+    setAppraisalRows((existing ?? []).map((a: any) => ({ date: a.appraisal_date, file: null, existingUrl: a.letter_url, id: a.id })));
+  };
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault(); if (!editUser) return;
     setEditSaving(true); setEditError("");
@@ -126,6 +134,25 @@ export default function AdminUsers() {
       if (!res.ok) { setEditError(json.error || "Account update failed"); setEditSaving(false); return; }
     }
     
+    // --- Save new appraisal rows ---
+    for (const row of appraisalRows) {
+      if (!row.date) continue;
+      if ((row as any).id && !row.file) continue; // existing with no new file, skip
+      if (!row.file) continue; // new row without a file, skip
+
+      const uFileName = `appraisals/${editUser.id}/${Date.now()}_${row.file.name.replace(/[^a-zA-Z0-9.\-]/g, "_")}`;
+      const { error: fErr } = await supabase.storage.from("employee-documents").upload(uFileName, row.file, { upsert: true });
+      if (!fErr) {
+        const { data: urlData } = supabase.storage.from("employee-documents").getPublicUrl(uFileName);
+        await supabase.from("employee_appraisals").insert({
+          user_id: editUser.id,
+          appraisal_date: row.date,
+          letter_url: urlData.publicUrl,
+          created_by: profile?.id
+        });
+      }
+    }
+
     setEditUser(null); setSuccess("✅ Employee profile updated!"); await load(); setTimeout(() => setSuccess(""), 4000);
     setEditSaving(false);
   };
@@ -480,6 +507,45 @@ export default function AdminUsers() {
                 <div className={styles.formGroup} style={{ marginBottom: 0, marginTop: 14 }}>
                   <label>Joining Letter {editUser.joining_letter_url && <a href={editUser.joining_letter_url} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8, fontSize: "0.78rem", color: "var(--accent-primary)" }}>📄 View Current</a>}</label>
                   <input type="file" className="premium-input" style={{ padding: 10 }} accept=".pdf,.doc,.docx" onChange={e => setEditLetterFile(e.target.files?.[0] ?? null)} />
+                </div>
+
+                {/* ── Dynamic Appraisal Letters ── */}
+                <div style={{ marginTop: 20, borderTop: "1px solid var(--glass-border)", paddingTop: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.8 }}>📈 Appraisal Letters</div>
+                    <button type="button" onClick={() => setAppraisalRows(prev => [...prev, { date: "", file: null }])}
+                      style={{ fontSize: "0.78rem", padding: "4px 12px", borderRadius: 8, border: "1px solid rgba(99,102,241,0.4)", background: "rgba(99,102,241,0.1)", color: "var(--accent-primary)", cursor: "pointer", fontFamily: "Outfit,sans-serif" }}>
+                      + Add Appraisal
+                    </button>
+                  </div>
+                  {appraisalRows.length === 0 && (
+                    <div style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: "0.82rem", padding: "12px 0" }}>No appraisal letters yet. Click "+ Add Appraisal" to attach one.</div>
+                  )}
+                  {appraisalRows.map((row, idx) => (
+                    <div key={idx} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10, background: "rgba(255,255,255,0.02)", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--glass-border)" }}>
+                      <div style={{ flex: "0 0 140px" }}>
+                        <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginBottom: 4 }}>Appraisal Date *</div>
+                        <input type="date" className="premium-input" value={row.date}
+                          onChange={e => { const r = [...appraisalRows]; r[idx] = { ...r[idx], date: e.target.value }; setAppraisalRows(r); }}
+                          style={{ fontSize: "0.82rem", padding: "8px 10px" }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginBottom: 4 }}>
+                          {(row as any).existingUrl ? (
+                            <>
+                              <a href={(row as any).existingUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--success)" }}>📄 View Existing</a>
+                              <span style={{ marginLeft: 6 }}>· Upload new to replace</span>
+                            </>
+                          ) : "PDF / DOC"}
+                        </div>
+                        <input type="file" className="premium-input" accept=".pdf,.doc,.docx"
+                          style={{ fontSize: "0.78rem", padding: "6px 10px" }}
+                          onChange={e => { const r = [...appraisalRows]; r[idx] = { ...r[idx], file: e.target.files?.[0] ?? null }; setAppraisalRows(r); }} />
+                      </div>
+                      <button type="button" onClick={() => setAppraisalRows(prev => prev.filter((_, i) => i !== idx))}
+                        style={{ marginTop: 18, background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: "1.1rem", lineHeight: 1 }}>✕</button>
+                    </div>
+                  ))}
                 </div>
               </div>
 
