@@ -284,11 +284,13 @@
 }
 
 .calDay:hover { background: rgba(255,255,255,0.07); }
-.calDayPresent { background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.3); color: var(--success); }
-.calDayAbsent  { background: rgba(239,68,68,0.1);   border-color: rgba(239,68,68,0.2);  color: var(--danger); }
-.calDayLeave   { background: rgba(245,158,11,0.1);  border-color: rgba(245,158,11,0.2); color: var(--warning); }
-.calDayToday   { border-color: var(--accent-primary); color: var(--accent-primary); font-weight: 700; }
-.calDayHeader  { background: none; cursor: default; color: var(--text-secondary); font-size: 0.75rem; }
+.calDayPresent   { background: rgba(16,185,129,0.15);  border-color: rgba(16,185,129,0.3);  color: var(--success); }
+.calDayAbsent    { background: rgba(239,68,68,0.1);    border-color: rgba(239,68,68,0.2);   color: var(--danger); }
+.calDayLeave     { background: rgba(245,158,11,0.1);   border-color: rgba(245,158,11,0.2);  color: var(--warning); }
+.calDayToday     { border-color: var(--accent-primary); color: var(--accent-primary); font-weight: 700; }
+.calDayHeader    { background: none; cursor: default; color: var(--text-secondary); font-size: 0.75rem; }
+.calDayWeeklyOff { background: rgba(100,116,139,0.12); border-color: rgba(100,116,139,0.25); color: #64748b; }
+.calDayHoliday   { background: rgba(245,158,11,0.12);  border-color: rgba(245,158,11,0.35); color: var(--warning); }
 
 /* Two-column grid */
 .twoCol {

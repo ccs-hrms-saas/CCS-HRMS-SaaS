@@ -3,14 +3,26 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import { isWorkingDay } from "@/lib/dateUtils";
 import styles from "../../dashboard.module.css";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DAYS   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
+function isWeeklyOff(date: Date): boolean {
+  const dow = date.getDay();
+  if (dow === 0) return true; // Sunday always off
+  if (dow === 6) {
+    const weekNum = Math.ceil(date.getDate() / 7);
+    if (weekNum === 1 || weekNum === 3) return true; // 1st & 3rd Sat off
+  }
+  return false;
+}
+
 export default function EmployeeAttendance() {
   const { profile } = useAuth();
   const [records, setRecords] = useState<Record<string, any>>({});
+  const [holidays, setHolidays] = useState<Record<string, string>>({}); // date -> name
   const [year, setYear]   = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth());
   const [loading, setLoading] = useState(true);
@@ -21,16 +33,21 @@ export default function EmployeeAttendance() {
       setLoading(true);
       const from = `${year}-${String(month + 1).padStart(2, "0")}-01`;
       const lastDay = new Date(year, month + 1, 0).getDate();
-      const to = `${year}-${String(month + 1).padStart(2, "0")}-${lastDay}`;
-      const { data } = await supabase
-        .from("attendance_records")
-        .select("*")
-        .eq("user_id", profile.id)
-        .gte("date", from)
-        .lte("date", to);
+      const to = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+      const [attRes, holRes] = await Promise.all([
+        supabase.from("attendance_records").select("*").eq("user_id", profile.id).gte("date", from).lte("date", to),
+        supabase.from("company_holidays").select("date, name")
+      ]);
+
       const map: Record<string, any> = {};
-      (data ?? []).forEach((r) => { map[r.date] = r; });
+      (attRes.data ?? []).forEach((r) => { map[r.date] = r; });
       setRecords(map);
+
+      const hMap: Record<string, string> = {};
+      (holRes.data ?? []).forEach((h) => { hMap[h.date] = h.name; });
+      setHolidays(hMap);
+
       setLoading(false);
     };
     load();
@@ -40,38 +57,61 @@ export default function EmployeeAttendance() {
   const firstDayOfWeek = new Date(year, month, 1).getDay();
   const today = new Date().toISOString().split("T")[0];
 
-  const getDayClass = (dateStr: string) => {
-    const r = records[dateStr];
-    if (dateStr === today) return styles.calDayToday;
-    if (r?.check_in) return styles.calDayPresent;
-    const d = new Date(dateStr);
-    if (d < new Date() && d.getDay() !== 0 && d.getDay() !== 6) return styles.calDayAbsent;
-    return "";
-  };
+  const holidaySet = new Set<string>(Object.keys(holidays));
+
+  // Correctly calculate total working days this month
+  const totalWorkdays = Array.from({ length: daysInMonth }, (_, i) => {
+    return isWorkingDay(new Date(year, month, i + 1), holidaySet) ? 1 : 0;
+  }).reduce((a: number, b: number) => a + b, 0);
+
+  const totalWorkingHours = totalWorkdays * 8.5;
 
   const presentCount = Object.values(records).filter(r => r.check_in).length;
-  const totalWorkdays = Array.from({ length: daysInMonth }, (_, i) => {
-    const d = new Date(year, month, i + 1);
-    return d.getDay() !== 0 && d.getDay() !== 6 ? 1 : 0;
-  }).reduce((acc: number, val: number) => acc + val, 0);
+
+  const getDayInfo = (dateStr: string): { cls: string; label?: string } => {
+    const d = new Date(dateStr + "T00:00:00"); // force local parse
+    const isHoliday = holidaySet.has(dateStr);
+    const isOff = isWeeklyOff(d);
+    const rec = records[dateStr];
+
+    if (dateStr === today) return { cls: styles.calDayToday };
+    if (isHoliday) return { cls: styles.calDayHoliday, label: holidays[dateStr] };
+    if (isOff) return { cls: styles.calDayWeeklyOff, label: d.getDay() === 0 ? "Sun Off" : "Sat Off" };
+    if (rec?.check_in) return { cls: styles.calDayPresent };
+    if (d < new Date()) return { cls: styles.calDayAbsent };
+    return { cls: "" };
+  };
+
+  const getTooltip = (dateStr: string): string => {
+    const info = getDayInfo(dateStr);
+    if (info.label) return info.label;
+    const rec = records[dateStr];
+    if (rec?.check_in) {
+      const inn = new Date(rec.check_in).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+      const out = rec.check_out ? new Date(rec.check_out).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "In Office";
+      return `In: ${inn} | Out: ${out}`;
+    }
+    return "";
+  };
 
   return (
     <div className="animate-fade-in">
       <div className={styles.pageHeader}>
         <h1>My Attendance</h1>
-        <p>View your attendance calendar and daily records</p>
+        <p>View your attendance calendar. Weekly offs and holidays are auto-highlighted.</p>
       </div>
 
-      <div className={styles.twoCol} style={{ marginBottom: 24 }}>
+      <div className={styles.twoCol} style={{ marginBottom: 24, gridTemplateColumns: "repeat(3, 1fr)" }}>
         {[
-          { icon: "✅", value: presentCount, label: "Days Present", badge: MONTHS[month], cls: "badgeSuccess" },
-          { icon: "📊", value: `${presentCount}/${totalWorkdays}`, label: "Attendance Rate", badge: "Workdays", cls: "badgeInfo" },
+          { icon: "✅", value: presentCount, label: "Days Present",        badge: MONTHS[month] },
+          { icon: "📊", value: `${presentCount}/${totalWorkdays}`,   label: "Working Days",        badge: "This Month" },
+          { icon: "⏱️",  value: `${totalWorkingHours.toFixed(0)}h`,  label: "Required Hours",      badge: "@ 8.5h/day" },
         ].map((s) => (
           <div key={s.label} className={`glass-panel ${styles.statCard}`}>
             <div className={styles.statIcon}>{s.icon}</div>
             <div className={styles.statValue}>{s.value}</div>
             <div className={styles.statLabel}>{s.label}</div>
-            <span className={`${styles.statBadge} ${styles[s.cls as keyof typeof styles]}`}>{s.badge}</span>
+            <span className={`${styles.statBadge} ${styles.badgeInfo}`}>{s.badge}</span>
           </div>
         ))}
       </div>
@@ -93,30 +133,36 @@ export default function EmployeeAttendance() {
         {/* Day headers */}
         <div className={styles.calendarGrid}>
           {DAYS.map(d => <div key={d} className={`${styles.calDay} ${styles.calDayHeader}`}>{d}</div>)}
-          {/* Empty cells for first week offset */}
           {Array.from({ length: firstDayOfWeek }, (_, i) => <div key={`empty-${i}`} />)}
-          {/* Day cells */}
           {Array.from({ length: daysInMonth }, (_, i) => {
             const day = i + 1;
             const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-            const rec = records[dateStr];
+            const info = getDayInfo(dateStr);
             return (
-              <div key={day} className={`${styles.calDay} ${getDayClass(dateStr)}`} title={rec ? `In: ${rec.check_in ? new Date(rec.check_in).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"} | Out: ${rec.check_out ? new Date(rec.check_out).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}` : ""}>
-                {day}
+              <div key={day} className={`${styles.calDay} ${info.cls}`} title={getTooltip(dateStr)}
+                style={{ position: "relative", flexDirection: "column", gap: 2, justifyContent: "center" }}>
+                <span>{day}</span>
+                {info.label && (
+                  <span style={{ fontSize: "0.52rem", lineHeight: 1.2, textAlign: "center", opacity: 0.85, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {info.label}
+                  </span>
+                )}
               </div>
             );
           })}
         </div>
 
         {/* Legend */}
-        <div style={{ display: "flex", gap: 20, marginTop: 20, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 16, marginTop: 20, flexWrap: "wrap" }}>
           {[
-            { cls: styles.calDayPresent, label: "Present" },
-            { cls: styles.calDayAbsent,  label: "Absent"  },
-            { cls: styles.calDayToday,   label: "Today"   },
+            { cls: styles.calDayPresent,   label: "Present" },
+            { cls: styles.calDayAbsent,    label: "Absent" },
+            { cls: styles.calDayToday,     label: "Today" },
+            { cls: styles.calDayWeeklyOff, label: "Weekly Off" },
+            { cls: styles.calDayHoliday,   label: "Public Holiday" },
           ].map(l => (
-            <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-              <div className={`${styles.calDay} ${l.cls}`} style={{ width: 20, height: 20, minWidth: 20, padding: 0, borderRadius: 4, fontSize: "0.6rem" }}></div>
+            <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.78rem", color: "var(--text-secondary)" }}>
+              <div className={`${styles.calDay} ${l.cls}`} style={{ width: 18, height: 18, minWidth: 18, padding: 0, borderRadius: 4 }} />
               {l.label}
             </div>
           ))}
@@ -126,25 +172,46 @@ export default function EmployeeAttendance() {
       {/* Detailed records table */}
       <div className={`glass-panel ${styles.tableWrap}`}>
         <table>
-          <thead><tr><th>Date</th><th>Check In</th><th>Check Out</th><th>Hours Worked</th></tr></thead>
+          <thead><tr><th>Date</th><th>Day</th><th>Check In</th><th>Check Out</th><th>Hours Worked</th><th>Status</th></tr></thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} style={{ textAlign: "center", padding: 32 }}><div className={styles.spinner} style={{ margin: "0 auto" }}></div></td></tr>
-            ) : Object.values(records).length === 0 ? (
-              <tr><td colSpan={4} style={{ textAlign: "center", color: "var(--text-secondary)", padding: "24px" }}>No records for {MONTHS[month]}.</td></tr>
-            ) : Object.values(records).sort((a, b) => b.date.localeCompare(a.date)).map((r: any) => {
-              const hours = r.check_in && r.check_out
-                ? ((new Date(r.check_out).getTime() - new Date(r.check_in).getTime()) / 3600000).toFixed(2)
-                : null;
-              return (
-                <tr key={r.id}>
-                  <td>{r.date}</td>
-                  <td>{r.check_in ? new Date(r.check_in).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
-                  <td>{r.check_out ? new Date(r.check_out).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "In Office"}</td>
-                  <td>{hours ? `${hours} hrs` : "—"}</td>
-                </tr>
-              );
-            })}
+              <tr><td colSpan={6} style={{ textAlign: "center", padding: 32 }}><div className={styles.spinner} style={{ margin: "0 auto" }} /></td></tr>
+            ) : Array.from({ length: daysInMonth }, (_, i) => {
+                const day = i + 1;
+                const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                const d = new Date(dateStr + "T00:00:00");
+                const rec = records[dateStr];
+                const isHoliday = holidaySet.has(dateStr);
+                const isOff = isWeeklyOff(d);
+                const isFuture = d > new Date();
+
+                if (isFuture) return null; // don't show future days
+
+                const hours = rec?.check_in && rec?.check_out
+                  ? ((new Date(rec.check_out).getTime() - new Date(rec.check_in).getTime()) / 3600000).toFixed(2)
+                  : null;
+
+                const status = isHoliday ? `🎉 ${holidays[dateStr]}` :
+                               isOff ? (d.getDay() === 0 ? "☀️ Sunday" : "🛋️ Weekly Off") :
+                               rec?.check_in ? (rec.check_out ? "✅ Present" : "🟡 In Office") :
+                               "❌ Absent";
+
+                return (
+                  <tr key={dateStr}>
+                    <td>{dateStr}</td>
+                    <td style={{ color: "var(--text-secondary)" }}>{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()]}</td>
+                    <td>{rec?.check_in ? new Date(rec.check_in).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                    <td>{rec?.check_out ? new Date(rec.check_out).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                    <td>{hours ? `${hours} hrs` : "—"}</td>
+                    <td>
+                      <span style={{ fontSize: "0.83rem", color: isHoliday ? "var(--warning)" : isOff ? "var(--text-secondary)" : rec?.check_in ? "var(--success)" : "var(--danger)" }}>
+                        {status}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
+            }
           </tbody>
         </table>
       </div>
