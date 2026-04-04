@@ -264,8 +264,10 @@ export default function AdminUsers() {
       style={inactive ? { opacity: 0.6, border: "1px solid rgba(239,68,68,0.2)" } : {}}>
       <div className={userStyles.userCardHeader}>
         <div className={userStyles.userAvatar}
-          style={{ background: inactive ? "linear-gradient(135deg,#4b5563,#374151)" : `linear-gradient(135deg,${roleColor(u.role)},${roleColor(u.role)}88)` }}>
-          {u.full_name?.charAt(0)?.toUpperCase()}
+          style={{ background: inactive ? "linear-gradient(135deg,#4b5563,#374151)" : `linear-gradient(135deg,${roleColor(u.role)},${roleColor(u.role)}88)`, overflow: "hidden", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {(u as any).avatar_url
+            ? <img src={(u as any).avatar_url} alt={u.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            : u.full_name?.charAt(0)?.toUpperCase()}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className={userStyles.userCardName}>{u.full_name}</div>

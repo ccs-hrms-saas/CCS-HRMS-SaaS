@@ -7,7 +7,7 @@ import styles from "../../dashboard.module.css";
 import Image from "next/image";
 
 export default function EmployeeProfile() {
-  const { profile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const [data, setData] = useState<any>(null);
   const [appraisals, setAppraisals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +77,8 @@ export default function EmployeeProfile() {
 
     // 4. Immediately update local state so UI reflects change without full reload
     setData((prev: any) => ({ ...prev, [column]: publicUrl }));
+    // 5. If avatar, refresh the global AuthContext profile so sidebar updates
+    if (column === "avatar_url") await refreshProfile();
     setSuccess("✅ Document uploaded and saved successfully!");
     setTimeout(() => setSuccess(""), 4000);
     setSaving(false);

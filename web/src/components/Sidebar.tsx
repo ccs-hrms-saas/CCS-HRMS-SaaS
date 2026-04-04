@@ -68,7 +68,11 @@ export default function Sidebar() {
 
         <div className={styles.userSection}>
           <div className={styles.userInfo}>
-            <div className={styles.avatar}>{profile?.full_name?.charAt(0)?.toUpperCase() ?? "?"}</div>
+            <div className={styles.avatar} style={{ overflow: "hidden", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {(profile as any)?.avatar_url
+                ? <img src={(profile as any).avatar_url} alt="DP" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                : profile?.full_name?.charAt(0)?.toUpperCase() ?? "?"}
+            </div>
             <div>
               <div className={styles.userName}>{profile?.full_name ?? "Loading..."}</div>
               <div className={styles.userRole}>{profile?.role ?? ""}</div>

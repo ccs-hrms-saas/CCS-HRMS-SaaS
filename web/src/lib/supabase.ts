@@ -13,4 +13,7 @@ export interface Profile {
   role: UserRole
   manager_id: string | null
   created_at: string
+  avatar_url: string | null
+  designation: string | null
+  phone_number: string | null
 }
