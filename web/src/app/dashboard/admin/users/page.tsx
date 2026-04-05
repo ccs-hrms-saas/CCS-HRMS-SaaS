@@ -58,7 +58,8 @@ export default function AdminUsers() {
 
   const activeUsers   = users.filter(u => u.is_active !== false);
   const inactiveUsers = users.filter(u => u.is_active === false);
-  const managers      = activeUsers.filter(u => u.role === "admin" || u.role === "superadmin");
+  // All active employees can be a reporting manager (not just admins)
+  const managers      = activeUsers.filter(u => u.id !== profile?.id);
 
   /* ── Create ── */
   const handleCreate = async (e: React.FormEvent) => {
@@ -259,40 +260,72 @@ export default function AdminUsers() {
 
   if (loading) return <div className={styles.loadingScreen}><div className={styles.spinner}></div></div>;
 
-  const UserCard = ({ u, inactive = false }: { u: Profile; inactive?: boolean }) => (
+  const UserCard = ({ u, inactive = false }: { u: Profile; inactive?: boolean }) => {
+    const managerName = u.manager_id
+      ? (users.find(m => m.id === u.manager_id)?.full_name ?? "— Unknown —")
+      : "— No Manager —";
+    return (
     <div key={u.id} className={`glass-panel ${userStyles.userCard}`}
       style={inactive ? { opacity: 0.6, border: "1px solid rgba(239,68,68,0.2)" } : {}}>
-      <div className={userStyles.userCardHeader}>
+
+      {/* ── Card Header: Avatar + Name + Role badge ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <div className={userStyles.userAvatar}
-          style={{ background: inactive ? "linear-gradient(135deg,#4b5563,#374151)" : `linear-gradient(135deg,${roleColor(u.role)},${roleColor(u.role)}88)`, overflow: "hidden", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          style={{ flexShrink: 0, background: inactive ? "linear-gradient(135deg,#4b5563,#374151)" : `linear-gradient(135deg,${roleColor(u.role)},${roleColor(u.role)}88)`, overflow: "hidden", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
           {(u as any).avatar_url
             ? <img src={(u as any).avatar_url} alt={u.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            : u.full_name?.charAt(0)?.toUpperCase()}
+            : <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "#fff" }}>{u.full_name?.charAt(0)?.toUpperCase()}</span>}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className={userStyles.userCardName}>{u.full_name}</div>
-          {inactive
-            ? <span style={{ fontSize: "0.72rem", color: "#ef4444" }}>Left: {u.left_on ? new Date(u.left_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Unknown"}</span>
-            : <span className={`${styles.statBadge} ${roleStyle(u.role)}`}>{u.role}</span>}
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {!inactive && (
-             <>
-               <button onClick={() => setCreditTarget(u)} className={userStyles.editBtn} title="Credit Leaves" style={{ background: "rgba(99,102,241,0.1)", borderColor: "rgba(99,102,241,0.3)", color: "var(--accent-primary)" }}>💳</button>
-               <button onClick={() => setCompOffTarget(u)} className={userStyles.editBtn} title="Grant Comp Off" style={{ background: "rgba(16,185,129,0.1)", borderColor: "rgba(16,185,129,0.3)", color: "var(--success)" }}>🎁</button>
-               <button onClick={() => openEdit(u)} className={userStyles.editBtn} title="Edit">✏️</button>
-             </>
+          {/* Full name — always fully visible */}
+          <div style={{ fontWeight: 700, fontSize: "1rem", color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={u.full_name}>
+            {u.full_name}
+          </div>
+          {/* Designation under name */}
+          {(u as any).designation && (
+            <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: 1 }}>{(u as any).designation}</div>
           )}
           {inactive
-            ? <>
-                <button onClick={() => handleRestore(u)} className={userStyles.editBtn} title="Re-hire" style={{ fontSize: "0.75rem" }}>↩ Restore</button>
-                <button onClick={() => setPermDeleteTarget(u)} className={userStyles.deleteBtn} title="Permanently delete">🗑</button>
-              </>
-            : <button onClick={() => setDeactivateTarget(u)} className={userStyles.deleteBtn} title="Mark as left">🚪</button>
-          }
+            ? <span style={{ fontSize: "0.72rem", color: "#ef4444", display: "block", marginTop: 2 }}>Left: {u.left_on ? new Date(u.left_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Unknown"}</span>
+            : <span className={`${styles.statBadge} ${roleStyle(u.role)}`} style={{ marginTop: 4, display: "inline-block" }}>{u.role}</span>}
         </div>
       </div>
 
+      {/* ── Action Buttons — text labels, no tooltip guessing ── */}
+      {!inactive && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+          <button onClick={() => setCreditTarget(u)}
+            style={{ flex: 1, padding: "6px 8px", borderRadius: 7, border: "1px solid rgba(99,102,241,0.35)", background: "rgba(99,102,241,0.1)", color: "var(--accent-primary)", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontSize: "0.76rem", fontWeight: 600, whiteSpace: "nowrap" }}>
+            💳 Credit Leave
+          </button>
+          <button onClick={() => setCompOffTarget(u)}
+            style={{ flex: 1, padding: "6px 8px", borderRadius: 7, border: "1px solid rgba(16,185,129,0.35)", background: "rgba(16,185,129,0.1)", color: "var(--success)", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontSize: "0.76rem", fontWeight: 600, whiteSpace: "nowrap" }}>
+            🎁 Comp Off
+          </button>
+          <button onClick={() => openEdit(u)}
+            style={{ flex: 1, padding: "6px 8px", borderRadius: 7, border: "1px solid var(--glass-border)", background: "var(--glass-bg)", color: "var(--text-primary)", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontSize: "0.76rem", fontWeight: 600 }}>
+            ✏️ Edit
+          </button>
+          <button onClick={() => setDeactivateTarget(u)}
+            style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "var(--danger)", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontSize: "0.76rem", fontWeight: 600 }}>
+            🚪 Exit
+          </button>
+        </div>
+      )}
+      {inactive && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          <button onClick={() => handleRestore(u)}
+            style={{ flex: 1, padding: "6px 10px", borderRadius: 7, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.08)", color: "var(--success)", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontSize: "0.76rem", fontWeight: 600 }}>
+            ↩ Re-hire
+          </button>
+          <button onClick={() => setPermDeleteTarget(u)}
+            style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "var(--danger)", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontSize: "0.76rem", fontWeight: 600 }}>
+            🗑 Delete
+          </button>
+        </div>
+      )}
+
+      {/* ── Role + Manager (for active employees) ── */}
       {!inactive && (
         <div className={userStyles.userCardBody}>
           <div className={userStyles.fieldRow}>
@@ -304,20 +337,21 @@ export default function AdminUsers() {
               <option value="superadmin">Super Admin</option>
             </select>
           </div>
-          {u.role === "employee" && (
-            <div className={userStyles.fieldRow}>
-              <label>Reports To</label>
-              <select className="premium-input" style={{ padding: "6px 10px", fontSize: "0.82rem" }}
-                value={u.manager_id ?? ""} onChange={e => updateManager(u.id, e.target.value)}>
-                <option value="">— No Manager —</option>
-                {managers.filter(m => m.id !== u.id).map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
-              </select>
-            </div>
-          )}
+          <div className={userStyles.fieldRow}>
+            <label>Reports To</label>
+            <select className="premium-input" style={{ padding: "6px 10px", fontSize: "0.82rem" }}
+              value={u.manager_id ?? ""} onChange={e => updateManager(u.id, e.target.value)}>
+              <option value="">— No Manager —</option>
+              {activeUsers.filter(m => m.id !== u.id).map(m => (
+                <option key={m.id} value={m.id}>{m.full_name}{m.role !== "employee" ? ` (${m.role})` : ""}</option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
     </div>
-  );
+  );};
+
 
   return (
     <div className="animate-fade-in">
@@ -441,10 +475,10 @@ export default function AdminUsers() {
               </div>
               
               <div className={styles.formGroup} style={{ marginBottom: 0 }}>
-                <label>Manager</label>
+                <label>Reporting Manager</label>
                 <select className="premium-input" value={form.manager_id} onChange={e => setForm({...form, manager_id: e.target.value})}>
                   <option value="">-- No Manager --</option>
-                  {managers.map(m => (<option key={m.id} value={m.id}>{m.full_name}</option>))}
+                  {activeUsers.map(m => (<option key={m.id} value={m.id}>{m.full_name}{m.role !== "employee" ? ` (${m.role})` : ""}</option>))}
                 </select>
               </div>
               <button type="submit" className={styles.primaryBtn} disabled={saving} style={{ marginTop: 8 }}>
