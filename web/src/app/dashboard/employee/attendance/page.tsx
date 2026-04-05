@@ -70,16 +70,20 @@ export default function EmployeeAttendance() {
       setHolidays(hMap);
 
       // Build per-day leave map from approved leave ranges
+      // ⚠️ MUST use local date parts — toISOString() shifts IST dates back by 5.5h to UTC
+      const localDateStr = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
       const ldMap: Record<string, string> = {};
       (lvRes.data ?? []).forEach((lv) => {
         const cur = new Date(lv.start_date + "T00:00:00");
         const end = new Date(lv.end_date + "T00:00:00");
         while (cur <= end) {
-          const ds = cur.toISOString().split("T")[0];
-          ldMap[ds] = lv.type;
+          ldMap[localDateStr(cur)] = lv.type;
           cur.setDate(cur.getDate() + 1);
         }
       });
+
       setLeaveDays(ldMap);
 
       setLoading(false);
