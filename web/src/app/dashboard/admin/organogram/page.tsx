@@ -135,7 +135,8 @@ export default function OrganogramPage() {
   // Roots = employees with no manager or manager not in active list
   const activeIds = new Set(employees.map(e => e.id));
   const roots = employees.filter(e => !e.manager_id || !activeIds.has(e.manager_id));
-  const unassigned = employees.filter(e => !e.manager_id);
+  // Unassigned = regular employees (not admins) with no manager — admins are valid roots
+  const unassigned = employees.filter(e => !e.manager_id && e.role === "employee");
 
   const handleDrop = useCallback((draggedId: string, newManagerId: string) => {
     setEmployees(prev => prev.map(e => e.id === draggedId ? { ...e, manager_id: newManagerId } : e));
@@ -230,11 +231,30 @@ export default function OrganogramPage() {
             )}
           </div>
 
-          {/* ── Unassigned ── */}
+          {/* ── Unassigned employees (non-admin with no manager) ── */}
           {unassigned.length > 0 && (
-            <div style={{ marginTop: 32, padding: "0 32px" }}>
-              <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)", fontWeight: 600, marginBottom: 12, padding: "6px 14px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, display: "inline-block" }}>
-                ⚠️ {unassigned.length} employee{unassigned.length > 1 ? "s" : ""} without a reporting manager
+            <div style={{ marginTop: 24, padding: "0 32px" }}>
+              <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 12, padding: "14px 18px" }}>
+                <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "var(--danger)", marginBottom: 10 }}>
+                  ⚠️ {unassigned.length} employee{unassigned.length > 1 ? "s" : ""} without a reporting manager
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {unassigned.map(u => (
+                    <div key={u.id} onClick={() => handleNodeClick(u)}
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 20, background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", cursor: "pointer" }}>
+                      <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg,#ef4444,#dc2626)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem", fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                        {u.avatar_url
+                          ? <img src={u.avatar_url} alt={u.full_name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                          : u.full_name?.charAt(0)?.toUpperCase()}
+                      </div>
+                      <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--danger)", whiteSpace: "nowrap" }}>{u.full_name}</span>
+                      {u.designation && <span style={{ fontSize: "0.72rem", color: "rgba(239,68,68,0.7)" }}>&middot; {u.designation}</span>}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: 10 }}>
+                  Go to <strong>Users</strong> page or use <strong>Edit Hierarchy</strong> mode to assign a reporting manager.
+                </div>
               </div>
             </div>
           )}
