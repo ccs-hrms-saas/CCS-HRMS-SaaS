@@ -38,6 +38,12 @@ function countWorkingDays(from: string, to: string): number {
   while (cur <= new Date(to)) { if (isWorkingDay(cur)) count++; cur.setDate(cur.getDate() + 1); }
   return count;
 }
+function fullMonthWorkingDays(from: string, to: string): number {
+  const s = new Date(from), e = new Date(to);
+  const mStart = new Date(s.getFullYear(), s.getMonth(), 1);
+  const mEnd   = new Date(e.getFullYear(), e.getMonth() + 1, 0);
+  return countWorkingDays(isoDate(mStart), isoDate(mEnd));
+}
 
 /* ── sort indicator ── */
 function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string; sortDir: SortDir }) {
@@ -131,7 +137,8 @@ export default function AdminReports() {
   useEffect(() => { load(); }, [tab, selected]);
 
   /* ── Consolidated attendance summary ── */
-  const workingDaysInRange = useMemo(() => countWorkingDays(fromDate, toDate), [fromDate, toDate]);
+  const workingDaysInRange    = useMemo(() => countWorkingDays(fromDate, toDate),     [fromDate, toDate]);
+  const workingDaysInFullMonth = useMemo(() => fullMonthWorkingDays(fromDate, toDate), [fromDate, toDate]);
 
   const summary = useMemo(() => {
     if (tab !== "attendance") return [];
@@ -179,10 +186,11 @@ export default function AdminReports() {
 
       const adjustedTarget = Math.max(0, workingDaysInRange - leaveDaysTaken) * 8.5;
       const deficit = totalHrs - adjustedTarget;
+      const monthTarget = workingDaysInFullMonth * 8.5;
 
-      return { id, name, daysPresent, totalHrs, avgHrs, attendance, lateArrivals, overtimeDays, overtimeHrs, leaveDaysTaken, workingDaysInRange, deficit, rows };
+      return { id, name, daysPresent, totalHrs, avgHrs, attendance, lateArrivals, overtimeDays, overtimeHrs, leaveDaysTaken, workingDaysInRange, workingDaysInFullMonth, monthTarget, deficit, rows };
     });
-  }, [rawRecords, leaveRecords, tab, workingDaysInRange, selectedIds, employees]);
+  }, [rawRecords, leaveRecords, tab, workingDaysInRange, workingDaysInFullMonth, selectedIds, employees]);
 
   /* ── Sorted + filtered summary ── */
   const displayData = useMemo(() => {
@@ -207,10 +215,11 @@ export default function AdminReports() {
     if (!displayData.length) return null;
     const total = displayData.length;
     const avgAtt = displayData.reduce((s, r) => s + r.attendance, 0) / total;
-    const totalHrs = displayData.reduce((s, r) => s + r.totalHrs, 0);
-    const perfect = displayData.filter(r => r.daysPresent >= workingDaysInRange).length;
+    const totalActualHrs = displayData.reduce((s, r) => s + r.totalHrs, 0);
+    const totalTargetHrs = total * workingDaysInRange * 8.5;
+    const perfect = displayData.filter(r => r.daysPresent >= r.workingDaysInRange).length;
     const lateCount = displayData.reduce((s, r) => s + r.lateArrivals, 0);
-    return { total, avgAtt, totalHrs, perfect, lateCount };
+    return { total, avgAtt, totalActualHrs, totalTargetHrs, perfect, lateCount };
   }, [displayData, workingDaysInRange]);
 
   /* ── Leave summary grouped by employee ── */
@@ -411,28 +420,44 @@ export default function AdminReports() {
         <>
           {/* KPI Cards */}
           {kpi && !loading && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14, marginBottom: 24 }}>
-              {[
-                { label: "Total Employees", value: kpi.total, icon: "👥", color: "#6366f1" },
-                { label: "Avg Attendance", value: kpi.avgAtt.toFixed(1) + "%", icon: "📊", color: "#10b981" },
-                { label: "Total Hours Logged", value: kpi.totalHrs.toFixed(0) + "h", icon: "⏱️", color: "#f59e0b" },
-                { label: "100% Attendance", value: kpi.perfect + " emp", icon: "🏆", color: "#8b5cf6" },
-                { label: "Late Arrivals (Total)", value: kpi.lateCount, icon: "⚠️", color: "#ef4444" },
-                { label: "Working Days Target", value: workingDaysInRange + " days", icon: "📅", color: "#64748b" },
-              ].map(k => (
-                <div key={k.label} className="glass-panel" style={{ padding: "16px 18px", borderLeft: `3px solid ${k.color}` }}>
-                  <div style={{ fontSize: "1.3rem", marginBottom: 6 }}>{k.icon}</div>
-                  <div style={{ fontSize: "1.3rem", fontWeight: 700, color: k.color }}>{k.value}</div>
-                  <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 2 }}>{k.label}</div>
-                </div>
-              ))}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 14, marginBottom: 24 }}>
+              <div className="glass-panel" style={{ padding: "16px 18px", borderLeft: "3px solid #6366f1" }}>
+                <div style={{ fontSize: "1.3rem", marginBottom: 6 }}>👥</div>
+                <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "#6366f1" }}>{kpi.total}</div>
+                <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 2 }}>Total Employees</div>
+              </div>
+              <div className="glass-panel" style={{ padding: "16px 18px", borderLeft: "3px solid #10b981" }}>
+                <div style={{ fontSize: "1.3rem", marginBottom: 6 }}>📊</div>
+                <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "#10b981" }}>{kpi.avgAtt.toFixed(1)}%</div>
+                <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 2 }}>Avg Attendance</div>
+              </div>
+              <div className="glass-panel" style={{ padding: "16px 18px", borderLeft: "3px solid #f59e0b" }}>
+                <div style={{ fontSize: "1.3rem", marginBottom: 6 }}>⏱️</div>
+                <div style={{ fontSize: "1.15rem", fontWeight: 700, color: "#f59e0b" }}>{kpi.totalActualHrs.toFixed(0)}h / {kpi.totalTargetHrs.toFixed(0)}h</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)", marginTop: 2 }}>Org Logged / Target (Range)</div>
+              </div>
+              <div className="glass-panel" style={{ padding: "16px 18px", borderLeft: "3px solid #8b5cf6" }}>
+                <div style={{ fontSize: "1.3rem", marginBottom: 6 }}>🏆</div>
+                <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "#8b5cf6" }}>{kpi.perfect} emp</div>
+                <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 2 }}>100% Attendance</div>
+              </div>
+              <div className="glass-panel" style={{ padding: "16px 18px", borderLeft: "3px solid #ef4444" }}>
+                <div style={{ fontSize: "1.3rem", marginBottom: 6 }}>⚠️</div>
+                <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "#ef4444" }}>{kpi.lateCount}</div>
+                <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 2 }}>Late Arrivals (Total)</div>
+              </div>
+              <div className="glass-panel" style={{ padding: "16px 18px", borderLeft: "3px solid #64748b" }}>
+                <div style={{ fontSize: "1.3rem", marginBottom: 6 }}>📅</div>
+                <div style={{ fontSize: "1.15rem", fontWeight: 700, color: "#64748b" }}>{workingDaysInFullMonth} days</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)", marginTop: 2 }}>Full Month Working Days<br/>({(workingDaysInFullMonth * 8.5).toFixed(0)}h / employee)</div>
+              </div>
             </div>
           )}
 
           {/* Search + period label */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
             <div style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-              {!loading && `Showing ${displayData.length} employees · ${fmtDate(fromDate)} – ${fmtDate(toDate)} · ${workingDaysInRange} working days`}
+              {!loading && `Showing ${displayData.length} employees · ${fmtDate(fromDate)} – ${fmtDate(toDate)} · ${workingDaysInRange} working days in range · ${workingDaysInFullMonth} full month working days`}
             </div>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search employee..." className="premium-input"
               style={{ width: 220, padding: "8px 14px", fontSize: "0.85rem" }} />
@@ -444,7 +469,7 @@ export default function AdminReports() {
                 <tr>
                   <th {...thProps("name")}>Employee <SortIcon col="name" sortCol={sortCol} sortDir={sortDir} /></th>
                   <th {...thProps("present")}>Days Present <SortIcon col="present" sortCol={sortCol} sortDir={sortDir} /></th>
-                  <th style={{ whiteSpace: "nowrap" }}>Target Days</th>
+                  <th style={{ whiteSpace: "nowrap" }}>Working Days<br/><span style={{ fontSize: "0.68rem", fontWeight: 400, color: "var(--text-secondary)" }}>(Full Month)</span></th>
                   <th {...thProps("attendance")}>Attendance % <SortIcon col="attendance" sortCol={sortCol} sortDir={sortDir} /></th>
                   <th {...thProps("hours")}>Total Hours <SortIcon col="hours" sortCol={sortCol} sortDir={sortDir} /></th>
                   <th {...thProps("avg")}>Avg Hrs/Day <SortIcon col="avg" sortCol={sortCol} sortDir={sortDir} /></th>
@@ -468,7 +493,10 @@ export default function AdminReports() {
                           {r.daysPresent}
                         </span>
                       </td>
-                      <td style={{ color: "var(--text-secondary)" }}>{r.workingDaysInRange}</td>
+                      <td>
+                        <div style={{ fontWeight: 700 }}>{r.workingDaysInFullMonth}</div>
+                        <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>{r.monthTarget.toFixed(0)}h target</div>
+                      </td>
                       <td>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <div style={{ flex: 1, height: 6, background: "var(--glass-border)", borderRadius: 3, minWidth: 60 }}>
@@ -477,7 +505,10 @@ export default function AdminReports() {
                           <span style={{ fontSize: "0.82rem", fontWeight: 600, minWidth: 40 }}>{r.attendance.toFixed(1)}%</span>
                         </div>
                       </td>
-                      <td>{r.totalHrs.toFixed(2)}h</td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{r.totalHrs.toFixed(2)}h</div>
+                        <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>of {r.monthTarget.toFixed(0)}h</div>
+                      </td>
                       <td>{r.avgHrs.toFixed(2)}h</td>
                       <td>
                         <span style={{ color: r.lateArrivals > 0 ? "var(--warning)" : "var(--success)", fontWeight: 600 }}>
