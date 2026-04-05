@@ -103,15 +103,20 @@ export default function MyTeamPage() {
     if (isWorkDay && past11am) {
       const absentees = memberData.filter(m => m.todayStatus === "absent");
       for (const m of absentees) {
-        // Fire notification to manager (self) for each absent reportee — deduplicated by day via Supabase UNIQUE or just fire
+        const alertPayload = {
+          title: `⚠️ ${m.full_name} hasn't checked in`,
+          message: `It's past 11 AM. ${m.full_name} has not marked attendance today and has no approved leave on record.`,
+          link: "/dashboard/employee/team",
+        };
+        // Notify the direct manager
         fetch("/api/notify", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user_ids: profile!.id,
-            title: `⚠️ ${m.full_name} hasn't checked in`,
-            message: `It's past 11 AM. ${m.full_name} has not marked attendance today and has no approved leave on record.`,
-            link: "/dashboard/employee/team",
-          }),
+          body: JSON.stringify({ user_ids: profile!.id, ...alertPayload }),
+        }).catch(() => {});
+        // Also notify super admins
+        fetch("/api/notify", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_ids: "all_superadmins", ...alertPayload }),
         }).catch(() => {});
       }
     }
