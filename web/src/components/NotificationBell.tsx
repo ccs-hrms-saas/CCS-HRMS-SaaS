@@ -110,12 +110,11 @@ export default function NotificationBell() {
           width: "clamp(280px, 340px, calc(100vw - 286px))",
           maxHeight: "min(480px, calc(100vh - 80px))",
           overflowY: "auto",
-          background: "var(--glass-bg-solid, #1a1a2e)",
-          border: "1px solid var(--glass-border)",
+          background: "#14142b",
+          border: "1px solid rgba(255,255,255,0.1)",
           borderRadius: 14,
-          boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.85)",
           zIndex: 1000,
-          backdropFilter: "blur(20px)"
         }}>
           {/* Header */}
           <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--glass-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
