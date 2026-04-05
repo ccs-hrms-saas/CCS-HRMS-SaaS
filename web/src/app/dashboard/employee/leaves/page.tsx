@@ -127,18 +127,18 @@ export default function EmployeeLeaves() {
       await supabase.from("leave_balances").update({ used: activeBalance.used + leaveDays }).eq("id", activeBalance.id);
     }
 
-    // 3. Notify all admins about the leave request
+    // 3. Notify Super Admins about the leave request
     fetch("/api/notify", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user_ids: "all_admins",
+        user_ids: "all_superadmins",
         title: `📅 Leave Request — ${profile.full_name}`,
         message: `${form.type} · ${leaveDays} day(s) · ${new Date(form.start_date).toLocaleDateString("en-IN")}${form.start_date !== form.end_date ? " to " + new Date(form.end_date).toLocaleDateString("en-IN") : ""}`,
         link: "/dashboard/admin/leaves"
       })
     }).catch(() => {});
 
-    // 4. Notify direct manager (if their manager is not an admin — avoids double-notification)
+    // 4. Notify direct manager (they handle the approval)
     if ((profile as any).manager_id) {
       fetch("/api/notify", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -150,6 +150,7 @@ export default function EmployeeLeaves() {
         })
       }).catch(() => {});
     }
+
 
     setForm({ type: leaveTypes[0]?.name ?? "", start_date: "", end_date: "", reason: "" });
     setAttachedFile(null);
