@@ -105,13 +105,28 @@ async function processEmployee(userId: string, from: string, to: string, holiday
 
 export async function POST(req: Request) {
   try {
-    const { user_id, run_all, from, to } = await req.json();
+    const body = await req.json();
+    const { user_id, run_all, from, to, month_year } = body;
 
     if (!from || !to) return NextResponse.json({ error: 'from and to dates required' }, { status: 400 });
 
-    // Current financial year
-    const today = new Date();
-    const fy = today.getMonth() < 3 ? today.getFullYear() - 1 : today.getFullYear();
+    const monthKey: string = month_year ?? (from as string).substring(0, 7); // e.g. '2026-04'
+
+    // ── Idempotency: skip if already processed this month ──
+    if (run_all) {
+      const { data: existing } = await admin
+        .from('absence_deduction_runs')
+        .select('id')
+        .eq('month_year', monthKey)
+        .maybeSingle();
+      if (existing) {
+        return NextResponse.json({ ok: true, skipped: true, reason: `Already processed for ${monthKey}` });
+      }
+    }
+
+    // Financial year based on the from date
+    const fromDate = new Date(from as string);
+    const fy = fromDate.getMonth() < 3 ? fromDate.getFullYear() - 1 : fromDate.getFullYear();
 
     // Holidays
     const { data: holData } = await admin.from('company_holidays').select('date');
@@ -127,9 +142,35 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'user_id or run_all required' }, { status: 400 });
     }
 
-    const results = await Promise.all(userIds.map(id => processEmployee(id, from, to, holidaySet, fy)));
-    return NextResponse.json({ ok: true, results });
+    const results = await Promise.all(
+      userIds.map(id => processEmployee(id, from as string, to as string, holidaySet, fy))
+    );
+
+    // ── Log this run so it never repeats for the same month ──
+    if (run_all) {
+      const totalDays = results.reduce((s, r) => s + (r.deducted ?? 0), 0);
+      await admin.from('absence_deduction_runs').insert({
+        month_year: monthKey,
+        employees_processed: userIds.length,
+        total_days_deducted: totalDays,
+      });
+    }
+
+    // ── Notify each employee whose balance was auto-adjusted ──
+    for (const r of results) {
+      if ((r.deducted ?? 0) > 0) {
+        await admin.from('notifications').insert({
+          user_id: r.userId,
+          title: '📋 Leave Balance Auto-Adjusted',
+          message: `${r.deducted} absence day(s) in ${monthKey} were automatically deducted from your leave balance (EL → Comp Off → CL) as per company policy.`,
+          link: '/dashboard/employee/leaves',
+        });
+      }
+    }
+
+    return NextResponse.json({ ok: true, month_year: monthKey, results });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+

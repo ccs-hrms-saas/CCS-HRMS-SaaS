@@ -74,6 +74,18 @@ export default function AdminReports() {
     supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name")
       .then(({ data }) => setEmployees(data ?? []));
     supabase.from("leave_types").select("*").then(({ data }) => setLeaveTypes(data ?? []));
+
+    // ── Auto absence deduction: silently run for the previous completed month ──
+    // Fires every time admin opens Reports. The API is idempotent — skips if already done.
+    const now = new Date();
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevFrom = prevMonthDate.toISOString().split("T")[0];
+    const prevTo = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split("T")[0];
+    fetch("/api/absence-deduction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ run_all: true, from: prevFrom, to: prevTo }),
+    }).catch(() => {}); // silent — no UI feedback needed
   }, []);
 
   /* ── Employee selection ── */
