@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 
@@ -18,9 +19,23 @@ export default function NotificationBell() {
   const { profile } = useAuth();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const ref = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+  const ref     = useRef<HTMLDivElement>(null);
+  const bellRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => { setMounted(true); }, []);
 
   const unread = notifications.filter((n) => !n.is_read).length;
+
+  // Compute panel position from bell button's actual DOM rect
+  const getPanelStyle = (): React.CSSProperties => {
+    if (!bellRef.current) return { top: 64, left: 270 };
+    const r = bellRef.current.getBoundingClientRect();
+    return {
+      top: r.bottom + 8,
+      left: Math.min(r.left, window.innerWidth - 346), // clamp to viewport
+    };
+  };
 
   const load = async () => {
     if (!profile) return;
@@ -79,6 +94,7 @@ export default function NotificationBell() {
     <div ref={ref} style={{ position: "relative" }}>
       {/* Bell Button */}
       <button
+        ref={bellRef}
         onClick={() => setOpen((v) => !v)}
         title="Notifications"
         style={{
@@ -101,26 +117,31 @@ export default function NotificationBell() {
         )}
       </button>
 
-      {/* Dropdown */}
-      {open && (
-        <div style={{
-          position: "fixed",
-          top: 64,
-          left: 270,
-          width: "clamp(280px, 340px, calc(100vw - 286px))",
-          maxHeight: "min(480px, calc(100vh - 80px))",
-          overflowY: "auto",
-          background: "#14142b",
-          border: "1px solid rgba(255,255,255,0.1)",
-          borderRadius: 14,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.85)",
-          zIndex: 1000,
-        }}>
+      {/* ── Portal dropdown — renders directly in <body>, escapes all parent CSS ── */}
+      {mounted && open && createPortal(
+        <div
+          style={{
+            ...getPanelStyle(),
+            position: "fixed",
+            width: 340,
+            maxHeight: 480,
+            overflowY: "auto",
+            background: "#111827",        // fully opaque dark, no transparency
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: 14,
+            boxShadow: "0 24px 64px rgba(0,0,0,0.9)",
+            zIndex: 99999,               // above everything
+            fontFamily: "Outfit, sans-serif",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Header */}
-          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--glass-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>Notifications {unread > 0 && <span style={{ color: "#ef4444" }}>({unread})</span>}</span>
+          <div style={{ padding: "14px 16px", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "#f1f5f9" }}>
+              Notifications {unread > 0 && <span style={{ color: "#ef4444" }}>({unread})</span>}
+            </span>
             {unread > 0 && (
-              <button onClick={markAllRead} style={{ background: "none", border: "none", color: "var(--accent-primary)", cursor: "pointer", fontSize: "0.76rem", fontFamily: "Outfit,sans-serif" }}>
+              <button onClick={markAllRead} style={{ background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: "0.76rem", fontFamily: "Outfit,sans-serif" }}>
                 Mark all read
               </button>
             )}
@@ -128,7 +149,7 @@ export default function NotificationBell() {
 
           {/* Notification List */}
           {notifications.length === 0 ? (
-            <div style={{ padding: 32, textAlign: "center", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+            <div style={{ padding: 32, textAlign: "center", color: "#94a3b8", fontSize: "0.85rem" }}>
               <div style={{ fontSize: "2rem", marginBottom: 8 }}>🔕</div>
               No notifications yet
             </div>
@@ -138,23 +159,26 @@ export default function NotificationBell() {
                 style={{
                   padding: "12px 16px", cursor: n.link ? "pointer" : "default",
                   borderBottom: "1px solid rgba(255,255,255,0.04)",
-                  background: n.is_read ? "transparent" : "rgba(99,102,241,0.07)",
+                  background: n.is_read ? "transparent" : "rgba(99,102,241,0.1)",
                   transition: "background 0.15s"
                 }}
               >
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: n.is_read ? "transparent" : "#6366f1", flexShrink: 0, marginTop: 5 }} />
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, marginTop: 5,
+                    background: n.is_read ? "rgba(255,255,255,0.15)" : "#6366f1" }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: n.is_read ? 500 : 700, fontSize: "0.85rem", lineHeight: 1.4 }}>{n.title}</div>
-                    {n.message && <div style={{ color: "var(--text-secondary)", fontSize: "0.78rem", marginTop: 3, lineHeight: 1.4 }}>{n.message}</div>}
-                    <div style={{ color: "var(--text-secondary)", fontSize: "0.72rem", marginTop: 4, opacity: 0.7 }}>{timeAgo(n.created_at)}</div>
+                    <div style={{ fontWeight: n.is_read ? 500 : 700, fontSize: "0.85rem", lineHeight: 1.4, color: "#f1f5f9" }}>{n.title}</div>
+                    {n.message && <div style={{ color: "#94a3b8", fontSize: "0.78rem", marginTop: 3, lineHeight: 1.4 }}>{n.message}</div>}
+                    <div style={{ color: "#64748b", fontSize: "0.72rem", marginTop: 4 }}>{timeAgo(n.created_at)}</div>
                   </div>
                 </div>
               </div>
             ))
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
 }
+
