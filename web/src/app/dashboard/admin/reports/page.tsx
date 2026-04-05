@@ -1,242 +1,372 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import * as XLSX from "xlsx";
 import styles from "../../dashboard.module.css";
 import { getLeaveDaysCount, isWorkingDay } from "@/lib/dateUtils";
 
 type Tab = "attendance" | "leaves" | "employee" | "balances";
+type SortDir = "asc" | "desc";
+type Period = "today" | "week" | "month" | "quarter" | "year" | "custom";
+
+/* ── date helpers ── */
+const isoDate = (d: Date) => d.toISOString().split("T")[0];
+const fmtDate = (s: string) => new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+const fmtTime = (d?: string) => d ? new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—";
+const diffHrs = (ci?: string, co?: string) => ci && co ? (new Date(co).getTime() - new Date(ci).getTime()) / 3600000 : 0;
+
+function periodDates(p: Period): { from: string; to: string } {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const to = isoDate(today);
+  if (p === "today") return { from: to, to };
+  if (p === "week") {
+    const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    return { from: isoDate(mon), to };
+  }
+  if (p === "month") return { from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to };
+  if (p === "quarter") {
+    const qStart = new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1);
+    return { from: isoDate(qStart), to };
+  }
+  if (p === "year") return { from: isoDate(new Date(today.getFullYear(), 0, 1)), to };
+  return { from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to }; // default month
+}
+
+function countWorkingDays(from: string, to: string): number {
+  let count = 0; const cur = new Date(from);
+  while (cur <= new Date(to)) { if (isWorkingDay(cur)) count++; cur.setDate(cur.getDate() + 1); }
+  return count;
+}
+
+/* ── sort indicator ── */
+function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string; sortDir: SortDir }) {
+  if (col !== sortCol) return <span style={{ opacity: 0.3, fontSize: "0.7rem" }}> ↕</span>;
+  return <span style={{ color: "#6366f1", fontSize: "0.7rem" }}> {sortDir === "asc" ? "↑" : "↓"}</span>;
+}
 
 export default function AdminReports() {
-  const [tab, setTab]             = useState<Tab>("attendance");
+  const [tab, setTab] = useState<Tab>("attendance");
   const [employees, setEmployees] = useState<any[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
-  const [selected, setSelected]   = useState<Set<string>>(new Set(["all"]));
+  const [selected, setSelected] = useState<Set<string>>(new Set(["all"]));
   const [showEmpPicker, setShowEmpPicker] = useState(false);
-  const [fromDate, setFromDate]   = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().split("T")[0]; });
-  const [toDate, setToDate]       = useState(() => new Date().toISOString().split("T")[0]);
+  const [period, setPeriod] = useState<Period>("month");
+  const [fromDate, setFromDate] = useState(() => isoDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+  const [toDate, setToDate] = useState(() => isoDate(new Date()));
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentFY, setCurrentFY] = useState(() => new Date().getMonth() < 3 ? new Date().getFullYear() - 1 : new Date().getFullYear());
-  const [records, setRecords]     = useState<any[]>([]);
-  const [loading, setLoading]     = useState(false);
+  const [rawRecords, setRawRecords] = useState<any[]>([]);
+  const [leaveRecords, setLeaveRecords] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [sortCol, setSortCol] = useState("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [search, setSearch] = useState("");
+  const [expandedEmp, setExpandedEmp] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => setEmployees(data ?? []));
+    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name")
+      .then(({ data }) => setEmployees(data ?? []));
     supabase.from("leave_types").select("*").then(({ data }) => setLeaveTypes(data ?? []));
   }, []);
 
-  /* ── Employee selection helpers ── */
+  /* ── Employee selection ── */
   const allSelected = selected.has("all");
   const toggleAll = () => setSelected(new Set(["all"]));
   const toggleEmp = (id: string) => {
-    const next = new Set(selected);
-    next.delete("all");
-    if (next.has(id)) { next.delete(id); if (next.size === 0) next.add("all"); }
-    else next.add(id);
+    const next = new Set(selected); next.delete("all");
+    if (next.has(id)) { next.delete(id); if (next.size === 0) next.add("all"); } else next.add(id);
     setSelected(next);
   };
   const selectedIds = allSelected ? employees.map(e => e.id) : [...selected];
-  const selLabel = allSelected ? "All Employees" : selectedIds.length === 1 ? employees.find(e => e.id === selectedIds[0])?.full_name : `${selectedIds.length} Employees Selected`;
+  const selLabel = allSelected ? "All Employees" : selectedIds.length === 1
+    ? employees.find(e => e.id === selectedIds[0])?.full_name : `${selectedIds.length} Selected`;
+
+  /* ── Period preset ── */
+  const applyPeriod = (p: Period) => {
+    setPeriod(p);
+    if (p !== "custom") {
+      const { from, to } = periodDates(p);
+      setFromDate(from); setToDate(to);
+    }
+  };
+
+  /* ── Sort handler ── */
+  const handleSort = (col: string) => {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("asc"); }
+  };
+  const thProps = (col: string) => ({
+    onClick: () => handleSort(col),
+    style: { cursor: "pointer", userSelect: "none" as const, whiteSpace: "nowrap" as const }
+  });
 
   /* ── Load data ── */
   const load = async () => {
-    setLoading(true); setRecords([]);
+    setLoading(true); setRawRecords([]); setLeaveRecords([]);
     const ids = selectedIds;
 
-    if (tab === "attendance") {
-      let q = supabase.from("attendance_records").select("*, profiles(full_name, id)").gte("date", fromDate).lte("date", toDate).in("user_id", ids).order("date", { ascending: false });
-      const { data } = await q;
-      setRecords(data ?? []);
+    if (tab === "attendance" || tab === "employee") {
+      const [atRes, lvRes] = await Promise.all([
+        supabase.from("attendance_records").select("*, profiles(full_name, id)").gte("date", fromDate).lte("date", toDate).in("user_id", ids).order("date", { ascending: false }),
+        supabase.from("leave_requests").select("*").eq("status", "approved").in("user_id", ids).gte("start_date", fromDate).lte("end_date", toDate),
+      ]);
+      setRawRecords(atRes.data ?? []);
+      setLeaveRecords(lvRes.data ?? []);
 
     } else if (tab === "leaves") {
       let q = supabase.from("leave_requests").select("*, profiles!leave_requests_user_id_fkey(full_name)").gte("start_date", fromDate).lte("start_date", toDate).in("user_id", ids).order("created_at", { ascending: false });
       if (statusFilter !== "all") q = q.eq("status", statusFilter);
       const { data } = await q;
-      setRecords(data ?? []);
-
-    } else if (tab === "employee") {
-      const results = await Promise.all(ids.map(async (id) => {
-        const emp = employees.find(e => e.id === id);
-        const [atRes, lvRes] = await Promise.all([
-          supabase.from("attendance_records").select("*").eq("user_id", id).gte("date", fromDate).lte("date", toDate).order("date"),
-          supabase.from("leave_requests").select("*").eq("user_id", id).eq("status", "approved").gte("start_date", fromDate).lte("end_date", toDate).order("start_date"),
-        ]);
-        return { emp, attendance: atRes.data ?? [], leaves: lvRes.data ?? [] };
-      }));
-      setRecords(results);
+      setRawRecords(data ?? []);
 
     } else if (tab === "balances") {
       const { data } = await supabase.from("leave_balances")
-        .select("*, profiles(id, full_name), leave_types(name)")
-        .eq("financial_year", currentFY)
-        .in("user_id", ids);
-        
-      // Group by user
-      const userBals: Record<string, any> = {};
-      (data ?? []).forEach(b => {
-        const uId = b.profiles?.id;
-        if (!uId) return;
-        if (!userBals[uId]) userBals[uId] = { empName: b.profiles.full_name, balances: [] };
-        userBals[uId].balances.push(b);
-      });
-      setRecords(Object.values(userBals));
+        .select("*, profiles(id, full_name), leave_types(name)").eq("financial_year", currentFY).in("user_id", ids);
+      setRawRecords(data ?? []);
     }
     setLoading(false);
   };
 
   useEffect(() => { load(); }, [tab, selected]);
 
-  /* ── Excel helpers ── */
-  const fmt  = (d?: string) => d ? new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—";
-  const hrsNum = (ci?: string, co?: string) => ci && co ? ((new Date(co).getTime() - new Date(ci).getTime()) / 3600000) : 0;
-  const hrs  = (ci?: string, co?: string) => { const h = hrsNum(ci, co); return h ? h.toFixed(2) : "—"; };
-  const days = (s: string, e: string) => Math.ceil((new Date(e).getTime() - new Date(s).getTime()) / 86400000) + 1;
+  /* ── Consolidated attendance summary ── */
+  const workingDaysInRange = useMemo(() => countWorkingDays(fromDate, toDate), [fromDate, toDate]);
 
+  const summary = useMemo(() => {
+    if (tab !== "attendance") return [];
+
+    // Group attendance by employee
+    const empMap: Record<string, { name: string; rows: any[] }> = {};
+    rawRecords.forEach(r => {
+      const id = r.profiles?.id ?? r.user_id;
+      if (!empMap[id]) empMap[id] = { name: r.profiles?.full_name ?? "—", rows: [] };
+      empMap[id].rows.push(r);
+    });
+
+    // Ensure employees with 0 attendance still appear if selected
+    selectedIds.forEach(id => {
+      const emp = employees.find(e => e.id === id);
+      if (emp && !empMap[id]) empMap[id] = { name: emp.full_name, rows: [] };
+    });
+
+    return Object.entries(empMap).map(([id, { name, rows }]) => {
+      const daysPresent = rows.length;
+      const totalHrs = rows.reduce((s, r) => s + diffHrs(r.check_in, r.check_out), 0);
+      const avgHrs = daysPresent ? totalHrs / daysPresent : 0;
+      const attendance = workingDaysInRange > 0 ? (daysPresent / workingDaysInRange) * 100 : 0;
+
+      // Late arrivals: check-in after 09:31
+      const lateArrivals = rows.filter(r => {
+        if (!r.check_in) return false;
+        const d = new Date(r.check_in);
+        return d.getHours() > 9 || (d.getHours() === 9 && d.getMinutes() > 30);
+      }).length;
+
+      // Overtime: days with >9h (0.5h buffer above 8.5h std)
+      const overtimeDays = rows.filter(r => diffHrs(r.check_in, r.check_out) > 9).length;
+      const overtimeHrs = rows.reduce((s, r) => {
+        const h = diffHrs(r.check_in, r.check_out);
+        return s + (h > 8.5 ? h - 8.5 : 0);
+      }, 0);
+
+      // Approved leaves for this period
+      const empLeaves = leaveRecords.filter(l => l.user_id === id);
+      const leaveDaysTaken = empLeaves.reduce((s, l) => {
+        const t = leaveTypes.find(x => x.name === l.type);
+        return s + getLeaveDaysCount(l.start_date, l.end_date, t?.count_holidays ?? false);
+      }, 0);
+
+      const adjustedTarget = Math.max(0, workingDaysInRange - leaveDaysTaken) * 8.5;
+      const deficit = totalHrs - adjustedTarget;
+
+      return { id, name, daysPresent, totalHrs, avgHrs, attendance, lateArrivals, overtimeDays, overtimeHrs, leaveDaysTaken, workingDaysInRange, deficit, rows };
+    });
+  }, [rawRecords, leaveRecords, tab, workingDaysInRange, selectedIds, employees]);
+
+  /* ── Sorted + filtered summary ── */
+  const displayData = useMemo(() => {
+    let d = summary.filter(r => r.name.toLowerCase().includes(search.toLowerCase()));
+    const dir = sortDir === "asc" ? 1 : -1;
+    d = d.sort((a, b) => {
+      if (sortCol === "name")        return dir * a.name.localeCompare(b.name);
+      if (sortCol === "present")     return dir * (a.daysPresent - b.daysPresent);
+      if (sortCol === "hours")       return dir * (a.totalHrs - b.totalHrs);
+      if (sortCol === "avg")         return dir * (a.avgHrs - b.avgHrs);
+      if (sortCol === "attendance")  return dir * (a.attendance - b.attendance);
+      if (sortCol === "late")        return dir * (a.lateArrivals - b.lateArrivals);
+      if (sortCol === "overtime")    return dir * (a.overtimeHrs - b.overtimeHrs);
+      if (sortCol === "deficit")     return dir * (a.deficit - b.deficit);
+      return 0;
+    });
+    return d;
+  }, [summary, sortCol, sortDir, search]);
+
+  /* ── KPI cards ── */
+  const kpi = useMemo(() => {
+    if (!displayData.length) return null;
+    const total = displayData.length;
+    const avgAtt = displayData.reduce((s, r) => s + r.attendance, 0) / total;
+    const totalHrs = displayData.reduce((s, r) => s + r.totalHrs, 0);
+    const perfect = displayData.filter(r => r.daysPresent >= workingDaysInRange).length;
+    const lateCount = displayData.reduce((s, r) => s + r.lateArrivals, 0);
+    return { total, avgAtt, totalHrs, perfect, lateCount };
+  }, [displayData, workingDaysInRange]);
+
+  /* ── Leave summary grouped by employee ── */
+  const balancesGrouped = useMemo(() => {
+    if (tab !== "balances") return [];
+    const map: Record<string, any> = {};
+    rawRecords.forEach(b => {
+      const uid = b.profiles?.id;
+      if (!uid) return;
+      if (!map[uid]) map[uid] = { name: b.profiles.full_name, balances: [] };
+      map[uid].balances.push(b);
+    });
+    return Object.values(map);
+  }, [rawRecords, tab]);
+
+  /* ── Downloads ── */
   const exportXlsx = (sheets: { sheet: string; rows: any[] }[], filename: string) => {
     const wb = XLSX.utils.book_new();
     sheets.forEach(({ sheet, rows }) => {
       const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Note: "No data." }]);
-      XLSX.utils.book_append_sheet(wb, ws, sheet.slice(0, 31)); // Excel sheet name max 31 chars
+      XLSX.utils.book_append_sheet(wb, ws, sheet.slice(0, 31));
     });
     XLSX.writeFile(wb, `${filename}.xlsx`);
   };
 
-  const downloadAttendance = () => {
-    const rows = records.map(r => ({ Employee: r.profiles?.full_name ?? "—", Date: r.date, "Check In": fmt(r.check_in), "Check Out": fmt(r.check_out), "Hours": hrs(r.check_in, r.check_out), Status: r.check_out ? "Completed" : "In Office" }));
-    exportXlsx([{ sheet: "Attendance", rows }], `Attendance_${selLabel}_${fromDate}_to_${toDate}`);
+  const downloadAttendanceSummary = () => {
+    const summaryRows = displayData.map(r => ({
+      "Employee": r.name,
+      "Days Present": r.daysPresent,
+      "Working Days (Target)": r.workingDaysInRange,
+      "Attendance %": r.attendance.toFixed(1) + "%",
+      "Total Hours": r.totalHrs.toFixed(2),
+      "Avg Hours/Day": r.avgHrs.toFixed(2),
+      "Late Arrivals": r.lateArrivals,
+      "Overtime Hours": r.overtimeHrs.toFixed(2),
+      "Approved Leave Days": r.leaveDaysTaken,
+      "Surplus / Deficit Hrs": r.deficit.toFixed(2),
+    }));
+
+    const dailyRows = rawRecords.map(r => ({
+      "Employee": r.profiles?.full_name ?? "—",
+      "Date": r.date,
+      "Check In": fmtTime(r.check_in),
+      "Check Out": fmtTime(r.check_out),
+      "Hours": diffHrs(r.check_in, r.check_out).toFixed(2),
+      "Status": r.check_out ? "Completed" : "In Office",
+    }));
+
+    exportXlsx([
+      { sheet: "Summary", rows: summaryRows },
+      { sheet: "Daily Log", rows: dailyRows },
+    ], `Attendance_Summary_${fromDate}_to_${toDate}`);
   };
 
   const downloadLeaves = () => {
-    const rows = records.map(r => ({ Employee: r.profiles?.full_name ?? "—", "Leave Type": r.type, From: r.start_date, To: r.end_date, Days: days(r.start_date, r.end_date), Reason: r.reason ?? "—", Status: r.status, "Applied On": r.created_at ? new Date(r.created_at).toLocaleDateString("en-IN") : "—" }));
+    const rows = rawRecords.map(r => ({
+      "Employee": r.profiles?.full_name ?? "—",
+      "Leave Type": r.type,
+      "From": r.start_date,
+      "To": r.end_date,
+      "Days": Math.ceil((new Date(r.end_date).getTime() - new Date(r.start_date).getTime()) / 86400000) + 1,
+      "Reason": r.reason ?? "—",
+      "Status": r.status,
+      "Applied On": r.created_at ? new Date(r.created_at).toLocaleDateString("en-IN") : "—",
+    }));
     exportXlsx([{ sheet: "Leave Applications", rows }], `Leaves_${fromDate}_to_${toDate}`);
   };
 
   const downloadBalances = () => {
-    const rows = records.map(r => {
-      const rowData: any = { Employee: r.empName, "Financial Year": currentFY };
+    const rows = balancesGrouped.map(r => {
+      const rowData: any = { Employee: r.name, "Financial Year": currentFY };
       r.balances.forEach((b: any) => {
-         const t = b.leave_types?.name?.replace(" Leave","") ?? "Unknown";
-         rowData[`${t} Accrued`] = b.accrued;
-         rowData[`${t} Used`] = b.used;
-         rowData[`${t} Balance`] = b.accrued - b.used;
+        const t = b.leave_types?.name?.replace(" Leave", "") ?? "Unknown";
+        rowData[`${t} Accrued`] = b.accrued;
+        rowData[`${t} Used`] = b.used;
+        rowData[`${t} Balance`] = b.accrued - b.used;
       });
       return rowData;
     });
     exportXlsx([{ sheet: "Leave Balances", rows }], `Leave_Balances_FY${currentFY}`);
   };
 
-  const calculateSummary = (attendance: any[], leaves: any[]) => {
-    // 1. Calculate actual working days in the selected date range
-    let targetWorkingDays = 0;
-    const start = new Date(fromDate);
-    const end = new Date(toDate);
-    let curr = new Date(start);
-    while (curr <= end) { if (isWorkingDay(curr)) targetWorkingDays++; curr.setDate(curr.getDate() + 1); }
-    
-    let baseTargetHours = targetWorkingDays * 8.5;
-    
-    // 2. Adjust target for approved leaves
-    let totalLeaveDeductionHours = 0;
-    leaves.forEach(l => {
-      const typeObj = leaveTypes.find(t => t.name === l.type);
-      const leaveDays = getLeaveDaysCount(l.start_date, l.end_date, typeObj?.count_holidays ?? false);
-      const deductionPerHour = typeObj ? Number(typeObj.deduction_hours) : 8.5;
-      totalLeaveDeductionHours += (leaveDays * deductionPerHour);
-    });
+  /* ── Period presets ── */
+  const periods: { key: Period; label: string }[] = [
+    { key: "today", label: "Today" },
+    { key: "week", label: "This Week" },
+    { key: "month", label: "This Month" },
+    { key: "quarter", label: "This Quarter" },
+    { key: "year", label: "This Year" },
+    { key: "custom", label: "Custom" },
+  ];
 
-    const adjustedTarget = Math.max(0, baseTargetHours - totalLeaveDeductionHours);
-
-    // 3. Calculate actual hours clocked and formal surplus
-    let actualHours = 0;
-    let formalSurplus = 0;
-    
-    attendance.forEach(r => {
-      const hrsClocked = hrsNum(r.check_in, r.check_out);
-      actualHours += hrsClocked;
-      if (hrsClocked > 9.0) {
-        formalSurplus += (hrsClocked - 8.5);
-      }
-    });
-
-    const deficitSurplus = actualHours - adjustedTarget;
-
-    return { targetWorkingDays, baseTargetHours, totalLeaveDeductionHours, adjustedTarget, actualHours, deficitSurplus, formalSurplus };
-  };
-
-  const downloadEmployee = () => {
-    const sheets: { sheet: string; rows: any[] }[] = [];
-    const summaryRows: any[] = [];
-
-    records.forEach(({ emp, attendance, leaves }) => {
-      const name = emp?.full_name?.slice(0, 20) ?? "Employee";
-      const s = calculateSummary(attendance, leaves);
-      
-      summaryRows.push({
-        Employee: emp?.full_name ?? "—",
-        "Base Target (Hrs)": s.baseTargetHours.toFixed(2),
-        "Approved Leaves (Deduction Hrs)": s.totalLeaveDeductionHours.toFixed(2),
-        "Adjusted Target (Hrs)": s.adjustedTarget.toFixed(2),
-        "Actual Clocked (Hrs)": s.actualHours.toFixed(2),
-        "Standard Deficit/Surplus (Hrs)": s.deficitSurplus.toFixed(2),
-        "Formal Comp-Off Surplus (Hrs >9/day)": s.formalSurplus.toFixed(2)
-      });
-
-      sheets.push({
-        sheet: `${name} - Attendance`,
-        rows: attendance.map((r: any) => ({ Date: r.date, "Check In": fmt(r.check_in), "Check Out": fmt(r.check_out), Hours: hrs(r.check_in, r.check_out) })),
-      });
-      sheets.push({
-        sheet: `${name} - Leaves`,
-        rows: leaves.map((r: any) => ({ "Leave Type": r.type, From: r.start_date, To: r.end_date, Days: days(r.start_date, r.end_date), Reason: r.reason ?? "—", Status: r.status })),
-      });
-    });
-
-    exportXlsx([{ sheet: "Overall Summary", rows: summaryRows }, ...sheets], `Employee_Reports_${fromDate}_to_${toDate}`);
-  };
-
-  /* ── UI ── */
   const tabBtn = (t: Tab, label: string) => (
-    <button onClick={() => setTab(t)} style={{ padding: "10px 20px", borderRadius: 10, border: "none", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontSize: "0.88rem", fontWeight: 600, transition: "all 0.2s", background: tab === t ? "linear-gradient(90deg,var(--accent-primary),var(--accent-secondary))" : "var(--glass-bg)", color: tab === t ? "white" : "var(--text-secondary)" }}>{label}</button>
+    <button key={t} onClick={() => setTab(t)} style={{ padding: "10px 20px", borderRadius: 10, border: "none", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontSize: "0.88rem", fontWeight: 600, transition: "all 0.2s", background: tab === t ? "linear-gradient(90deg,var(--accent-primary),var(--accent-secondary))" : "var(--glass-bg)", color: tab === t ? "white" : "var(--text-secondary)" }}>{label}</button>
   );
-
   const stBadge = (s: string) => s === "approved" ? styles.badgeSuccess : s === "rejected" ? styles.badgeDanger : styles.badgeWarning;
 
   return (
     <div className="animate-fade-in">
-      <div className={styles.pageHeader}><h1>Reports & Exports</h1><p>Filter by employees, dates, and download as Excel</p></div>
+      <div className={styles.pageHeader}><h1>Reports & Exports</h1><p>Consolidated attendance summaries, leave reports, and downloadable Excel exports</p></div>
 
+      {/* ── Tabs ── */}
       <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
-        {tabBtn("attendance", "📋 Attendance")}
-        {tabBtn("leaves",     "📅 Leave Applications")}
-        {tabBtn("balances",   "💰 Leave Ledgers")}
-        {tabBtn("employee",   "👤 Full Employee Report")}
+        {tabBtn("attendance",  "📋 Attendance")}
+        {tabBtn("leaves",      "📅 Leave Applications")}
+        {tabBtn("balances",    "💰 Leave Ledgers")}
+        {tabBtn("employee",    "👤 Full Employee Report")}
       </div>
 
+      {/* ── Filters ── */}
       <div className="glass-panel" style={{ padding: 24, marginBottom: 24 }}>
+
+        {/* Period presets */}
+        {tab !== "balances" && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+            {periods.map(p => (
+              <button key={p.key} onClick={() => applyPeriod(p.key)}
+                style={{ padding: "6px 14px", borderRadius: 8, border: `1px solid ${period === p.key ? "var(--accent-primary)" : "var(--glass-border)"}`, background: period === p.key ? "rgba(99,102,241,0.15)" : "transparent", color: period === p.key ? "var(--accent-primary)" : "var(--text-secondary)", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontSize: "0.82rem", fontWeight: period === p.key ? 700 : 400, transition: "all 0.2s" }}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
-          
+
+          {/* Date range */}
           {tab !== "balances" && (
             <>
-              <div className={styles.formGroup} style={{ marginBottom: 0 }}><label>From Date</label><input type="date" className="premium-input" value={fromDate} onChange={e => setFromDate(e.target.value)} /></div>
-              <div className={styles.formGroup} style={{ marginBottom: 0 }}><label>To Date</label><input type="date" className="premium-input" value={toDate} onChange={e => setToDate(e.target.value)} /></div>
+              <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                <label>From Date</label>
+                <input type="date" className="premium-input" value={fromDate} onChange={e => { setFromDate(e.target.value); setPeriod("custom"); }} />
+              </div>
+              <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                <label>To Date</label>
+                <input type="date" className="premium-input" value={toDate} onChange={e => { setToDate(e.target.value); setPeriod("custom"); }} />
+              </div>
             </>
           )}
 
           {tab === "balances" && (
             <div className={styles.formGroup} style={{ marginBottom: 0 }}>
               <label>Financial Year</label>
-              <input type="number" className="premium-input" value={currentFY} onChange={e => setCurrentFY(Number(e.target.value))} />
+              <input type="number" className="premium-input" value={currentFY} onChange={e => setCurrentFY(Number(e.target.value))} style={{ width: 100 }} />
             </div>
           )}
-          
+
+          {/* Employee picker */}
           <div className={styles.formGroup} style={{ marginBottom: 0, position: "relative" }}>
             <label>Employees</label>
-            <button type="button" onClick={() => setShowEmpPicker(v => !v)} className="premium-input" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, minWidth: 200, cursor: "pointer", textAlign: "left", fontFamily: "Outfit,sans-serif", fontSize: "0.88rem" }}>
+            <button type="button" onClick={() => setShowEmpPicker(v => !v)} className="premium-input"
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, minWidth: 200, cursor: "pointer", textAlign: "left", fontFamily: "Outfit,sans-serif", fontSize: "0.88rem" }}>
               <span style={{ color: allSelected ? "var(--text-secondary)" : "white" }}>{selLabel}</span><span style={{ color: "var(--text-secondary)" }}>▾</span>
             </button>
             {showEmpPicker && (
-               <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 50, background: "var(--bg-secondary)", border: "1px solid var(--glass-border)", borderRadius: 12, padding: 8, minWidth: 240, maxHeight: 280, overflowY: "auto", marginTop: 6, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
+              <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 50, background: "var(--bg-secondary)", border: "1px solid var(--glass-border)", borderRadius: 12, padding: 8, minWidth: 240, maxHeight: 280, overflowY: "auto", marginTop: 6, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, cursor: "pointer", background: allSelected ? "rgba(99,102,241,0.12)" : "transparent" }}>
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ width: 16, height: 16, accentColor: "var(--accent-primary)" }} />
                   <span style={{ fontWeight: 600, color: "white", fontSize: "0.88rem" }}>All Employees</span>
@@ -253,109 +383,260 @@ export default function AdminReports() {
           </div>
 
           {tab === "leaves" && (
-            <div className={styles.formGroup} style={{ marginBottom: 0 }}><label>Status</label><select className="premium-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">All</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></div>
+            <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+              <label>Status</label>
+              <select className="premium-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                <option value="all">All</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option>
+              </select>
+            </div>
           )}
 
-          <button className={styles.primaryBtn} onClick={load} style={{ width: "auto", padding: "14px 24px" }}>🔍 Filter</button>
-          
-          {tab === "attendance" && records.length > 0 && <button className={styles.primaryBtn} onClick={downloadAttendance} style={{ width: "auto", padding: "14px 24px", background: "linear-gradient(90deg,#10b981,#059669)" }}>📥 Download Excel</button>}
-          {tab === "leaves" && records.length > 0 && <button className={styles.primaryBtn} onClick={downloadLeaves} style={{ width: "auto", padding: "14px 24px", background: "linear-gradient(90deg,#10b981,#059669)" }}>📥 Download Excel</button>}
-          {tab === "balances" && records.length > 0 && <button className={styles.primaryBtn} onClick={downloadBalances} style={{ width: "auto", padding: "14px 24px", background: "linear-gradient(90deg,#10b981,#059669)" }}>📥 Download Excel</button>}
-          {tab === "employee" && records.length > 0 && <button className={styles.primaryBtn} onClick={downloadEmployee} style={{ width: "auto", padding: "14px 24px", background: "linear-gradient(90deg,#10b981,#059669)" }}>📥 Download ({records.length} {records.length === 1 ? "Employee" : "Employees"})</button>}
+          <button className={styles.primaryBtn} onClick={load} style={{ width: "auto", padding: "14px 24px" }}>🔍 Apply Filter</button>
+
+          {/* Download buttons */}
+          {tab === "attendance" && displayData.length > 0 &&
+            <button className={styles.primaryBtn} onClick={downloadAttendanceSummary} style={{ width: "auto", padding: "14px 24px", background: "linear-gradient(90deg,#10b981,#059669)" }}>📥 Download Excel</button>}
+          {tab === "leaves" && rawRecords.length > 0 &&
+            <button className={styles.primaryBtn} onClick={downloadLeaves} style={{ width: "auto", padding: "14px 24px", background: "linear-gradient(90deg,#10b981,#059669)" }}>📥 Download Excel</button>}
+          {tab === "balances" && balancesGrouped.length > 0 &&
+            <button className={styles.primaryBtn} onClick={downloadBalances} style={{ width: "auto", padding: "14px 24px", background: "linear-gradient(90deg,#10b981,#059669)" }}>📥 Download Excel</button>}
         </div>
       </div>
       {showEmpPicker && <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={() => setShowEmpPicker(false)} />}
 
+      {/* ══════════════════════════════════════════
+          ATTENDANCE TAB — CONSOLIDATED SUMMARY
+          ══════════════════════════════════════════ */}
       {tab === "attendance" && (
-        <div className={`glass-panel ${styles.tableWrap}`}>
-          <table>
-            <thead><tr><th>Employee</th><th>Date</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Status</th></tr></thead>
-            <tbody>
-              {loading ? <tr><td colSpan={6} style={{ textAlign: "center", padding: 32 }}><div className={styles.spinner} style={{ margin: "0 auto" }} /></td></tr>
-              : records.length === 0 ? <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-secondary)", padding: 32 }}>No records found.</td></tr>
-              : records.map(r => (
-                <tr key={r.id}><td>{r.profiles?.full_name ?? "—"}</td><td>{r.date}</td><td>{fmt(r.check_in)}</td><td>{fmt(r.check_out)}</td><td>{hrs(r.check_in, r.check_out)}</td><td><span className={`${styles.statBadge} ${r.check_out ? styles.badgeSuccess : styles.badgeWarning}`}>{r.check_out ? "Completed" : "In Office"}</span></td></tr>
+        <>
+          {/* KPI Cards */}
+          {kpi && !loading && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14, marginBottom: 24 }}>
+              {[
+                { label: "Total Employees", value: kpi.total, icon: "👥", color: "#6366f1" },
+                { label: "Avg Attendance", value: kpi.avgAtt.toFixed(1) + "%", icon: "📊", color: "#10b981" },
+                { label: "Total Hours Logged", value: kpi.totalHrs.toFixed(0) + "h", icon: "⏱️", color: "#f59e0b" },
+                { label: "100% Attendance", value: kpi.perfect + " emp", icon: "🏆", color: "#8b5cf6" },
+                { label: "Late Arrivals (Total)", value: kpi.lateCount, icon: "⚠️", color: "#ef4444" },
+                { label: "Working Days Target", value: workingDaysInRange + " days", icon: "📅", color: "#64748b" },
+              ].map(k => (
+                <div key={k.label} className="glass-panel" style={{ padding: "16px 18px", borderLeft: `3px solid ${k.color}` }}>
+                  <div style={{ fontSize: "1.3rem", marginBottom: 6 }}>{k.icon}</div>
+                  <div style={{ fontSize: "1.3rem", fontWeight: 700, color: k.color }}>{k.value}</div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 2 }}>{k.label}</div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          )}
+
+          {/* Search + period label */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+            <div style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+              {!loading && `Showing ${displayData.length} employees · ${fmtDate(fromDate)} – ${fmtDate(toDate)} · ${workingDaysInRange} working days`}
+            </div>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search employee..." className="premium-input"
+              style={{ width: 220, padding: "8px 14px", fontSize: "0.85rem" }} />
+          </div>
+
+          <div className={`glass-panel ${styles.tableWrap}`} style={{ overflowX: "auto" }}>
+            <table style={{ minWidth: 900 }}>
+              <thead>
+                <tr>
+                  <th {...thProps("name")}>Employee <SortIcon col="name" sortCol={sortCol} sortDir={sortDir} /></th>
+                  <th {...thProps("present")}>Days Present <SortIcon col="present" sortCol={sortCol} sortDir={sortDir} /></th>
+                  <th style={{ whiteSpace: "nowrap" }}>Target Days</th>
+                  <th {...thProps("attendance")}>Attendance % <SortIcon col="attendance" sortCol={sortCol} sortDir={sortDir} /></th>
+                  <th {...thProps("hours")}>Total Hours <SortIcon col="hours" sortCol={sortCol} sortDir={sortDir} /></th>
+                  <th {...thProps("avg")}>Avg Hrs/Day <SortIcon col="avg" sortCol={sortCol} sortDir={sortDir} /></th>
+                  <th {...thProps("late")}>Late Arrivals <SortIcon col="late" sortCol={sortCol} sortDir={sortDir} /></th>
+                  <th {...thProps("overtime")}>Overtime Hrs <SortIcon col="overtime" sortCol={sortCol} sortDir={sortDir} /></th>
+                  <th {...thProps("deficit")}>Surplus / Deficit <SortIcon col="deficit" sortCol={sortCol} sortDir={sortDir} /></th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={10} style={{ textAlign: "center", padding: 48 }}><div className={styles.spinner} style={{ margin: "0 auto" }} /></td></tr>
+                ) : displayData.length === 0 ? (
+                  <tr><td colSpan={10} style={{ textAlign: "center", color: "var(--text-secondary)", padding: 48 }}>No records found for this period.</td></tr>
+                ) : displayData.map(r => (
+                  <>
+                    <tr key={r.id} style={{ cursor: "pointer" }} onClick={() => setExpandedEmp(expandedEmp === r.id ? null : r.id)}>
+                      <td style={{ fontWeight: 600 }}>{r.name}</td>
+                      <td>
+                        <span style={{ fontWeight: 700, color: r.daysPresent >= r.workingDaysInRange ? "var(--success)" : r.attendance < 75 ? "var(--danger)" : "var(--warning)" }}>
+                          {r.daysPresent}
+                        </span>
+                      </td>
+                      <td style={{ color: "var(--text-secondary)" }}>{r.workingDaysInRange}</td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ flex: 1, height: 6, background: "var(--glass-border)", borderRadius: 3, minWidth: 60 }}>
+                            <div style={{ width: `${Math.min(100, r.attendance)}%`, height: "100%", borderRadius: 3, background: r.attendance >= 90 ? "#10b981" : r.attendance >= 75 ? "#f59e0b" : "#ef4444", transition: "width 0.3s" }} />
+                          </div>
+                          <span style={{ fontSize: "0.82rem", fontWeight: 600, minWidth: 40 }}>{r.attendance.toFixed(1)}%</span>
+                        </div>
+                      </td>
+                      <td>{r.totalHrs.toFixed(2)}h</td>
+                      <td>{r.avgHrs.toFixed(2)}h</td>
+                      <td>
+                        <span style={{ color: r.lateArrivals > 0 ? "var(--warning)" : "var(--success)", fontWeight: 600 }}>
+                          {r.lateArrivals > 0 ? `⚠️ ${r.lateArrivals}` : "✅ 0"}
+                        </span>
+                      </td>
+                      <td style={{ color: r.overtimeHrs > 0 ? "#f59e0b" : "var(--text-secondary)" }}>
+                        {r.overtimeHrs > 0 ? `+${r.overtimeHrs.toFixed(2)}h` : "—"}
+                      </td>
+                      <td>
+                        <span style={{ fontWeight: 700, color: r.deficit >= 0 ? "var(--success)" : "var(--danger)" }}>
+                          {r.deficit >= 0 ? `+${r.deficit.toFixed(2)}h` : `${r.deficit.toFixed(2)}h`}
+                        </span>
+                      </td>
+                      <td>
+                        <button onClick={e => { e.stopPropagation(); setExpandedEmp(expandedEmp === r.id ? null : r.id); }}
+                          style={{ background: "none", border: "1px solid var(--glass-border)", borderRadius: 6, color: "var(--accent-primary)", cursor: "pointer", padding: "4px 10px", fontSize: "0.78rem", fontFamily: "Outfit,sans-serif" }}>
+                          {expandedEmp === r.id ? "▲ Hide" : "▼ Show"}
+                        </button>
+                      </td>
+                    </tr>
+
+                    {/* Expanded daily breakdown */}
+                    {expandedEmp === r.id && (
+                      <tr key={`${r.id}-expanded`}>
+                        <td colSpan={10} style={{ padding: 0 }}>
+                          <div style={{ background: "rgba(99,102,241,0.04)", borderTop: "1px solid var(--glass-border)", padding: "16px 24px" }}>
+                            <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 12 }}>
+                              Daily log for {r.name} ({r.rows.length} entries)
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+                              {r.rows.sort((a: any, b: any) => b.date.localeCompare(a.date)).map((day: any) => {
+                                const h = diffHrs(day.check_in, day.check_out);
+                                return (
+                                  <div key={day.id} style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", borderRadius: 8, padding: "10px 14px" }}>
+                                    <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: 4 }}>{fmtDate(day.date)}</div>
+                                    <div style={{ fontSize: "0.76rem", color: "var(--text-secondary)" }}>
+                                      In: {fmtTime(day.check_in)} · Out: {fmtTime(day.check_out)}
+                                    </div>
+                                    <div style={{ fontSize: "0.82rem", fontWeight: 700, color: h >= 8.5 ? "var(--success)" : "var(--warning)", marginTop: 4 }}>
+                                      {h > 0 ? `${h.toFixed(2)}h` : "In Office"}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
+      {/* ══════════════════════════════════════════
+          LEAVES TAB
+          ══════════════════════════════════════════ */}
       {tab === "leaves" && (
         <div className={`glass-panel ${styles.tableWrap}`}>
           <table>
             <thead><tr><th>Employee</th><th>Type</th><th>Duration</th><th>Applied On</th><th>Reason</th><th>Status</th></tr></thead>
             <tbody>
-              {loading ? <tr><td colSpan={6} style={{ textAlign: "center", padding: 32 }}><div className={styles.spinner} style={{ margin: "0 auto" }} /></td></tr>
-              : records.length === 0 ? <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-secondary)", padding: 32 }}>No records found.</td></tr>
-              : records.map(r => (
-                <tr key={r.id}><td>{r.profiles?.full_name ?? "—"}</td><td>{r.type}</td><td>{r.start_date} to {r.end_date}<br/><span style={{fontSize:'0.75rem', color: "var(--text-secondary)"}}>{days(r.start_date, r.end_date)} days</span></td><td>{new Date(r.created_at).toLocaleDateString("en-IN")}</td><td style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.reason ?? "—"}</td><td><span className={`${styles.statBadge} ${stBadge(r.status)}`}>{r.status}</span></td></tr>
+              {loading ? <tr><td colSpan={6} style={{ textAlign: "center", padding: 48 }}><div className={styles.spinner} style={{ margin: "0 auto" }} /></td></tr>
+              : rawRecords.length === 0 ? <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-secondary)", padding: 48 }}>No records found for this period.</td></tr>
+              : rawRecords.map(r => (
+                <tr key={r.id}>
+                  <td>{r.profiles?.full_name ?? "—"}</td>
+                  <td>{r.type}</td>
+                  <td>
+                    {r.start_date} {r.start_date !== r.end_date ? `→ ${r.end_date}` : ""}
+                    <br /><span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                      {Math.ceil((new Date(r.end_date).getTime() - new Date(r.start_date).getTime()) / 86400000) + 1} day(s)
+                    </span>
+                  </td>
+                  <td>{new Date(r.created_at).toLocaleDateString("en-IN")}</td>
+                  <td style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.reason ?? "—"}</td>
+                  <td><span className={`${styles.statBadge} ${stBadge(r.status)}`}>{r.status}</span></td>
+                </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
 
+      {/* ══════════════════════════════════════════
+          BALANCES TAB
+          ══════════════════════════════════════════ */}
       {tab === "balances" && (
         <div style={{ display: "grid", gap: 20, gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
-          {records.length === 0 && !loading && <div style={{ color: "var(--text-secondary)" }}>No balances found.</div>}
-          {records.map((r: any) => (
-            <div key={r.empName} className="glass-panel" style={{ padding: 20 }}>
-               <h3 style={{ marginBottom: 16, fontSize: "1.1rem", borderBottom: '1px solid var(--glass-border)', paddingBottom: 8 }}>{r.empName}</h3>
-               {r.balances.map((b: any) => (
-                 <div key={b.id} style={{display: 'flex', justifyContent: 'space-between', marginBottom: 12, alignItems: 'center'}}>
-                    <span style={{fontSize: '0.9rem', color: 'var(--text-secondary)'}}>{b.leave_types?.name}</span>
-                    <span style={{fontSize: '1.2rem', fontWeight: 600, color: (b.accrued - b.used) <= 0 ? 'var(--danger)' : 'var(--success)'}}>
-                      {(b.accrued - b.used).toFixed(1)} <span style={{fontSize: '0.75rem', fontWeight: 400, color:'var(--text-secondary)'}}>/ {b.accrued} acc</span>
-                    </span>
-                 </div>
-               ))}
+          {balancesGrouped.length === 0 && !loading && <div style={{ color: "var(--text-secondary)" }}>No balances found.</div>}
+          {balancesGrouped.map((r: any) => (
+            <div key={r.name} className="glass-panel" style={{ padding: 20 }}>
+              <h3 style={{ marginBottom: 16, fontSize: "1.1rem", borderBottom: "1px solid var(--glass-border)", paddingBottom: 8 }}>{r.name}</h3>
+              {r.balances.map((b: any) => (
+                <div key={b.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, alignItems: "center" }}>
+                  <span style={{ fontSize: "0.9rem", color: "var(--text-secondary)" }}>{b.leave_types?.name}</span>
+                  <span style={{ fontSize: "1.1rem", fontWeight: 600, color: (b.accrued - b.used) <= 0 ? "var(--danger)" : "var(--success)" }}>
+                    {(b.accrued - b.used).toFixed(1)} <span style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--text-secondary)" }}>/ {b.accrued}</span>
+                  </span>
+                </div>
+              ))}
             </div>
           ))}
         </div>
       )}
 
+      {/* ══════════════════════════════════════════
+          FULL EMPLOYEE REPORT TAB
+          ══════════════════════════════════════════ */}
       {tab === "employee" && (
         <div style={{ display: "grid", gap: 20, gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
-          {records.length === 0 && !loading && <div style={{ color: "var(--text-secondary)" }}>No employees selected.</div>}
-          {records.map((data: any) => {
-            const sum = calculateSummary(data.attendance, data.leaves);
-            return (
-              <div key={data.emp?.id} className="glass-panel" style={{ padding: 20 }}>
-                <h3 style={{ marginBottom: 12, fontSize: "1.1rem" }}>{data.emp?.full_name ?? "—"}</h3>
-                
-                <div style={{display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16}}>
-                   <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem'}}>
-                      <span style={{color: 'var(--text-secondary)'}}>Base Target:</span>
-                      <span>{sum.baseTargetHours.toFixed(2)} hrs</span>
-                   </div>
-                   {sum.totalLeaveDeductionHours > 0 && (
-                     <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: 'var(--warning)'}}>
-                        <span>Leave Deductions:</span>
-                        <span>-{sum.totalLeaveDeductionHours.toFixed(2)} hrs</span>
-                     </div>
-                   )}
-                   <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 600, borderTop: '1px solid var(--glass-border)', paddingTop: 6}}>
-                      <span>Adjusted Target:</span>
-                      <span>{sum.adjustedTarget.toFixed(2)} hrs</span>
-                   </div>
-                   <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 600, color: 'var(--accent-primary)'}}>
-                      <span>Actual Clocked:</span>
-                      <span>{sum.actualHours.toFixed(2)} hrs</span>
-                   </div>
-                </div>
+          {rawRecords.length === 0 && !loading && <div style={{ color: "var(--text-secondary)" }}>Click Apply Filter to load employee summaries.</div>}
+          {(() => {
+            // Group by employee
+            const empMap: Record<string, { name: string; atRows: any[]; lvRows: any[] }> = {};
+            rawRecords.forEach(r => {
+              const id = r.profiles?.id ?? r.user_id;
+              if (!empMap[id]) empMap[id] = { name: r.profiles?.full_name ?? "—", atRows: [], lvRows: [] };
+              empMap[id].atRows.push(r);
+            });
+            leaveRecords.forEach(l => {
+              const id = l.user_id;
+              if (!empMap[id]) {
+                const emp = employees.find(e => e.id === id);
+                empMap[id] = { name: emp?.full_name ?? "—", atRows: [], lvRows: [] };
+              }
+              empMap[id].lvRows.push(l);
+            });
 
-                <div style={{ padding: 12, borderRadius: 10, background: sum.deficitSurplus >= 0 ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", color: sum.deficitSurplus >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 700, fontSize: "1.1rem", textAlign: "center" }}>
-                   {sum.deficitSurplus >= 0 ? "surplus" : "deficit"} : {Math.abs(sum.deficitSurplus).toFixed(2)} hrs
-                </div>
+            return Object.entries(empMap).map(([id, { name, atRows, lvRows }]) => {
+              const totalHrs = atRows.reduce((s, r) => s + diffHrs(r.check_in, r.check_out), 0);
+              const lvDeduction = lvRows.reduce((s, l) => {
+                const t = leaveTypes.find(x => x.name === l.type);
+                return s + getLeaveDaysCount(l.start_date, l.end_date, t?.count_holidays ?? false) * (t ? Number(t.deduction_hours) : 8.5);
+              }, 0);
+              const target = Math.max(0, workingDaysInRange * 8.5 - lvDeduction);
+              const deficit = totalHrs - target;
 
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20, fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                  <span>{data.attendance.length} attendance records</span>
-                  <span>{data.leaves.length} approved leaves</span>
+              return (
+                <div key={id} className="glass-panel" style={{ padding: 20 }}>
+                  <h3 style={{ marginBottom: 12, fontSize: "1.1rem", borderBottom: "1px solid var(--glass-border)", paddingBottom: 8 }}>{name}</h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: "0.88rem" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-secondary)" }}>Days Present</span><span style={{ fontWeight: 600 }}>{atRows.length} / {workingDaysInRange}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-secondary)" }}>Base Target</span><span>{(workingDaysInRange * 8.5).toFixed(2)}h</span></div>
+                    {lvDeduction > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: "var(--warning)" }}><span>Leave Deduction</span><span>-{lvDeduction.toFixed(2)}h</span></div>}
+                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600 }}><span>Adjusted Target</span><span>{target.toFixed(2)}h</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: "var(--accent-primary)" }}><span>Actual Clocked</span><span>{totalHrs.toFixed(2)}h</span></div>
+                  </div>
+                  <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: deficit >= 0 ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", color: deficit >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 700, fontSize: "1rem", textAlign: "center" }}>
+                    {deficit >= 0 ? `Surplus: +${deficit.toFixed(2)}h` : `Deficit: ${deficit.toFixed(2)}h`}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
         </div>
       )}
     </div>
