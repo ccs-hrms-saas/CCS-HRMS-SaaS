@@ -145,13 +145,53 @@ export default function OrganogramPage() {
 
   const handleSave = async () => {
     setSaving(true);
-    for (const [userId, managerId] of Object.entries(pendingChanges)) {
-      await supabase.from("profiles").update({ manager_id: managerId || null }).eq("id", userId);
+
+    if (isSuperAdmin) {
+      // Super Admin: apply directly
+      for (const [userId, managerId] of Object.entries(pendingChanges)) {
+        await supabase.from("profiles").update({ manager_id: managerId || null }).eq("id", userId);
+      }
+      setPendingChanges({});
+      setSaving(false);
+      setEditMode(false);
+      await load();
+    } else {
+      // Admin with edit_organogram permission: route through approval queue
+      // Build rich change list with names for the review page
+      const changes = Object.entries(pendingChanges).map(([userId, newManagerId]) => {
+        const emp = employees.find(e => e.id === userId);
+        const oldManager = employees.find(e => e.id === emp?.manager_id);
+        const newManager = employees.find(e => e.id === newManagerId);
+        return {
+          userId,
+          name: emp?.full_name ?? userId,
+          old_manager_id: emp?.manager_id ?? null,
+          old_manager_name: oldManager?.full_name ?? "No Manager",
+          new_manager_id: newManagerId || null,
+          new_manager_name: newManager?.full_name ?? "No Manager",
+        };
+      });
+
+      const res = await fetch("/api/pending-approvals", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action_type: "organogram_change",
+          requested_by: profile!.id,
+          payload: { changes },
+        }),
+      });
+      const json = await res.json();
+      setSaving(false);
+
+      if (json.ok) {
+        // Revert the optimistic UI changes since it's not applied yet
+        await load();
+        setPendingChanges({});
+        setEditMode(false);
+        // Show toast (reuse the saving state as toast trigger via a brief message)
+        alert("⏳ Your organogram changes have been submitted for Super Admin approval.");
+      }
     }
-    setPendingChanges({});
-    setSaving(false);
-    setEditMode(false);
-    await load();
   };
 
   const handleDiscard = () => {

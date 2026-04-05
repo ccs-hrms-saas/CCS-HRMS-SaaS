@@ -23,8 +23,9 @@ const adminNav = [
   { href: "/dashboard/admin/reports",           icon: "📊", label: "Reports"        },
 ];
 
-// Permissions page added separately — only visible to super admin (see below)
+// Permissions + Approvals — super admin only
 const adminPermissionsItem = { href: "/dashboard/admin/permissions", icon: "🔑", label: "Permissions" };
+const adminApprovalsItem   = { href: "/dashboard/admin/approvals",   icon: "⏳", label: "Approvals"   };
 
 const employeeNav = [
   { href: "/dashboard/employee",            icon: "🏠", label: "Dashboard"  },
@@ -48,6 +49,8 @@ export default function Sidebar() {
   const isAdmin      = profile?.role === "admin" || profile?.role === "superadmin";
   const isSuperAdmin = profile?.role === "superadmin";
 
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
+
   // Check if employee has any direct reportees → show My Team link
   useEffect(() => {
     if (profile?.id && !isAdmin) {
@@ -55,10 +58,16 @@ export default function Sidebar() {
         .eq("manager_id", profile.id).eq("is_active", true)
         .then(({ count }) => setHasTeam((count ?? 0) > 0));
     }
-  }, [profile, isAdmin]);
+    // Fetch pending approval count for super admin
+    if (isSuperAdmin) {
+      supabase.from("pending_approvals").select("id", { count: "exact", head: true })
+        .eq("status", "pending")
+        .then(({ count }) => setPendingApprovalCount(count ?? 0));
+    }
+  }, [profile, isAdmin, isSuperAdmin]);
 
   // Build dynamic nav lists
-  const adminNavFull = isSuperAdmin ? [...adminNav, adminPermissionsItem] : adminNav;
+  const adminNavFull = isSuperAdmin ? [...adminNav, adminApprovalsItem, adminPermissionsItem] : adminNav;
   const empNavFull   = hasTeam ? [...employeeNav, myTeamItem] : employeeNav;
   const nav          = isAdmin ? adminNavFull : empNavFull;
 
@@ -87,7 +96,13 @@ export default function Sidebar() {
             <Link key={item.href} href={item.href}
               className={`${styles.navItem} ${pathname === item.href ? styles.active : ""}`}>
               <span className={styles.navIcon}>{item.icon}</span>
-              <span>{item.label}</span>
+              <span style={{ flex: 1 }}>{item.label}</span>
+              {/* Red badge for pending approvals count on the Approvals link */}
+              {item.href === "/dashboard/admin/approvals" && pendingApprovalCount > 0 && (
+                <span style={{ background: "#ef4444", color: "#fff", borderRadius: "50%", width: 20, height: 20, fontSize: "0.7rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  {pendingApprovalCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>

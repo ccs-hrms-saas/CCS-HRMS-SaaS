@@ -64,6 +64,9 @@ export default function AdminUsers() {
   // All active employees can be a reporting manager (not just admins)
   const managers      = activeUsers.filter(u => u.id !== profile?.id);
 
+  // Track user IDs that have a pending approval so we can show ⏳ badge
+  const [pendingRoles, setPendingRoles] = useState<Set<string>>(new Set());
+
   /* ── Create ── */
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -255,7 +258,34 @@ export default function AdminUsers() {
   };
 
   /* ── Role / Manager inline ── */
-  const updateRole    = async (id: string, role: string) => { await supabase.from("profiles").update({ role }).eq("id", id); load(); };
+  const updateRole = async (id: string, newRole: string) => {
+    const target = users.find(u => u.id === id);
+    const oldRole = target?.role ?? "employee";
+    const isAdminAction = !isSuperAdmin && (oldRole === "admin" || newRole === "admin");
+
+    if (isAdminAction) {
+      // Admin promoting/demoting another admin → send to approval queue
+      const res = await fetch("/api/pending-approvals", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action_type: "role_change",
+          requested_by: profile!.id,
+          target_user_id: id,
+          payload: { old_role: oldRole, new_role: newRole },
+        }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setPendingRoles(prev => new Set(prev).add(id));
+        setSuccess(`⏳ Role change request submitted for Super Admin approval.`);
+        setTimeout(() => setSuccess(""), 5000);
+      }
+    } else {
+      // Super Admin or non-sensitive role change → apply directly
+      await supabase.from("profiles").update({ role: newRole }).eq("id", id);
+      load();
+    }
+  };
   const updateManager = async (id: string, mgr: string) => { await supabase.from("profiles").update({ manager_id: mgr || null }).eq("id", id); load(); };
 
   const roleStyle = (r: string) => r === "superadmin" ? styles.badgeDanger : r === "admin" ? styles.badgeWarning : styles.badgeInfo;
