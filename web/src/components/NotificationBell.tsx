@@ -104,9 +104,17 @@ export default function NotificationBell() {
       {/* Dropdown */}
       {open && (
         <div style={{
-          position: "absolute", top: 46, right: 0, width: 320, maxHeight: 420, overflowY: "auto",
-          background: "var(--glass-bg-solid, #1a1a2e)", border: "1px solid var(--glass-border)",
-          borderRadius: 14, boxShadow: "0 16px 48px rgba(0,0,0,0.5)", zIndex: 1000,
+          position: "fixed",
+          top: 64,
+          left: 270,
+          width: "clamp(280px, 340px, calc(100vw - 286px))",
+          maxHeight: "min(480px, calc(100vh - 80px))",
+          overflowY: "auto",
+          background: "var(--glass-bg-solid, #1a1a2e)",
+          border: "1px solid var(--glass-border)",
+          borderRadius: 14,
+          boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
+          zIndex: 1000,
           backdropFilter: "blur(20px)"
         }}>
           {/* Header */}
