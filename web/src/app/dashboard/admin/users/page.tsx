@@ -56,7 +56,10 @@ export default function AdminUsers() {
 
   useEffect(() => { load(); }, []);
 
-  const activeUsers   = users.filter(u => u.is_active !== false);
+  const isSuperAdmin = profile?.role === "superadmin";
+
+  // Admins cannot see or manage superadmin accounts — only superadmins can
+  const activeUsers   = users.filter(u => u.is_active !== false && (isSuperAdmin || u.role !== "superadmin"));
   const inactiveUsers = users.filter(u => u.is_active === false);
   // All active employees can be a reporting manager (not just admins)
   const managers      = activeUsers.filter(u => u.id !== profile?.id);
@@ -291,8 +294,8 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      {/* ── Action Buttons — text labels, no tooltip guessing ── */}
-      {!inactive && (
+      {/* ── Action Buttons — hidden for superadmin cards when viewer is not superadmin ── */}
+      {!inactive && u.role !== "superadmin" && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
           <button onClick={() => setCreditTarget(u)}
             style={{ flex: 1, padding: "6px 8px", borderRadius: 7, border: "1px solid rgba(99,102,241,0.35)", background: "rgba(99,102,241,0.1)", color: "var(--accent-primary)", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontSize: "0.76rem", fontWeight: 600, whiteSpace: "nowrap" }}>
@@ -310,6 +313,12 @@ export default function AdminUsers() {
             style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "var(--danger)", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontSize: "0.76rem", fontWeight: 600 }}>
             🚪 Exit
           </button>
+        </div>
+      )}
+      {/* Super Admin card: show read-only info label instead of action buttons */}
+      {!inactive && u.role === "superadmin" && (
+        <div style={{ marginBottom: 12, padding: "6px 10px", borderRadius: 7, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)", fontSize: "0.75rem", color: "var(--text-secondary)", textAlign: "center" }}>
+          🔒 Super Admin — read only
         </div>
       )}
       {inactive && (
@@ -330,12 +339,18 @@ export default function AdminUsers() {
         <div className={userStyles.userCardBody}>
           <div className={userStyles.fieldRow}>
             <label>Role</label>
-            <select className="premium-input" style={{ padding: "6px 10px", fontSize: "0.82rem" }}
-              value={u.role} onChange={e => updateRole(u.id, e.target.value)}>
-              <option value="employee">Employee</option>
-              <option value="admin">Admin</option>
-              <option value="superadmin">Super Admin</option>
-            </select>
+            {/* Superadmin cards: role is locked (read-only display) */}
+            {u.role === "superadmin" ? (
+              <span style={{ fontSize: "0.82rem", color: "#ef4444", fontWeight: 700 }}>Super Admin (locked)</span>
+            ) : (
+              <select className="premium-input" style={{ padding: "6px 10px", fontSize: "0.82rem" }}
+                value={u.role} onChange={e => updateRole(u.id, e.target.value)}>
+                <option value="employee">Employee</option>
+                <option value="admin">Admin</option>
+                {/* Only superadmin can promote someone to superadmin */}
+                {isSuperAdmin && <option value="superadmin">Super Admin</option>}
+              </select>
+            )}
           </div>
           <div className={userStyles.fieldRow}>
             <label>Reports To</label>
