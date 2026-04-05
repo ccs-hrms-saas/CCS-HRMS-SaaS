@@ -20,8 +20,9 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [mounted, setMounted] = useState(false);
-  const ref     = useRef<HTMLDivElement>(null);
+  const ref     = useRef<HTMLDivElement>(null);   // bell wrapper
   const bellRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);   // portal panel
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -66,10 +67,13 @@ export default function NotificationBell() {
     return () => { supabase.removeChannel(channel); };
   }, [profile]);
 
-  // Close on outside click
+  // Close on outside click — must check BOTH bell wrapper AND portal panel
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      const inBell  = ref.current   && ref.current.contains(target);
+      const inPanel = panelRef.current && panelRef.current.contains(target);
+      if (!inBell && !inPanel) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -120,6 +124,7 @@ export default function NotificationBell() {
       {/* ── Portal dropdown — renders directly in <body>, escapes all parent CSS ── */}
       {mounted && open && createPortal(
         <div
+          ref={panelRef}
           style={{
             ...getPanelStyle(),
             position: "fixed",
