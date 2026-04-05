@@ -127,6 +127,17 @@ export default function EmployeeLeaves() {
       await supabase.from("leave_balances").update({ used: activeBalance.used + leaveDays }).eq("id", activeBalance.id);
     }
 
+    // 3. Notify all admins about the leave request
+    fetch("/api/notify", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_ids: "all_admins",
+        title: `📅 Leave Request — ${profile.full_name}`,
+        message: `${form.type} · ${leaveDays} day(s) · ${new Date(form.start_date).toLocaleDateString("en-IN")}${form.start_date !== form.end_date ? " to " + new Date(form.end_date).toLocaleDateString("en-IN") : ""}`,
+        link: "/dashboard/admin/leaves"
+      })
+    }).catch(() => {});
+
     setForm({ type: leaveTypes[0]?.name ?? "", start_date: "", end_date: "", reason: "" });
     setAttachedFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -136,6 +147,7 @@ export default function EmployeeLeaves() {
     await loadData();
     setSaving(false);
   };
+
 
   const statusStyle = (s: string) => s === "approved" ? styles.badgeSuccess : s === "rejected" ? styles.badgeDanger : styles.badgeWarning;
 

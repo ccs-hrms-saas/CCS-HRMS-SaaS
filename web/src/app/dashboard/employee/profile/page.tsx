@@ -322,9 +322,58 @@ export default function EmployeeProfile() {
               ))}
             </div>
           </div>
+
+          {/* ── CHANGE PASSWORD ── */}
+          <ChangePasswordPanel />
+
         </div>
 
       </div>
+    </div>
+  );
+}
+
+function ChangePasswordPanel() {
+  const [newPwd, setNewPwd] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  const handleChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPwd !== confirm) { setErr("Passwords do not match"); return; }
+    if (newPwd.length < 6) { setErr("Password must be at least 6 characters"); return; }
+    setSaving(true); setErr(""); setMsg("");
+    const { error } = await supabase.auth.updateUser({ password: newPwd });
+    if (error) { setErr(error.message); }
+    else { setMsg("✅ Password updated successfully!"); setNewPwd(""); setConfirm(""); }
+    setSaving(false);
+    setTimeout(() => setMsg(""), 5000);
+  };
+
+  return (
+    <div className="glass-panel" style={{ padding: 32 }}>
+      <h3 style={{ marginBottom: 6, fontSize: "1.1rem" }}>🔒 Change Password</h3>
+      <p style={{ color: "var(--text-secondary)", fontSize: "0.82rem", marginBottom: 20 }}>Update your account password. Use at least 6 characters.</p>
+      {msg && <div style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", color: "var(--success)", padding: "10px 14px", borderRadius: 10, marginBottom: 16, fontSize: "0.88rem" }}>{msg}</div>}
+      {err && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--danger)", padding: "10px 14px", borderRadius: 10, marginBottom: 16, fontSize: "0.88rem" }}>{err}</div>}
+      <form onSubmit={handleChange} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", gap: 16 }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: "0.8rem", color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>New Password</label>
+            <input type="password" className="premium-input" value={newPwd} onChange={e => setNewPwd(e.target.value)} placeholder="Min 6 characters" required minLength={6} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: "0.8rem", color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>Confirm Password</label>
+            <input type="password" className="premium-input" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Repeat password" required />
+          </div>
+        </div>
+        <button type="submit" disabled={saving}
+          style={{ alignSelf: "flex-start", padding: "11px 28px", borderRadius: 10, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", border: "none", fontFamily: "Outfit,sans-serif", fontSize: "0.9rem", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
+          {saving ? "Updating..." : "🔒 Update Password"}
+        </button>
+      </form>
     </div>
   );
 }

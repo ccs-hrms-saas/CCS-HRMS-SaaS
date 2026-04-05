@@ -50,7 +50,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: profileError.message }, { status: 400 })
     }
 
+    // Step 3: Send welcome email (fire-and-forget — don't fail if email fails)
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://ccs-hrms.vercel.app'
+    fetch(`${appUrl}/api/send-welcome-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to_email: email, to_name: full_name, temp_password: password, designation }),
+    }).catch(() => {}) // Silent fail — don't block user creation
+
+    // Step 4: Create a welcome notification for the new employee
+    await supabaseAdmin.from('notifications').insert({
+      user_id: userId,
+      title: '👋 Welcome to CCS-HRMS!',
+      message: `Hi ${full_name.split(' ')[0]}, your account is set up. Complete your profile to get started.`,
+      link: '/dashboard/employee/profile',
+    })
+
     return NextResponse.json({ success: true, user_id: userId })
+
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

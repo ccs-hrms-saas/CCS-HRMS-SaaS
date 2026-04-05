@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import NotificationBell from "@/components/NotificationBell";
 import styles from "./Sidebar.module.css";
 
 const adminNav = [
@@ -49,11 +50,14 @@ export default function Sidebar() {
       {/* ═══ DESKTOP SIDEBAR ═══ */}
       <aside className={styles.sidebar}>
         <div className={styles.logo}>
-          <div className={styles.logoIcon}></div>
-          <div>
-            <div className={styles.logoName}>CCS-HRMS</div>
-            <div className={styles.logoSub}>{isAdmin ? "Admin Portal" : "Employee Portal"}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+            <div className={styles.logoIcon}></div>
+            <div>
+              <div className={styles.logoName}>CCS-HRMS</div>
+              <div className={styles.logoSub}>{isAdmin ? "Admin Portal" : "Employee Portal"}</div>
+            </div>
           </div>
+          <NotificationBell />
         </div>
 
         <nav className={styles.nav}>

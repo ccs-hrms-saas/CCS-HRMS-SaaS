@@ -54,8 +54,22 @@ export default function AdminLeaves() {
         }
     }
 
+    // 3. Notify the employee of the decision
+    const emoji = status === "approved" ? "✅" : "❌";
+    const empName = l.profiles?.full_name || "Employee";
+    fetch("/api/notify", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_ids: l.user_id,
+        title: `${emoji} Leave ${status === "approved" ? "Approved" : "Rejected"} — ${l.type}`,
+        message: `Your ${l.type} request (${new Date(l.start_date).toLocaleDateString("en-IN")}${l.start_date !== l.end_date ? " to " + new Date(l.end_date).toLocaleDateString("en-IN") : ""}) has been ${status}.`,
+        link: "/dashboard/employee/leaves"
+      })
+    }).catch(() => {});
+
     load();
   };
+
 
   const statusStyle = (s: string) =>
     s === "approved" ? styles.badgeSuccess : s === "rejected" ? styles.badgeDanger : styles.badgeWarning;
