@@ -138,6 +138,19 @@ export default function EmployeeLeaves() {
       })
     }).catch(() => {});
 
+    // 4. Notify direct manager (if their manager is not an admin — avoids double-notification)
+    if ((profile as any).manager_id) {
+      fetch("/api/notify", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_ids: `manager_of:${profile.id}`,
+          title: `📅 Team Leave Request — ${profile.full_name}`,
+          message: `${form.type} · ${leaveDays} day(s) · ${new Date(form.start_date).toLocaleDateString("en-IN")}${form.start_date !== form.end_date ? " to " + new Date(form.end_date).toLocaleDateString("en-IN") : ""}. Pending your approval.`,
+          link: "/dashboard/employee/team"
+        })
+      }).catch(() => {});
+    }
+
     setForm({ type: leaveTypes[0]?.name ?? "", start_date: "", end_date: "", reason: "" });
     setAttachedFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";

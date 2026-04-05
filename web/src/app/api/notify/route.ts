@@ -20,14 +20,24 @@ export async function POST(req: Request) {
     } else if (user_ids === 'all_admins') {
       const { data } = await admin.from('profiles').select('id').eq('is_active', true).in('role', ['admin', 'superadmin'])
       targets = (data ?? []).map((p: any) => p.id)
+    } else if (user_ids === 'all_superadmins') {
+      // Only super admins (for manager-level escalations)
+      const { data } = await admin.from('profiles').select('id').eq('is_active', true).eq('role', 'superadmin')
+      targets = (data ?? []).map((p: any) => p.id)
     } else if (user_ids === 'all_staff') {
       const { data } = await admin.from('profiles').select('id').eq('is_active', true)
       targets = (data ?? []).map((p: any) => p.id)
+    } else if (typeof user_ids === 'string' && user_ids.startsWith('manager_of:')) {
+      // Notify the direct manager of a specific employee
+      const empId = user_ids.replace('manager_of:', '')
+      const { data } = await admin.from('profiles').select('manager_id').eq('id', empId).single()
+      if (data?.manager_id) targets = [data.manager_id]
     } else if (Array.isArray(user_ids)) {
       targets = user_ids
     } else if (typeof user_ids === 'string') {
       targets = [user_ids]
     }
+
 
     if (targets.length === 0) return NextResponse.json({ ok: true, sent: 0 })
 

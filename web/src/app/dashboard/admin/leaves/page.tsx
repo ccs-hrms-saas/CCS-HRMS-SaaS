@@ -2,17 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
 import { getLeaveDaysCount, getCurrentFinancialYear } from "@/lib/dateUtils";
 import styles from "../../dashboard.module.css";
 
 export default function AdminLeaves() {
+  const { profile } = useAuth();
   const [leaves, setLeaves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     const { data } = await supabase
       .from("leave_requests")
-      .select("*, profiles!leave_requests_user_id_fkey(full_name)")
+      .select("*, profiles!leave_requests_user_id_fkey(full_name, manager_id)")
       .order("created_at", { ascending: false });
     setLeaves(data ?? []);
     setLoading(false);
@@ -66,6 +68,40 @@ export default function AdminLeaves() {
         link: "/dashboard/employee/leaves"
       })
     }).catch(() => {});
+
+    // 4. If a manager (non-superadmin) made the decision, escalate to super admin
+    if (profile?.role !== "superadmin") {
+      fetch("/api/notify", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_ids: "all_superadmins",
+          title: `📋 Leave ${status} by ${profile?.full_name ?? "Manager"}`,
+          message: `${empName}'s ${l.type} request was ${status} by ${profile?.full_name ?? "a manager"}.`,
+          link: "/dashboard/admin/leaves"
+        })
+      }).catch(() => {});
+    }
+
+    // 5. Check if the employee's manager is absent today (escalation alert)
+    const todayStr = new Date().toISOString().split("T")[0];
+    const managerId = l.profiles?.manager_id;
+    if (managerId && status === "approved") {
+      supabase.from("attendance_records").select("id", { count: "exact", head: true })
+        .eq("user_id", managerId).eq("date", todayStr)
+        .then(({ count }) => {
+          if ((count ?? 0) === 0) {
+            fetch("/api/notify", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                user_ids: "all_superadmins",
+                title: `⚠️ Manager Absent + Team Leave Approved`,
+                message: `${empName}'s leave was approved, but their reporting manager has not marked attendance today.`,
+                link: "/dashboard/admin/leaves"
+              })
+            }).catch(() => {});
+          }
+        });
+    }
 
     load();
   };
