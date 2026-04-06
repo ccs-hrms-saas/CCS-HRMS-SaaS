@@ -116,7 +116,7 @@ export default function AdminLeaves() {
     <div className="animate-fade-in">
       <div className={styles.pageHeader}>
         <h1>Leave Approvals</h1>
-        <p>Review and approve employee leave requests</p>
+        <p>Review and approve employee leave requests. You cannot approve or reject your own leave — it must be handled by another Admin or Super Admin.</p>
       </div>
 
       <div className={`glass-panel ${styles.tableWrap}`}>
@@ -144,7 +144,12 @@ export default function AdminLeaves() {
                 <td style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.reason ?? "—"}</td>
                 <td><span className={`${styles.statBadge} ${statusStyle(l.status)}`}>{l.status}</span></td>
                 <td>
-                  {l.status === "pending" ? (
+                  {/* Block self-approval — admin cannot approve/reject their own leave */}
+                  {l.user_id === profile?.id ? (
+                    <span title="You cannot approve your own leave request" style={{ fontSize: "0.78rem", color: "var(--text-secondary)", padding: "4px 10px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: "1px solid var(--glass-border)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      🔒 Self — pending SA
+                    </span>
+                  ) : l.status === "pending" ? (
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => updateStatus(l, "approved")} className={styles.primaryBtn} style={{ padding: "6px 12px", background: "var(--success)", borderColor: "var(--success)" }}>Approve</button>
                       <button onClick={() => updateStatus(l, "rejected")} className={styles.secondaryBtn} style={{ padding: "6px 12px", color: "var(--danger)" }}>Reject</button>
