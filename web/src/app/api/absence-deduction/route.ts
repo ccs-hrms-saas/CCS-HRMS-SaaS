@@ -134,7 +134,8 @@ export async function POST(req: Request) {
 
     let userIds: string[] = [];
     if (run_all) {
-      const { data } = await admin.from('profiles').select('id').eq('is_active', true).eq('role', 'employee');
+      const { data } = await admin.from('profiles').select('id').eq('is_active', true).not('role', 'eq', 'superadmin');
+
       userIds = (data ?? []).map((p: any) => p.id);
     } else if (user_id) {
       userIds = [user_id];

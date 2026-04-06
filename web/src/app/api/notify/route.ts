@@ -15,7 +15,8 @@ export async function POST(req: Request) {
     let targets: string[] = []
 
     if (user_ids === 'all_employees') {
-      const { data } = await admin.from('profiles').select('id').eq('is_active', true).in('role', ['employee'])
+      // all_employees = everyone who is staff (employees + admins), superadmin excluded
+      const { data } = await admin.from('profiles').select('id').eq('is_active', true).not('role', 'eq', 'superadmin')
       targets = (data ?? []).map((p: any) => p.id)
     } else if (user_ids === 'all_admins') {
       const { data } = await admin.from('profiles').select('id').eq('is_active', true).in('role', ['admin', 'superadmin'])
