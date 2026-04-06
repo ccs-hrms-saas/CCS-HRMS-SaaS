@@ -48,7 +48,7 @@ export default function AdminAttendance() {
     // Fetch all 3 data sources in parallel for the selected date
     const [attRes, lvApproved, lvPending] = await Promise.all([
       supabase.from("attendance_records")
-        .select("*, profiles(full_name, id)")
+        .select("id, user_id, date, check_in, check_out, photo_url, checkout_photo_url, profiles(full_name, id)")
         .eq("date", selectedDate),
       // Approved leaves covering this date
       supabase.from("leave_requests")
@@ -65,7 +65,11 @@ export default function AdminAttendance() {
     ]);
 
     const attMap: Record<string, any> = {};
-    (attRes.data ?? []).forEach(r => { attMap[r.user_id] = r; });
+    (attRes.data ?? []).forEach(r => {
+      attMap[r.user_id] = r;
+      // Debug: log photo fields to browser console
+      if (r.check_in) console.log(`[Attendance] ${r.user_id} photo_url:`, r.photo_url, "checkout:", r.checkout_photo_url);
+    });
 
     const approvedLeaveMap: Record<string, string> = {};
     (lvApproved.data ?? []).forEach((l: any) => { approvedLeaveMap[l.user_id] = l.type; });
