@@ -67,8 +67,6 @@ export default function AdminAttendance() {
     const attMap: Record<string, any> = {};
     (attRes.data ?? []).forEach(r => {
       attMap[r.user_id] = r;
-      // Debug: log photo fields to browser console
-      if (r.check_in) console.log(`[Attendance] ${r.user_id} photo_url:`, r.photo_url, "checkout:", r.checkout_photo_url);
     });
 
     const approvedLeaveMap: Record<string, string> = {};
