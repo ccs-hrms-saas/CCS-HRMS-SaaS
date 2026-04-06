@@ -107,10 +107,14 @@ export default function SAEmployeeProfilePage() {
       }
     });
 
-    // ── Determine month range ───────────────────────────────────────────
-    const startStr = empData.joining_date ??
+    // ── Determine month range ─────────────────────────────────────────────
+    // System go-live: April 1, 2026. Never show months before this.
+    const SYSTEM_START = "2026-04-01";
+    const rawStart = empData.joining_date ??
       (attnRecords.length > 0 ? attnRecords.reduce((min: string, r: any) => r.date < min ? r.date : min, attnRecords[0].date) : null);
-    if (!startStr) { setLoading(false); return; }
+    // Use whichever is later: employee joining date OR system start
+    const startStr = !rawStart || rawStart < SYSTEM_START ? SYSTEM_START : rawStart;
+
 
     const start = new Date(startStr);
     const today = new Date();
