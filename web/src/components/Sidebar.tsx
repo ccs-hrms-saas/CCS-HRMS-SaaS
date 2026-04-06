@@ -174,6 +174,15 @@ export default function Sidebar() {
               </div>
             </div>
           </div>
+          {/* My PIN — admins are employees and mark attendance via kiosk PIN */}
+          {showAdminNav && (
+            <Link href="/dashboard/employee/pin"
+              className={`${styles.navItem} ${pathname === "/dashboard/employee/pin" ? styles.active : ""}`}
+              style={{ margin: "6px 0 2px", borderRadius: 10, fontSize: "0.85rem" }}>
+              <span className={styles.navIcon}>🔐</span>
+              <span>My Attendance PIN</span>
+            </Link>
+          )}
           <button onClick={handleSignOut} className={styles.signOutBtn}>Sign Out</button>
         </div>
       </aside>
