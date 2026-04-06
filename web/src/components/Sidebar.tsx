@@ -174,14 +174,26 @@ export default function Sidebar() {
               </div>
             </div>
           </div>
-          {/* My PIN — admins are employees and mark attendance via kiosk PIN */}
+          {/* ── Personal Section — admins are employees too ── */}
           {showAdminNav && (
-            <Link href="/dashboard/employee/pin"
-              className={`${styles.navItem} ${pathname === "/dashboard/employee/pin" ? styles.active : ""}`}
-              style={{ margin: "6px 0 2px", borderRadius: 10, fontSize: "0.85rem" }}>
-              <span className={styles.navIcon}>🔐</span>
-              <span>My Attendance PIN</span>
-            </Link>
+            <div style={{ marginTop: 4, marginBottom: 2 }}>
+              <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 1.2, padding: "4px 12px 4px", opacity: 0.6 }}>
+                Personal
+              </div>
+              {[
+                { href: "/dashboard/employee/leaves",    icon: "📅", label: "My Leaves"        },
+                { href: "/dashboard/employee/payslips",  icon: "💸", label: "My Payslips"       },
+                { href: "/dashboard/employee/profile",   icon: "👤", label: "My Profile"        },
+                { href: "/dashboard/employee/pin",       icon: "🔐", label: "My Attendance PIN" },
+              ].map(item => (
+                <Link key={item.href} href={item.href}
+                  className={`${styles.navItem} ${pathname === item.href ? styles.active : ""}`}
+                  style={{ fontSize: "0.85rem", borderRadius: 10 }}>
+                  <span className={styles.navIcon}>{item.icon}</span>
+                  <span>{item.label}</span>
+                </Link>
+              ))}
+            </div>
           )}
           <button onClick={handleSignOut} className={styles.signOutBtn}>Sign Out</button>
         </div>
