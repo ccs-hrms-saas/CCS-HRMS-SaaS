@@ -18,7 +18,8 @@ export default function AdminPayroll() {
   const [successMsg, setSuccessMsg] = useState("");
 
   const loadRawData = async () => {
-    const { data } = await supabase.from("profiles").select("*").eq("role", "employee").eq("is_active", true);
+    const { data } = await supabase.from("profiles").select("*").eq("is_active", true).not("role", "eq", "superadmin");
+
     setEmployees(data ?? []);
   };
 

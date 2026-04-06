@@ -25,7 +25,8 @@ export default function ManualAttendance() {
   useEffect(() => {
     const load = async () => {
       const [empRes, ltRes] = await Promise.all([
-        supabase.from("profiles").select("id, full_name").eq("role", "employee").order("full_name"),
+        supabase.from("profiles").select("id, full_name, role").eq("is_active", true).not("role", "eq", "superadmin").order("full_name"),
+
         supabase.from("leave_types").select("name").order("name")
       ]);
       setEmployees(empRes.data ?? []);

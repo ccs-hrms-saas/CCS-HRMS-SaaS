@@ -13,7 +13,7 @@ export default function AdminDashboard() {
     const load = async () => {
       const today = new Date().toISOString().split("T")[0];
       const [employees, present, leaves, announcements, attendance] = await Promise.all([
-        supabase.from("profiles").select("id", { count: "exact" }).eq("role", "employee"),
+        supabase.from("profiles").select("id", { count: "exact" }).eq("is_active", true).not("role", "eq", "superadmin"),
         supabase.from("attendance_records").select("id", { count: "exact" }).eq("date", today),
         supabase.from("leave_requests").select("id", { count: "exact" }).eq("status", "pending"),
         supabase.from("announcements").select("id", { count: "exact" }),
@@ -44,7 +44,7 @@ export default function AdminDashboard() {
 
       <div className={styles.statsGrid}>
         {[
-          { icon: "👥", value: stats.totalEmployees, label: "Total Employees", badge: "Active", cls: "badgeInfo" },
+          { icon: "👥", value: stats.totalEmployees, label: "Active Staff", badge: "Active", cls: "badgeInfo" },
           { icon: "✅", value: stats.presentToday, label: "Present Today", badge: "Today", cls: "badgeSuccess" },
           { icon: "📅", value: stats.pendingLeaves, label: "Pending Leaves", badge: "Action Needed", cls: "badgeWarning" },
           { icon: "📢", value: stats.announcements, label: "Announcements", badge: "Total", cls: "badgeInfo" },
