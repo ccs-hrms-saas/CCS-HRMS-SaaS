@@ -10,6 +10,8 @@ export default function EmployeeProfile() {
   const { profile, refreshProfile } = useAuth();
   const [data, setData] = useState<any>(null);
   const [appraisals, setAppraisals] = useState<any[]>([]);
+  const [waivers, setWaivers]       = useState<any[]>([]);
+  const [adjustments, setAdjustments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
@@ -24,9 +26,14 @@ export default function EmployeeProfile() {
     if (!profile) return;
     const { data: pData } = await supabase.from("profiles").select("*, manager:profiles!manager_id(full_name)").eq("id", profile.id).single();
     setData(pData || {});
-    // Load appraisal letters
-    const { data: aData } = await supabase.from("employee_appraisals").select("*").eq("user_id", profile.id).order("appraisal_date", { ascending: false });
-    setAppraisals(aData ?? []);
+    const [aRes, wRes, adjRes] = await Promise.all([
+      supabase.from("employee_appraisals").select("*").eq("user_id", profile.id).order("appraisal_date", { ascending: false }),
+      supabase.from("deficit_waivers").select("*, waived_by_profile:profiles!waived_by(full_name)").eq("user_id", profile.id).order("created_at", { ascending: false }),
+      supabase.from("deficit_adjustments").select("*").eq("user_id", profile.id).order("adjustment_date", { ascending: false }),
+    ]);
+    setAppraisals(aRes.data ?? []);
+    setWaivers(wRes.data ?? []);
+    setAdjustments(adjRes.data ?? []);
     setLoading(false);
   };
 
@@ -177,6 +184,33 @@ export default function EmployeeProfile() {
                       style={{ color: "var(--accent-primary)", fontWeight: 600, textDecoration: "none", fontSize: "0.85rem", padding: "6px 14px", border: "1px solid rgba(99,102,241,0.4)", borderRadius: 8, background: "rgba(99,102,241,0.08)" }}>
                       📄 View
                     </a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* HR Actions & Benefits — Waivers granted by Super Admin */}
+          {(waivers.length > 0 || adjustments.length > 0) && (
+            <div className="glass-panel" style={{ padding: 24 }}>
+              <h3 style={{ marginBottom: 16, fontSize: "1.05rem", borderBottom: '1px solid var(--glass-border)', paddingBottom: 10 }}>⭐ HR Actions & Benefits</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {waivers.map((w: any) => {
+                  const [yr, mo] = w.month.split("-");
+                  const label = new Date(Number(yr), Number(mo)-1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+                  return (
+                    <div key={w.id} style={{ padding: "10px 14px", background: "rgba(124,58,237,0.06)", border: "1px solid rgba(124,58,237,0.2)", borderRadius: 10 }}>
+                      <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "#7c3aed" }}>⭐ Attendance Waiver — {label}</div>
+                      <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: 2 }}>{w.hours_waived}h waived · {w.reason}</div>
+                      <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 2 }}>Granted by {w.waived_by_profile?.full_name ?? "Super Admin"} · {new Date(w.created_at).toLocaleDateString("en-IN")}</div>
+                    </div>
+                  );
+                })}
+                {adjustments.map((a: any) => (
+                  <div key={a.id} style={{ padding: "10px 14px", background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 10 }}>
+                    <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "#10b981" }}>📋 Hours Adjustment</div>
+                    <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: 2 }}>{a.hours_cleared}h cleared via {a.adjusted_against}</div>
+                    <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 2 }}>{a.adjustment_date ? new Date(a.adjustment_date).toLocaleDateString("en-IN") : ""}</div>
                   </div>
                 ))}
               </div>

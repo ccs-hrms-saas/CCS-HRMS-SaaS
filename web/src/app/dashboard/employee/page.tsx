@@ -60,7 +60,7 @@ export default function EmployeeDashboard() {
       const currTo   = todayStr;
 
       // ── Fetch everything ────────────────────────────────────────────────────
-      const [attnAll, leavePending, leaveApprovedRes, announcementsData, holsRes, adjsRes] = await Promise.all([
+      const [attnAll, leavePending, leaveApprovedRes, announcementsData, holsRes, adjsRes, waiversRes] = await Promise.all([
         // Attendance: fetch both current and eval month
         supabase.from("attendance_records").select("*").eq("user_id", profile.id)
           .gte("date", evalFrom).lte("date", currTo),
@@ -75,6 +75,8 @@ export default function EmployeeDashboard() {
           .order("created_at", { ascending: false }).limit(5),
         supabase.from("company_holidays").select("date"),
         supabase.from("deficit_adjustments").select("hours_cleared, adjustment_date")
+          .eq("user_id", profile.id),
+        supabase.from("deficit_waivers").select("hours_waived, month")
           .eq("user_id", profile.id),
       ]);
 
@@ -127,7 +129,14 @@ export default function EmployeeDashboard() {
           pastAdj += Number(a.hours_cleared);
       });
 
-      const rawDeficit   = Math.max(0, evalTargetHours - evalClocked - pastAdj);
+      // SA waivers for the eval month
+      const evalMonthKey = `${evalYear}-${String(evalMonth + 1).padStart(2, "0")}`;
+      let pastWaivers = 0;
+      (waiversRes.data ?? []).forEach((w: any) => {
+        if (w.month === evalMonthKey) pastWaivers += Number(w.hours_waived);
+      });
+
+      const rawDeficit   = Math.max(0, evalTargetHours - evalClocked - pastAdj - pastWaivers);
       const finalDeficit = Math.round(rawDeficit * 10) / 10;
 
       // ── Determine alert level ────────────────────────────────────────────────

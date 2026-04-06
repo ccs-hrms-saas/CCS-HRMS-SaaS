@@ -345,6 +345,15 @@ export default function AdminUsers() {
           </button>
         </div>
       )}
+      {/* Super Admin only: View full employee profile */}
+      {!inactive && u.role !== "superadmin" && isSuperAdmin && (
+        <div style={{ marginBottom: 8 }}>
+          <a href={`/dashboard/admin/users/${u.id}`}
+            style={{ display: "block", textAlign: "center", padding: "6px 10px", borderRadius: 7, border: "1px solid rgba(124,58,237,0.35)", background: "rgba(124,58,237,0.08)", color: "#7c3aed", fontFamily: "Outfit,sans-serif", fontSize: "0.76rem", fontWeight: 600, textDecoration: "none" }}>
+            👤 View Full Profile & Attendance
+          </a>
+        </div>
+      )}
       {/* Super Admin card: show read-only info label instead of action buttons */}
       {!inactive && u.role === "superadmin" && (
         <div style={{ marginBottom: 12, padding: "6px 10px", borderRadius: 7, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)", fontSize: "0.75rem", color: "var(--text-secondary)", textAlign: "center" }}>
