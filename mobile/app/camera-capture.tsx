@@ -61,7 +61,12 @@ export default function CameraCapture() {
             .upload(fileName, byteArray, { contentType: 'image/jpeg', upsert: true });
 
           if (uploadError) {
-            console.warn('Photo upload failed:', uploadError.message);
+            console.error('Photo upload failed:', JSON.stringify(uploadError));
+            Alert.alert(
+              '📷 Photo Upload Failed',
+              `Your check-in will be recorded but without a selfie photo.\n\nReason: ${uploadError.message}`,
+              [{ text: 'Continue', style: 'default' }]
+            );
           } else if (uploadData) {
             const { data: urlData } = supabase.storage
               .from('attendance-photos')
