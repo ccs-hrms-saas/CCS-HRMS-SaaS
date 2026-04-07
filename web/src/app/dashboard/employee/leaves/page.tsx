@@ -146,7 +146,7 @@ export default function EmployeeLeaves() {
           user_ids: `manager_of:${profile.id}`,
           title: `📅 Team Leave Request — ${profile.full_name}`,
           message: `${form.type} · ${leaveDays} day(s) · ${new Date(form.start_date).toLocaleDateString("en-IN")}${form.start_date !== form.end_date ? " to " + new Date(form.end_date).toLocaleDateString("en-IN") : ""}. Pending your approval.`,
-          link: "/dashboard/employee/team"
+          link: "/dashboard/employee/team?pending=1"
         })
       }).catch(() => {});
     }

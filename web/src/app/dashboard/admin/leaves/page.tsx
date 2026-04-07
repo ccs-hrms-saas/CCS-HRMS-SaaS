@@ -14,7 +14,7 @@ export default function AdminLeaves() {
   const load = async () => {
     const { data } = await supabase
       .from("leave_requests")
-      .select("*, profiles!leave_requests_user_id_fkey(full_name, manager_id)")
+      .select("*, profiles!leave_requests_user_id_fkey(full_name, manager_id, manager:profiles!manager_id(full_name))")
       .order("created_at", { ascending: false });
     setLeaves(data ?? []);
     setLoading(false);
@@ -69,8 +69,22 @@ export default function AdminLeaves() {
       })
     }).catch(() => {});
 
-    // 4. If a manager (non-superadmin) made the decision, escalate to super admin
-    if (profile?.role !== "superadmin") {
+    // 4. If super admin made the decision, also notify the manager (for awareness)
+    if (profile?.role === "superadmin") {
+      const managerId = l.profiles?.manager_id;
+      if (managerId) {
+        fetch("/api/notify", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_ids: managerId,
+            title: `📋 FYI: Leave ${status} by Super Admin`,
+            message: `${empName}'s ${l.type} request was ${status} by Super Admin. No action needed from you.`,
+            link: "/dashboard/employee/team?pending=1"
+          })
+        }).catch(() => {});
+      }
+    } else {
+      // Non-superadmin made the decision — escalate to super admin
       fetch("/api/notify", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -124,6 +138,7 @@ export default function AdminLeaves() {
           <thead>
             <tr>
               <th>Employee</th>
+              <th>Reporting Manager</th>
               <th>Type</th>
               <th>From</th>
               <th>To</th>
@@ -134,10 +149,26 @@ export default function AdminLeaves() {
           </thead>
           <tbody>
             {leaves.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text-secondary)", padding: "32px" }}>No leave requests found.</td></tr>
-            ) : leaves.map((l) => (
+              <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--text-secondary)", padding: "32px" }}>No leave requests found.</td></tr>
+            ) : leaves.map((l) => {
+              const managerName = (l.profiles as any)?.manager?.full_name;
+              const hasManager = !!(l.profiles as any)?.manager_id;
+              return (
               <tr key={l.id}>
                 <td>{(l.profiles as any)?.full_name ?? "—"}</td>
+                <td>
+                  {hasManager ? (
+                    <span style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>{managerName ?? "Assigned"}</span>
+                  ) : (
+                    <span style={{
+                      fontSize: "0.75rem", fontWeight: 600, color: "#f59e0b",
+                      background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)",
+                      padding: "2px 8px", borderRadius: 6, whiteSpace: "nowrap"
+                    }} title="No reporting manager assigned — go to Users page to set one">
+                      ⚠️ No Manager Set
+                    </span>
+                  )}
+                </td>
                 <td>{l.type}</td>
                 <td>{l.start_date}</td>
                 <td>{l.end_date}</td>
@@ -161,7 +192,7 @@ export default function AdminLeaves() {
                   )}
                 </td>
               </tr>
-            ))}
+            )})}
           </tbody>
         </table>
       </div>

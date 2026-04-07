@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import styles from "../../dashboard.module.css";
@@ -29,9 +30,15 @@ const fmtTime = (d?: string) => d ? new Date(d).toLocaleTimeString("en-IN", { ho
 
 export default function MyTeamPage() {
   const { profile } = useAuth();
+  const searchParams = useSearchParams();
+  const isPendingDeepLink = searchParams.get("pending") === "1";
+  const pendingSectionRef = useRef<HTMLDivElement>(null);
+
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [leaveSaving, setLeaveSaving] = useState<string | null>(null);
+  // Standalone pending leaves — fetched independently so manager can always approve
+  const [standalonePending, setStandalonePending] = useState<any[]>([]);
 
   const today = new Date();
   const todayStr = isoDate(today);
@@ -40,8 +47,46 @@ export default function MyTeamPage() {
   const past11am = today.getHours() >= 11;
 
   useEffect(() => {
-    if (profile?.id) loadTeam();
+    if (profile?.id) {
+      loadTeam();
+      loadStandalonePending();
+    }
   }, [profile]);
+
+  // Auto-scroll to pending section when arriving from a notification
+  useEffect(() => {
+    if (isPendingDeepLink && !loading && pendingSectionRef.current) {
+      setTimeout(() => {
+        pendingSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 300);
+    }
+  }, [isPendingDeepLink, loading]);
+
+  // Fetch pending leaves independently of the reportees query
+  // This is the safety net: even if manager_id is mismatched in profiles table,
+  // we still look up all leave_requests where the profile's reportees have pending leaves.
+  const loadStandalonePending = async () => {
+    if (!profile?.id) return;
+    // Get IDs of everyone who reports to this manager
+    const { data: reps } = await supabase
+      .from("profiles")
+      .select("id, full_name, designation, avatar_url")
+      .eq("manager_id", profile.id)
+      .eq("is_active", true);
+
+    if (!reps || reps.length === 0) {
+      setStandalonePending([]);
+      return;
+    }
+    const repIds = reps.map(r => r.id);
+    const { data: pending } = await supabase
+      .from("leave_requests")
+      .select("*, profiles(full_name, designation)")
+      .in("user_id", repIds)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+    setStandalonePending(pending ?? []);
+  };
 
   const loadTeam = async () => {
     setLoading(true);
@@ -139,18 +184,23 @@ export default function MyTeamPage() {
     }).catch(() => {});
 
     // Notify super admin about manager decision
+    const empName =
+      team.find(m => m.id === empId)?.full_name ??
+      standalonePending.find((l: any) => l.user_id === empId)?.profiles?.full_name ??
+      "the employee";
     fetch("/api/notify", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         user_ids: "all_superadmins",
         title: `📋 Leave ${status} by ${profile?.full_name}`,
-        message: `${profile?.full_name} ${status} a leave request from ${team.find(m => m.id === empId)?.full_name}.`,
+        message: `${profile?.full_name} ${status} a leave request from ${empName}.`,
         link: "/dashboard/admin/leaves",
       }),
     }).catch(() => {});
 
     setLeaveSaving(null);
     loadTeam();
+    loadStandalonePending();
   };
 
   const statusBadge = (status: TeamMember["todayStatus"]) => {
@@ -167,7 +217,8 @@ export default function MyTeamPage() {
 
   if (loading) return <div className={styles.loadingScreen}><div className={styles.spinner} /></div>;
 
-  if (team.length === 0) {
+  // Even if team list is empty, check if there are standalone pending leaves
+  if (team.length === 0 && standalonePending.length === 0) {
     return (
       <div style={{ textAlign: "center", padding: "80px 0", color: "var(--text-secondary)" }}>
         <div style={{ fontSize: "3rem", marginBottom: 16 }}>👥</div>
@@ -177,7 +228,10 @@ export default function MyTeamPage() {
     );
   }
 
-  const pendingAll = team.flatMap(m => m.pendingLeaves);
+  // Merge team pending leaves with standalone (deduplicate by id)
+  const teamPendingIds = new Set(team.flatMap(m => m.pendingLeaves).map((l: any) => l.id));
+  const extraPending = standalonePending.filter(l => !teamPendingIds.has(l.id));
+  const pendingAll = [...team.flatMap(m => m.pendingLeaves), ...extraPending];
 
   return (
     <div className="animate-fade-in">
@@ -185,6 +239,22 @@ export default function MyTeamPage() {
         <h1>My Team</h1>
         <p>Real-time status and monthly summary for your {team.length} direct reportee{team.length > 1 ? "s" : ""}</p>
       </div>
+
+      {/* ── Deep-link notification banner ── */}
+      {isPendingDeepLink && (
+        <div style={{
+          background: "linear-gradient(135deg, rgba(245,158,11,0.15), rgba(251,191,36,0.08))",
+          border: "1px solid rgba(245,158,11,0.4)",
+          borderRadius: 12, padding: "14px 20px", marginBottom: 24,
+          display: "flex", alignItems: "center", gap: 12,
+        }}>
+          <span style={{ fontSize: "1.4rem" }}>📋</span>
+          <div>
+            <div style={{ fontWeight: 700, color: "#f59e0b", fontSize: "0.95rem" }}>Action Required — Pending Leave Approval</div>
+            <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)", marginTop: 2 }}>A team member has applied for leave and is awaiting your decision. Please review below.</div>
+          </div>
+        </div>
+      )}
 
       {/* ── Today's Status ── */}
       <h2 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 16, color: "var(--text-secondary)" }}>
@@ -252,36 +322,56 @@ export default function MyTeamPage() {
       </div>
 
       {/* ── Pending Leave Requests ── */}
-      {pendingAll.length > 0 && (
-        <>
-          <h2 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 16, color: "var(--text-secondary)" }}>
-            🗂️ Pending Leave Requests ({pendingAll.length})
-          </h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {pendingAll.map(l => (
-              <div key={l.id} className="glass-panel" style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                <div style={{ flex: 1, minWidth: 200 }}>
-                  <div style={{ fontWeight: 700 }}>{l.profiles?.full_name ?? "—"}</div>
-                  <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)", marginTop: 2 }}>
-                    {l.type} · {l.start_date}{l.start_date !== l.end_date ? ` → ${l.end_date}` : ""}
+      <div ref={pendingSectionRef}>
+        {pendingAll.length > 0 ? (
+          <>
+            <h2 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 16, color: "var(--text-secondary)", scrollMarginTop: 24 }}>
+              🗂️ Pending Leave Requests ({pendingAll.length})
+            </h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {pendingAll.map(l => (
+                <div key={l.id} className="glass-panel"
+                  style={{
+                    padding: "16px 20px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
+                    border: isPendingDeepLink ? "1px solid rgba(245,158,11,0.35)" : undefined,
+                  }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ fontWeight: 700 }}>{l.profiles?.full_name ?? "—"}</div>
+                    <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)", marginTop: 2 }}>
+                      {l.type} · {l.start_date}{l.start_date !== l.end_date ? ` → ${l.end_date}` : ""}
+                    </div>
+                    {l.reason && <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: 4, opacity: 0.7 }}>Reason: {l.reason}</div>}
+                    {l.is_violation && (
+                      <div style={{ fontSize: "0.72rem", color: "var(--danger)", marginTop: 4, fontWeight: 600 }}>⚠️ Policy violation flagged</div>
+                    )}
                   </div>
-                  {l.reason && <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: 4, opacity: 0.7 }}>Reason: {l.reason}</div>}
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={() => handleLeaveDecision(l.id, l.user_id, "approved")} disabled={leaveSaving === l.id}
+                      style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontWeight: 700, fontSize: "0.85rem" }}>
+                      {leaveSaving === l.id ? "Saving..." : "✅ Approve"}
+                    </button>
+                    <button onClick={() => handleLeaveDecision(l.id, l.user_id, "rejected")} disabled={leaveSaving === l.id}
+                      style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.08)", color: "var(--danger)", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontWeight: 600, fontSize: "0.85rem" }}>
+                      ❌ Reject
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={() => handleLeaveDecision(l.id, l.user_id, "approved")} disabled={leaveSaving === l.id}
-                    style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontWeight: 700, fontSize: "0.85rem" }}>
-                    {leaveSaving === l.id ? "..." : "✅ Approve"}
-                  </button>
-                  <button onClick={() => handleLeaveDecision(l.id, l.user_id, "rejected")} disabled={leaveSaving === l.id}
-                    style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.08)", color: "var(--danger)", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontWeight: 600, fontSize: "0.85rem" }}>
-                    ❌ Reject
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          </>
+        ) : isPendingDeepLink ? (
+          // Manager arrived from a notification but nothing is pending — show clear message
+          <div style={{
+            background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)",
+            borderRadius: 12, padding: "20px 24px", textAlign: "center",
+            color: "var(--text-secondary)", marginTop: 8,
+          }}>
+            <div style={{ fontSize: "2rem", marginBottom: 8 }}>✅</div>
+            <div style={{ fontWeight: 700, color: "var(--success)", marginBottom: 4 }}>All caught up!</div>
+            <div style={{ fontSize: "0.85rem" }}>No pending leave requests from your team right now. The request may have already been processed.</div>
           </div>
-        </>
-      )}
+        ) : null}
+      </div>
     </div>
   );
 }

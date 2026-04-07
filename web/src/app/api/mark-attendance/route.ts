@@ -18,9 +18,41 @@ function generatePIN(secret: string): string {
   return String(Math.abs(hash) % 10000).padStart(4, '0')
 }
 
+async function uploadPhotoServerSide(
+  user_id: string,
+  base64: string,
+  suffix: string
+): Promise<string | null> {
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    const fileName = `${user_id}/${today}_${suffix}_${Date.now()}.jpg`
+
+    // Decode base64 → Buffer
+    const buffer = Buffer.from(base64, 'base64')
+
+    const { data, error } = await supabaseAdmin.storage
+      .from('attendance-photos')
+      .upload(fileName, buffer, { contentType: 'image/jpeg', upsert: true })
+
+    if (error || !data) {
+      console.error('[upload] storage error:', error)
+      return null
+    }
+
+    const { data: urlData } = supabaseAdmin.storage
+      .from('attendance-photos')
+      .getPublicUrl(fileName)
+
+    return urlData.publicUrl ?? null
+  } catch (e) {
+    console.error('[upload] unexpected error:', e)
+    return null
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { user_id, pin, photo_url: incomingPhotoUrl } = await req.json()
+    const { user_id, pin, photo_base64 } = await req.json()
 
     if (!user_id || !pin) {
       return NextResponse.json({ error: 'Missing user_id or pin' }, { status: 400 })
@@ -64,8 +96,10 @@ export async function POST(req: NextRequest) {
       .eq('date', today)
       .single()
 
-    // 4. Use photo URL sent from mobile (photo was uploaded directly to Supabase Storage)
-    const photo_url: string | null = incomingPhotoUrl ?? null
+    // 4. Upload photo server-side using service role key (bypasses RLS)
+    const photo_url: string | null = photo_base64
+      ? await uploadPhotoServerSide(user_id, photo_base64, 'checkin')
+      : null
 
     // 5. Check in or Check out
     if (!existingRecord || !existingRecord.check_in) {
@@ -82,8 +116,10 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({ success: true, action: 'check_in', message: 'Checked In Successfully!' })
     } else if (!existingRecord.check_out) {
-      // Second tap = Check Out — use checkout photo URL from mobile
-      const checkout_photo_url: string | null = incomingPhotoUrl ?? null
+      // Second tap = Check Out — upload checkout photo server-side
+      const checkout_photo_url: string | null = photo_base64
+        ? await uploadPhotoServerSide(user_id, photo_base64, 'checkout')
+        : null
       await supabaseAdmin
         .from('attendance_records')
         .update({ check_out: new Date().toISOString(), checkout_photo_url })

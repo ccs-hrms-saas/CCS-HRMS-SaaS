@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { supabase } from '../lib/supabase';
 
 export default function CameraCapture() {
   const { user_id, name, pin } = useLocalSearchParams<{ user_id: string; name: string; pin: string }>();
@@ -37,51 +36,22 @@ export default function CameraCapture() {
     setProcessing(true);
 
     try {
-      let photo_url: string | null = null;
+      let photo_base64: string | null = null;
 
-      // 1. Take photo
+      // 1. Take photo (quality 0.25 keeps it well under Vercel's 4.5MB body limit)
       if (cameraRef.current) {
-        const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.4 });
-
+        const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.25 });
         if (photo?.base64) {
-          // 2. Upload directly to Supabase Storage (bypasses Vercel 1MB limit)
-          const today = new Date().toISOString().split('T')[0];
-          const fileName = `${user_id}/${today}_${Date.now()}.jpg`;
-
-          // Convert base64 to binary
-          const byteCharacters = atob(photo.base64);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('attendance-photos')
-            .upload(fileName, byteArray, { contentType: 'image/jpeg', upsert: true });
-
-          if (uploadError) {
-            console.error('Photo upload failed:', JSON.stringify(uploadError));
-            Alert.alert(
-              '📷 Photo Upload Failed',
-              `Your check-in will be recorded but without a selfie photo.\n\nReason: ${uploadError.message}`,
-              [{ text: 'Continue', style: 'default' }]
-            );
-          } else if (uploadData) {
-            const { data: urlData } = supabase.storage
-              .from('attendance-photos')
-              .getPublicUrl(fileName);
-            photo_url = urlData.publicUrl;
-          }
+          photo_base64 = photo.base64;
         }
       }
 
-      // 3. Call attendance API with just the URL (no heavy base64)
+      // 2. Send base64 to server — server uploads using service role key (bypasses Storage RLS)
       const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
       const res = await fetch(`${apiUrl}/api/mark-attendance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id, pin, photo_url }),
+        body: JSON.stringify({ user_id, pin, photo_base64 }),
       });
 
       const data = await res.json();
