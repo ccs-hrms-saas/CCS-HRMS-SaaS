@@ -27,7 +27,8 @@ export default function EmployeeSelect() {
     const { data } = await supabase
       .from('profiles')
       .select('id, full_name, role')
-      .eq('is_active', true)          // show ALL active users regardless of role
+      .eq('is_active', true)
+      .neq('role', 'superadmin')   // superadmin marks attendance separately
       .order('full_name');
     setEmployees(data ?? []);
     setFiltered(data ?? []);

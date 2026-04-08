@@ -10,27 +10,41 @@ type Tab = "attendance" | "leaves" | "employee" | "balances";
 type SortDir = "asc" | "desc";
 type Period = "today" | "week" | "month" | "quarter" | "year" | "custom";
 
-/* ── date helpers ── */
-const isoDate = (d: Date) => d.toISOString().split("T")[0];
+/* ── IST date helpers (UTC+5:30) ── */
+// All date calculations MUST use IST. new Date() in JS returns UTC on servers;
+// we shift by +5h30m so that "today" is always the Indian calendar date.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const nowIST = () => new Date(Date.now() + IST_OFFSET_MS);
+const isoDate = (d: Date) => d.toISOString().split("T")[0];  // safe because d is already IST-shifted
+const todayIST = () => { const d = nowIST(); d.setUTCHours(0, 0, 0, 0); return d; };
+
 const fmtDate = (s: string) => new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-const fmtTime = (d?: string) => d ? new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—";
+const fmtTime = (d?: string) => d ? new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }) : "—";
 const diffHrs = (ci?: string, co?: string) => ci && co ? (new Date(co).getTime() - new Date(ci).getTime()) / 3600000 : 0;
 
 function periodDates(p: Period): { from: string; to: string } {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const today = todayIST();
   const to = isoDate(today);
   if (p === "today") return { from: to, to };
   if (p === "week") {
-    const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    const mon = new Date(today);
+    mon.setUTCDate(today.getUTCDate() - ((today.getUTCDay() + 6) % 7));
     return { from: isoDate(mon), to };
   }
-  if (p === "month") return { from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to };
+  if (p === "month") {
+    const m1 = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+    return { from: isoDate(m1), to };
+  }
   if (p === "quarter") {
-    const qStart = new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1);
+    const qStart = new Date(Date.UTC(today.getUTCFullYear(), Math.floor(today.getUTCMonth() / 3) * 3, 1));
     return { from: isoDate(qStart), to };
   }
-  if (p === "year") return { from: isoDate(new Date(today.getFullYear(), 0, 1)), to };
-  return { from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to }; // default month
+  if (p === "year") {
+    return { from: `${today.getUTCFullYear()}-01-01`, to };
+  }
+  // default: month
+  const m1 = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  return { from: isoDate(m1), to };
 }
 
 function countWorkingDays(from: string, to: string): number {
@@ -58,10 +72,10 @@ export default function AdminReports() {
   const [selected, setSelected] = useState<Set<string>>(new Set(["all"]));
   const [showEmpPicker, setShowEmpPicker] = useState(false);
   const [period, setPeriod] = useState<Period>("month");
-  const [fromDate, setFromDate] = useState(() => isoDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
-  const [toDate, setToDate] = useState(() => isoDate(new Date()));
+  const [fromDate, setFromDate] = useState(() => { const t = todayIST(); return `${t.getUTCFullYear()}-${String(t.getUTCMonth()+1).padStart(2,'0')}-01`; });
+  const [toDate, setToDate] = useState(() => isoDate(todayIST()));
   const [statusFilter, setStatusFilter] = useState("all");
-  const [currentFY, setCurrentFY] = useState(() => new Date().getMonth() < 3 ? new Date().getFullYear() - 1 : new Date().getFullYear());
+  const [currentFY, setCurrentFY] = useState(() => { const t = todayIST(); return t.getUTCMonth() < 3 ? t.getUTCFullYear() - 1 : t.getUTCFullYear(); });
   const [rawRecords, setRawRecords] = useState<any[]>([]);
   const [leaveRecords, setLeaveRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
