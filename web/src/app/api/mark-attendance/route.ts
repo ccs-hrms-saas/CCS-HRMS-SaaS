@@ -27,12 +27,19 @@ async function uploadPhotoServerSide(
     const today = new Date().toISOString().split('T')[0]
     const fileName = `${user_id}/${today}_${suffix}_${Date.now()}.jpg`
 
-    // Decode base64 → Buffer
-    const buffer = Buffer.from(base64, 'base64')
+    // Strip data URI prefix if present (e.g. "data:image/jpeg;base64,")
+    const clean = base64.includes(',') ? base64.split(',')[1] : base64
+
+    // Decode base64 → Uint8Array → Blob
+    // Supabase Storage JS v2 requires a Blob/File for correct binary uploads.
+    // Using Buffer directly can cause the client to serialise metadata bytes
+    // instead of raw image data, producing a corrupt file.
+    const bytes = Uint8Array.from(atob(clean), c => c.charCodeAt(0))
+    const blob  = new Blob([bytes], { type: 'image/jpeg' })
 
     const { data, error } = await supabaseAdmin.storage
       .from('attendance-photos')
-      .upload(fileName, buffer, { contentType: 'image/jpeg', upsert: true })
+      .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true })
 
     if (error || !data) {
       console.error('[upload] storage error:', error)
