@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { AppSettingsProvider } from "@/context/AppSettingsContext";
 
 export const metadata: Metadata = {
   title: "CCS-HRMS",
@@ -12,7 +13,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <AppSettingsProvider>
+            {children}
+          </AppSettingsProvider>
+        </AuthProvider>
       </body>
     </html>
   );
