@@ -35,7 +35,13 @@
 .logoName { font-size: 1rem; font-weight: 700; color: white; }
 .logoSub  { font-size: 0.72rem; color: var(--text-secondary); }
 
-.nav  { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.nav  {
+  display: flex; flex-direction: column; gap: 4px; flex: 1;
+  overflow-y: auto; overflow-x: hidden;
+  /* Hide scrollbar visually but keep it functional */
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.nav::-webkit-scrollbar { display: none; }
 
 .navItem {
   display: flex; align-items: center; gap: 12px;
@@ -48,7 +54,10 @@
   background: linear-gradient(90deg,rgba(99,102,241,0.2),rgba(236,72,153,0.1));
   color: white; border: 1px solid rgba(99,102,241,0.3);
 }
-.navIcon { font-size: 1.1rem; width: 24px; text-align: center; }
+.navIcon {
+  width: 24px; height: 24px; min-width: 24px;
+  display: flex; align-items: center; justify-content: center;
+}
 
 .userSection {
   border-top: 1px solid var(--glass-border);

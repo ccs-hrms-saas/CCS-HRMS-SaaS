@@ -126,7 +126,7 @@ export default function Sidebar() {
   }, [pathname]);
 
   const adminNavFull = isSuperAdmin
-    ? [...adminNav, adminApprovalsItem, adminPermissionsItem, settingsItem]
+    ? [...adminNav, adminApprovalsItem, adminPermissionsItem]
     : adminNav;
   const empNavFull = hasTeam ? [...employeeNav, myTeamItem] : employeeNav;
   const nav        = showAdminNav ? adminNavFull : empNavFull;
@@ -272,6 +272,28 @@ export default function Sidebar() {
             ))
           )}
         </nav>
+
+        {/* ── Pinned Settings link (superadmin only) ────────────────────── */}
+        {isSuperAdmin && !isDemo && (
+          <Link href="/dashboard/superadmin/settings"
+            style={{
+              display: "flex", alignItems: "center", gap: 12,
+              padding: "10px 16px", borderRadius: 12, margin: "0 0 4px",
+              textDecoration: "none",
+              background: pathname === "/dashboard/superadmin/settings"
+                ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.04)",
+              color: pathname === "/dashboard/superadmin/settings"
+                ? "var(--accent-primary)" : "var(--text-secondary)",
+              border: pathname === "/dashboard/superadmin/settings"
+                ? "1px solid rgba(99,102,241,0.3)" : "1px solid rgba(255,255,255,0.07)",
+              fontSize: "0.9rem", fontWeight: 600, transition: "all 0.2s",
+            }}>
+            <span className={styles.navIcon}>
+              <NavIcon name={settings.nav_icons["Settings"] ?? "Settings"} />
+            </span>
+            <span style={{ flex: 1 }}>Settings</span>
+          </Link>
+        )}
 
         <div className={styles.userSection}>
           <div className={styles.userInfo}>
