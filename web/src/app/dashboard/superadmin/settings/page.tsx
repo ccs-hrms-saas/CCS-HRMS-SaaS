@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useAppSettings, THEMES, ThemeKey, FontFamily, FontSize } from "@/context/AppSettingsContext";
-import styles from "../../../dashboard.module.css";
+import styles from "@/app/dashboard/dashboard.module.css";
 import * as Icons from "lucide-react";
 
 // ── Lucide icon catalogue available in the picker ─────────────────────────────
