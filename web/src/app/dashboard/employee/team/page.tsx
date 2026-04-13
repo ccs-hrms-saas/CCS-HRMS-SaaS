@@ -78,14 +78,25 @@ export default function MyTeamPage() {
       setStandalonePending([]);
       return;
     }
+    // Build a name lookup from the already-fetched profiles — avoids a JOIN on leave_requests
+    // (the JOIN can be silently blocked by Supabase RLS on the profiles table)
+    const repMap: Record<string, { full_name: string; designation: string | null }> = {};
+    reps.forEach(r => { repMap[r.id] = { full_name: r.full_name, designation: r.designation }; });
+
     const repIds = reps.map(r => r.id);
     const { data: pending } = await supabase
       .from("leave_requests")
-      .select("*, profiles(full_name, designation)")
+      .select("*")
       .in("user_id", repIds)
       .eq("status", "pending")
       .order("created_at", { ascending: false });
-    setStandalonePending(pending ?? []);
+
+    // Inject profile data from our local map
+    const enriched = (pending ?? []).map(l => ({
+      ...l,
+      profiles: repMap[l.user_id] ?? { full_name: "Unknown", designation: null },
+    }));
+    setStandalonePending(enriched);
   };
 
   const loadTeam = async () => {
@@ -108,8 +119,13 @@ export default function MyTeamPage() {
       supabase.from("attendance_records").select("*").in("user_id", ids).eq("date", todayStr),
       supabase.from("attendance_records").select("user_id, check_in, check_out").in("user_id", ids).gte("date", monthStart).lte("date", todayStr),
       supabase.from("leave_requests").select("user_id").in("user_id", ids).eq("status", "approved").lte("start_date", todayStr).gte("end_date", todayStr),
-      supabase.from("leave_requests").select("*, profiles(full_name)").in("user_id", ids).eq("status", "pending").order("created_at", { ascending: false }),
+      // Plain select — no profiles JOIN to avoid RLS silent filter; names come from reportees map below
+      supabase.from("leave_requests").select("*").in("user_id", ids).eq("status", "pending").order("created_at", { ascending: false }),
     ]);
+
+    // Build reportees name map for enriching pending leaves
+    const reporteeMap: Record<string, string> = {};
+    reportees.forEach(r => { reporteeMap[r.id] = r.full_name; });
 
     const todayAttMap: Record<string, any> = {};
     (todayAtt.data ?? []).forEach(r => { todayAttMap[r.user_id] = r; });
@@ -127,7 +143,10 @@ export default function MyTeamPage() {
       else if (att?.check_out) todayStatus = "checked_out";
       else if (att?.check_in) todayStatus = "checked_in";
 
-      const empPending = (pendingLeaves.data ?? []).filter(l => l.user_id === r.id);
+      const empPending = (pendingLeaves.data ?? []).filter(l => l.user_id === r.id).map(l => ({
+        ...l,
+        profiles: { full_name: reporteeMap[l.user_id] ?? r.full_name },
+      }));
 
       return {
         ...r,
