@@ -96,6 +96,7 @@ export default function Sidebar() {
   const [showProfile, setShowProfile]   = useState(false);
   const [hasTeam, setHasTeam]           = useState(false);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
+  const [pendingTeamLeaves, setPendingTeamLeaves]       = useState(0);
 
   const isOnPersonalPage = personalNav.some(p => pathname.startsWith(p.href));
   const [personalOpen, setPersonalOpen] = useState(isOnPersonalPage);
@@ -112,7 +113,26 @@ export default function Sidebar() {
     if (profile?.id && !realIsAdmin) {
       supabase.from("profiles").select("id", { count: "exact", head: true })
         .eq("manager_id", profile.id).eq("is_active", true)
-        .then(({ count }) => setHasTeam((count ?? 0) > 0));
+        .then(async ({ count }) => {
+          const hasReportees = (count ?? 0) > 0;
+          setHasTeam(hasReportees);
+          if (hasReportees) {
+            // Fetch reportee IDs then count pending leaves
+            const { data: reps } = await supabase
+              .from("profiles")
+              .select("id")
+              .eq("manager_id", profile.id)
+              .eq("is_active", true);
+            if (reps && reps.length > 0) {
+              const { count: leaveCnt } = await supabase
+                .from("leave_requests")
+                .select("id", { count: "exact", head: true })
+                .in("user_id", reps.map(r => r.id))
+                .eq("status", "pending");
+              setPendingTeamLeaves(leaveCnt ?? 0);
+            }
+          }
+        });
     }
     if (isSuperAdmin) {
       supabase.from("pending_approvals").select("id", { count: "exact", head: true })
@@ -268,6 +288,11 @@ export default function Sidebar() {
                 className={`${styles.navItem} ${pathname === item.href ? styles.active : ""}`}>
                 <span className={styles.navIcon}><NavIcon name={iconKey(item.label)} /></span>
                 <span style={{ flex: 1 }}>{item.label}</span>
+                {item.href === "/dashboard/employee/team" && pendingTeamLeaves > 0 && (
+                  <span style={{ background: "#ef4444", color: "#fff", borderRadius: "50%", width: 20, height: 20, fontSize: "0.7rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {pendingTeamLeaves}
+                  </span>
+                )}
               </Link>
             ))
           )}

@@ -23,6 +23,7 @@ export default function EmployeeDashboard() {
   const { profile } = useAuth();
   const [stats, setStats]         = useState({ presentDays: 0, totalHours: 0, targetHours: 0, approvedLeaves: 0, pendingLeaves: 0 });
   const [deficit, setDeficit]     = useState<DeficitState>({ deficit: 0, evalMonthLabel: "", daysLeft: 0, alertLevel: "none", isSalaryPeriod: false });
+  const [pendingTeamLeaves, setPendingTeamLeaves] = useState(0);
   const [showAdjustment, setShowAdjustment] = useState(false);
   const [adjustType, setAdjustType]         = useState("LWP");
   const [adjusting, setAdjusting]           = useState(false);
@@ -192,6 +193,24 @@ export default function EmployeeDashboard() {
 
       setAttendance((attnAll.data ?? []).filter(r => r.date >= currFrom).slice(-7).reverse());
       setAnnouncements(announcementsData.data ?? []);
+
+      // ── Manager check: pending team leave requests ───────────────────────
+      const { data: reportees } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("manager_id", profile.id)
+        .eq("is_active", true);
+      if (reportees && reportees.length > 0) {
+        const { count: teamPendingCount } = await supabase
+          .from("leave_requests")
+          .select("id", { count: "exact", head: true })
+          .in("user_id", reportees.map(r => r.id))
+          .eq("status", "pending");
+        setPendingTeamLeaves(teamPendingCount ?? 0);
+      } else {
+        setPendingTeamLeaves(0);
+      }
+
       setLoading(false);
     };
     load();
@@ -221,6 +240,30 @@ export default function EmployeeDashboard() {
         <h1>Welcome, {profile?.full_name?.split(" ")[0]} 👋</h1>
         <p>{todayLabel}</p>
       </div>
+
+      {/* ── Manager: Pending Team Leave Alert ──────────────────────────────── */}
+      {pendingTeamLeaves > 0 && (
+        <a href="/dashboard/employee/team?pending=1" style={{ textDecoration: "none", display: "block", marginBottom: 24 }}>
+          <div style={{
+            background: "linear-gradient(135deg, rgba(245,158,11,0.15), rgba(251,191,36,0.08))",
+            border: "1px solid rgba(245,158,11,0.45)",
+            borderRadius: 12, padding: "14px 20px",
+            display: "flex", alignItems: "center", gap: 14, cursor: "pointer",
+            transition: "border-color 0.2s",
+          }}>
+            <span style={{ fontSize: "1.5rem", flexShrink: 0 }}>📋</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, color: "#f59e0b", fontSize: "0.95rem" }}>
+                Action Required — {pendingTeamLeaves} Pending Leave Approval{pendingTeamLeaves > 1 ? "s" : ""}
+              </div>
+              <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)", marginTop: 2 }}>
+                Team member{pendingTeamLeaves > 1 ? "s have" : " has"} applied for leave and {pendingTeamLeaves > 1 ? "are" : "is"} awaiting your decision. Click to review.
+              </div>
+            </div>
+            <span style={{ color: "#f59e0b", fontSize: "1.1rem", flexShrink: 0 }}>→</span>
+          </div>
+        </a>
+      )}
 
       {/* ── Deficit Alerts ─────────────────────────────────────────────────── */}
       {deficit.alertLevel === "red" && (

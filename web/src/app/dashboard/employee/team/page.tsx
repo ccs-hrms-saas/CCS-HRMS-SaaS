@@ -240,8 +240,8 @@ export default function MyTeamPage() {
         <p>Real-time status and monthly summary for your {team.length} direct reportee{team.length > 1 ? "s" : ""}</p>
       </div>
 
-      {/* ── Deep-link notification banner ── */}
-      {isPendingDeepLink && (
+      {/* ── Pending action banner — always show when there are pending leaves ── */}
+      {pendingAll.length > 0 && (
         <div style={{
           background: "linear-gradient(135deg, rgba(245,158,11,0.15), rgba(251,191,36,0.08))",
           border: "1px solid rgba(245,158,11,0.4)",
@@ -359,8 +359,8 @@ export default function MyTeamPage() {
               ))}
             </div>
           </>
-        ) : isPendingDeepLink ? (
-          // Manager arrived from a notification but nothing is pending — show clear message
+        ) : (
+          // No pending leaves — show clear message always
           <div style={{
             background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)",
             borderRadius: 12, padding: "20px 24px", textAlign: "center",
@@ -368,9 +368,9 @@ export default function MyTeamPage() {
           }}>
             <div style={{ fontSize: "2rem", marginBottom: 8 }}>✅</div>
             <div style={{ fontWeight: 700, color: "var(--success)", marginBottom: 4 }}>All caught up!</div>
-            <div style={{ fontSize: "0.85rem" }}>No pending leave requests from your team right now. The request may have already been processed.</div>
+            <div style={{ fontSize: "0.85rem" }}>No pending leave requests from your team right now.</div>
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   );

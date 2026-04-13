@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 
@@ -17,6 +18,7 @@ function timeAgo(dateStr: string) {
 
 export default function NotificationBell() {
   const { profile } = useAuth();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [mounted, setMounted] = useState(false);
@@ -91,7 +93,7 @@ export default function NotificationBell() {
       setNotifications((prev) => prev.map((x) => x.id === n.id ? { ...x, is_read: true } : x));
     }
     setOpen(false);
-    if (n.link) window.location.href = n.link;
+    if (n.link) router.push(n.link);
   };
 
   return (
