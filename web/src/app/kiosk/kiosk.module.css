@@ -1,12 +1,12 @@
 /* ── Kiosk App — Fullscreen Tablet UI ───────────────────────────────────── */
 
-* {
+:global(*) {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
   user-select: none;
 }
 
-body {
+:global(body) {
   margin: 0;
   background: #060810;
   font-family: 'Outfit', -apple-system, sans-serif;

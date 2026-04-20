@@ -1,4 +1,4 @@
-import styles from "./error-pages.module.css";
+import styles from "../error-pages.module.css";
 
 export default function NotFoundPage() {
   return (
