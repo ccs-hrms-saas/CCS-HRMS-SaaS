@@ -68,7 +68,7 @@ export default function SAEmployeeProfilePage() {
     setLoading(true);
     const { isWorkingDay } = await import("@/lib/dateUtils");
 
-    const [empRes, appraisalRes, waiversRes, adjRes, attnRes, leavesRes, holsRes] = await Promise.all([
+    const [empRes, appraisalRes, waiversRes, adjRes, attnRes, leavesRes, holsRes, leaveTypesRes] = await Promise.all([
       supabase.from("profiles").select("*, manager:profiles!manager_id(full_name)").eq("id", id).single(),
       supabase.from("employee_appraisals").select("*").eq("user_id", id).order("appraisal_date", { ascending: false }),
       supabase.from("deficit_waivers").select("*, waived_by_profile:profiles!waived_by(full_name)").eq("user_id", id).order("created_at", { ascending: false }),
@@ -76,6 +76,7 @@ export default function SAEmployeeProfilePage() {
       supabase.from("attendance_records").select("date,check_in,check_out").eq("user_id", id),
       supabase.from("leave_requests").select("start_date,end_date,type,status").eq("user_id", id).eq("status", "approved"),
       supabase.from("company_holidays").select("date"),
+      supabase.from("leave_types").select("*"),
     ]);
 
     const empData = empRes.data ?? {};
@@ -161,6 +162,22 @@ export default function SAEmployeeProfilePage() {
         if (r.check_in && r.check_out)
           clocked += (new Date(r.check_out).getTime() - new Date(r.check_in).getTime()) / 3600000;
       });
+
+      // Menstruation Leave Penalty applies directly against actual clocked hours
+      let mlPenalty = 0;
+      const leaveTypes = leaveTypesRes?.data ?? [];
+      for (let d = new Date(mFrom); d <= new Date(clockCutoff); d.setDate(d.getDate() + 1)) {
+        const ds = d.toISOString().split("T")[0];
+        if (isWorkingDay(d, hols) && leaveDateType.has(ds)) {
+          const lt = leaveDateType.get(ds)!;
+          if (lt === "Menstruation Leave") {
+            const ltData = leaveTypes.find((x: any) => x.name === lt);
+            mlPenalty += Number(ltData?.deduction_hours || 0);
+          }
+        }
+      }
+      clocked -= mlPenalty;
+
       clocked = Math.round(clocked * 10) / 10;
 
       // ── Adjustments for this month ───────────────────────────────────

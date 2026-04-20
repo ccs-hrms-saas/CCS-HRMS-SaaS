@@ -2,9 +2,11 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
 import * as XLSX from "xlsx";
 import styles from "../../dashboard.module.css";
 import { getLeaveDaysCount, isWorkingDay } from "@/lib/dateUtils";
+
 
 type Tab = "attendance" | "leaves" | "employee" | "balances";
 type SortDir = "asc" | "desc";
@@ -66,6 +68,7 @@ function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string; sor
 }
 
 export default function AdminReports() {
+  const { profile } = useAuth();
   const [tab, setTab] = useState<Tab>("attendance");
   const [employees, setEmployees] = useState<any[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
@@ -85,12 +88,19 @@ export default function AdminReports() {
   const [expandedEmp, setExpandedEmp] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name")
+    const companyId = profile?.company_id;
+    if (!companyId) return;
+    supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("company_id", companyId)
+      .is("system_role", null)
+      .eq("is_active", true)
+      .order("full_name")
       .then(({ data }) => setEmployees(data ?? []));
     supabase.from("leave_types").select("*").then(({ data }) => setLeaveTypes(data ?? []));
 
     // ── Auto absence deduction: silently run for the previous completed month ──
-    // Fires every time admin opens Reports. The API is idempotent — skips if already done.
     const now = new Date();
     const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const prevFrom = prevMonthDate.toISOString().split("T")[0];
@@ -99,8 +109,8 @@ export default function AdminReports() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ run_all: true, from: prevFrom, to: prevTo }),
-    }).catch(() => {}); // silent — no UI feedback needed
-  }, []);
+    }).catch(() => {});
+  }, [profile]);
 
   /* ── Employee selection ── */
   const allSelected = selected.has("all");
@@ -210,11 +220,21 @@ export default function AdminReports() {
         return s + getLeaveDaysCount(l.start_date, l.end_date, t?.count_holidays ?? false);
       }, 0);
 
+      // Menstruation leave applies a penalty to actual hours logged (as specified in leave settings)
+      let mlPenalty = 0;
+      empLeaves.forEach(l => {
+        const t = leaveTypes.find(x => x.name === l.type);
+        if (t?.name === "Menstruation Leave") {
+          mlPenalty += getLeaveDaysCount(l.start_date, l.end_date, t.count_holidays) * Number(t.deduction_hours || 0);
+        }
+      });
+
+      const finalTotalHrs = totalHrs - mlPenalty;
       const adjustedTarget = Math.max(0, workingDaysInRange - leaveDaysTaken) * 8.5;
-      const deficit = totalHrs - adjustedTarget;
+      const deficit = finalTotalHrs - adjustedTarget;
       const monthTarget = workingDaysInFullMonth * 8.5;
 
-      return { id, name, daysPresent, totalHrs, avgHrs, attendance, lateArrivals, overtimeDays, overtimeHrs, leaveDaysTaken, workingDaysInRange, workingDaysInFullMonth, monthTarget, deficit, rows };
+      return { id, name, daysPresent, totalHrs: finalTotalHrs, avgHrs, attendance, lateArrivals, overtimeDays, overtimeHrs, leaveDaysTaken, workingDaysInRange, workingDaysInFullMonth, monthTarget, deficit, rows };
     });
   }, [rawRecords, leaveRecords, tab, workingDaysInRange, workingDaysInFullMonth, selectedIds, employees]);
 
@@ -669,11 +689,20 @@ export default function AdminReports() {
             });
 
             return Object.entries(empMap).map(([id, { name, atRows, lvRows }]) => {
-              const totalHrs = atRows.reduce((s, r) => s + diffHrs(r.check_in, r.check_out), 0);
+              const totalHrsWithoutPenalty = atRows.reduce((s, r) => s + diffHrs(r.check_in, r.check_out), 0);
+              
+              let mlPenalty = 0;
               const lvDeduction = lvRows.reduce((s, l) => {
                 const t = leaveTypes.find(x => x.name === l.type);
-                return s + getLeaveDaysCount(l.start_date, l.end_date, t?.count_holidays ?? false) * (t ? Number(t.deduction_hours) : 8.5);
+                const count = getLeaveDaysCount(l.start_date, l.end_date, t?.count_holidays ?? false);
+                if (t?.name === "Menstruation Leave") {
+                  mlPenalty += count * Number(t.deduction_hours || 0);
+                  return s + count * 8.5; // ML waives full 8.5h target
+                }
+                return s + count * (t ? Number(t.deduction_hours) : 8.5);
               }, 0);
+              
+              const totalHrs = totalHrsWithoutPenalty - mlPenalty;
               const target = Math.max(0, workingDaysInRange * 8.5 - lvDeduction);
               const deficit = totalHrs - target;
 

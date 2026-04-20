@@ -50,6 +50,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: profileError.message }, { status: 400 })
     }
 
+    // Step 2.5: Seed default leave balances for current financial year
+    const fy = new Date().getMonth() < 3 ? new Date().getFullYear() - 1 : new Date().getFullYear()
+    const { data: types } = await supabaseAdmin.from('leave_types').select('*').eq('is_paid', true)
+    
+    if (types && types.length > 0) {
+      const balancesToInsert = types
+        .filter((t: any) => !(t.name === 'Menstruation Leave' && gender !== 'Female'))
+        .map((t: any) => ({
+          user_id: userId,
+          leave_type_id: t.id,
+          financial_year: fy,
+          accrued: t.name === 'Earned Leave (EL)' ? 0 : (t.max_days_per_year || 0),
+          used: 0
+        }))
+      await supabaseAdmin.from('leave_balances').insert(balancesToInsert)
+    }
+
     // Step 3: Send welcome email (fire-and-forget — don't fail if email fails)
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://ccs-hrms.vercel.app'
     fetch(`${appUrl}/api/send-welcome-email`, {

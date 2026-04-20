@@ -1,0 +1,499 @@
+/* ── Kiosk App — Fullscreen Tablet UI ───────────────────────────────────── */
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+body {
+  margin: 0;
+  background: #060810;
+  font-family: 'Outfit', -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+/* ── Root layout ─────────────────────────────────────────────────────────── */
+.kiosk {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #060810;
+  overflow: hidden;
+}
+
+/* ── Setup screen ─────────────────────────────────────────────────────────── */
+.setupScreen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.setupCard {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 28px;
+  padding: 48px 56px;
+  width: 100%;
+  max-width: 520px;
+  text-align: center;
+}
+
+.setupLogo {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #6366f1;
+  letter-spacing: -1px;
+  margin-bottom: 6px;
+}
+
+.setupTagline {
+  font-size: 0.9rem;
+  color: #475569;
+  margin-bottom: 36px;
+}
+
+.setupTitle {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 28px;
+}
+
+.setupField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+  text-align: left;
+}
+
+.setupLabel {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: 0.3px;
+}
+
+.setupInput {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  padding: 16px 18px;
+  font-size: 1.1rem;
+  color: #fff;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+  text-align: center;
+  letter-spacing: 0.1em;
+}
+
+.setupInput:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.setupInput::placeholder { color: #334155; }
+
+.setupBtn {
+  width: 100%;
+  padding: 16px;
+  border-radius: 14px;
+  border: none;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  margin-top: 8px;
+  box-shadow: 0 6px 24px rgba(99,102,241,0.4);
+  transition: all 0.2s;
+}
+
+.setupBtn:hover { filter: brightness(1.1); }
+.setupBtn:disabled { opacity: 0.5; cursor: default; }
+
+.setupErr {
+  color: #f87171;
+  font-size: 0.88rem;
+  margin-top: 14px;
+  font-weight: 500;
+}
+
+/* ── Main kiosk UI header ─────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 32px;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  flex-shrink: 0;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.companyLogo {
+  height: 46px;
+  max-width: 180px;
+  object-fit: contain;
+}
+
+.companyName {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.4px;
+}
+
+.headerTime {
+  text-align: right;
+}
+
+.clockTime {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -1px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.clockDate {
+  font-size: 0.85rem;
+  color: #475569;
+  margin-top: 3px;
+}
+
+/* ── Main body ───────────────────────────────────────────────────────────── */
+.body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  gap: 0;
+  overflow: hidden;
+}
+
+/* ── Employee search panel ───────────────────────────────────────────────── */
+.searchPanel {
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-right: 1px solid rgba(255,255,255,0.05);
+  overflow: hidden;
+}
+
+.searchWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #475569;
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 100%;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 16px 18px 16px 50px;
+  font-size: 1.1rem;
+  color: #fff;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: #6366f1;
+  background: rgba(99,102,241,0.04);
+}
+
+.searchInput::placeholder { color: #334155; }
+
+.employeeGrid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  align-content: start;
+  padding-right: 4px;
+}
+
+.employeeGrid::-webkit-scrollbar { width: 4px; }
+.employeeGrid::-webkit-scrollbar-track { background: transparent; }
+.employeeGrid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+
+.employeeCard {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  padding: 18px 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.employeeCard:hover {
+  background: rgba(99,102,241,0.1);
+  border-color: rgba(99,102,241,0.3);
+  transform: translateY(-2px);
+}
+
+.employeeCard.selected {
+  background: rgba(99,102,241,0.15);
+  border-color: rgba(99,102,241,0.5);
+}
+
+.employeeAvatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+}
+
+.employeeAvatarInitials {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #1e1b4b, #312e81);
+  border: 1px solid rgba(99,102,241,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #a5b4fc;
+}
+
+.employeeName {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.employeeRole {
+  font-size: 0.72rem;
+  color: #475569;
+  text-transform: capitalize;
+}
+
+/* ── Action panel ─────────────────────────────────────────────────────────── */
+.actionPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 32px;
+  gap: 24px;
+  background: rgba(0,0,0,0.2);
+}
+
+.actionPrompt {
+  text-align: center;
+  color: #334155;
+}
+
+.actionPromptIcon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+  opacity: 0.4;
+}
+
+.actionPromptText {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+/* Selected employee */
+.selectedProfile {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.selectedAvatarLarge {
+  width: 90px;
+  height: 90px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, #1e1b4b, #312e81);
+  border: 2px solid rgba(99,102,241,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: #a5b4fc;
+}
+
+.selectedName {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.selectedRole {
+  font-size: 0.88rem;
+  color: #475569;
+  text-transform: capitalize;
+}
+
+/* Clock in/out buttons */
+.punchBtns {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.punchInBtn {
+  width: 100%;
+  padding: 20px;
+  border-radius: 16px;
+  border: none;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  font-size: 1.15rem;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 6px 24px rgba(16,185,129,0.35);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  letter-spacing: -0.2px;
+}
+
+.punchInBtn:hover  { filter: brightness(1.08); transform: translateY(-2px); }
+.punchInBtn:active { transform: translateY(0); }
+
+.punchOutBtn {
+  width: 100%;
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(239,68,68,0.3);
+  background: rgba(239,68,68,0.08);
+  color: #f87171;
+  font-size: 1.15rem;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  letter-spacing: -0.2px;
+}
+
+.punchOutBtn:hover { background: rgba(239,68,68,0.16); }
+
+.cancelBtn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: transparent;
+  color: #475569;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.cancelBtn:hover { color: #94a3b8; }
+
+/* ── Success animation overlay ────────────────────────────────────────────── */
+.successOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6,8,16,0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  z-index: 100;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.successIcon {
+  font-size: 5rem;
+  animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+
+@keyframes popIn {
+  from { transform: scale(0.5); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+.successName {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.successAction {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.successTime {
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+/* Loading */
+.loadingScreen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+  color: #334155;
+  font-size: 1rem;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(99,102,241,0.15);
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }

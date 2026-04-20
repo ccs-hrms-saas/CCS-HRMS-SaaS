@@ -1,0 +1,373 @@
+/* ── Mobile & Kiosk Tab Styles ─────────────────────────────────────────────── */
+
+/* ── Two-column grid layout ──────────────────────────────────────────────── */
+.mobileGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .mobileGrid { grid-template-columns: 1fr; }
+}
+
+/* ── Section card ────────────────────────────────────────────────────────── */
+.sectionCard {
+  background: #0c0e17;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.sectionHead {
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sectionHeadIcon {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: rgba(99,102,241,0.12);
+  border: 1px solid rgba(99,102,241,0.2);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.sectionTitle {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin: 0 0 2px 0;
+}
+
+.sectionSub {
+  font-size: 0.75rem;
+  color: #475569;
+}
+
+/* ── Module status row ───────────────────────────────────────────────────── */
+.moduleStatusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  background: rgba(0,0,0,0.15);
+}
+
+.moduleStatusLabel {
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+/* Toggle switch */
+.switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switchSlider {
+  position: absolute; cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  transition: .3s; border-radius: 24px;
+}
+.switchSlider::before {
+  position: absolute; content: "";
+  height: 16px; width: 16px;
+  left: 3px; bottom: 3px;
+  background: #64748b; transition: .3s; border-radius: 50%;
+}
+.switch input:checked + .switchSlider { background: rgba(99,102,241,0.3); border-color: rgba(99,102,241,0.5); }
+.switch input:checked + .switchSlider::before { transform: translateX(20px); background: #6366f1; }
+
+/* ── Pairing code section ────────────────────────────────────────────────── */
+.pinSection {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.pinLabel {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #475569;
+  margin-bottom: 10px;
+}
+
+.pinDisplay {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pinCode {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.5rem;
+  color: #a5b4fc;
+  font-family: 'Courier New', monospace;
+  background: rgba(99,102,241,0.08);
+  border: 1px solid rgba(99,102,241,0.2);
+  padding: 10px 20px;
+  border-radius: 12px;
+  min-width: 160px;
+  text-align: center;
+}
+
+.pinCodeMasked {
+  color: #334155;
+  letter-spacing: 0.4rem;
+}
+
+.pinHint {
+  font-size: 0.78rem;
+  color: #475569;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.pinBtnRow {
+  display: flex;
+  gap: 8px;
+}
+
+.generateBtn {
+  padding: 9px 16px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+  display: flex; align-items: center; gap: 6px;
+}
+.generateBtn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.generateBtn:disabled { opacity: 0.6; cursor: default; transform: none; }
+
+.revealBtn {
+  padding: 9px 16px;
+  border-radius: 9px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: transparent;
+  color: #64748b;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.revealBtn:hover { color: #e2e8f0; background: rgba(255,255,255,0.05); }
+
+/* ── Device slots meter ──────────────────────────────────────────────────── */
+.slotsMeter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.slotsLabel {
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.slotsCount {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.slotsFull { color: #f87171; }
+
+.slotsBar {
+  height: 4px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 4px;
+  margin: 0 20px 16px;
+  overflow: hidden;
+}
+
+.slotsBarFill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  transition: width 0.5s ease;
+}
+
+.slotsBarFull .slotsBarFill { background: linear-gradient(90deg, #f59e0b, #ef4444); }
+
+/* ── Device list ─────────────────────────────────────────────────────────── */
+.deviceItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.2s;
+}
+.deviceItem:last-child { border-bottom: none; }
+.deviceItem:hover { background: rgba(255,255,255,0.01); }
+
+.deviceIcon {
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.onlineDot {
+  position: absolute;
+  top: -3px; right: -3px;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 2px solid #0c0e17;
+}
+.dotOnline  { background: #10b981; box-shadow: 0 0 6px #10b981; }
+.dotOffline { background: #334155; }
+
+.deviceInfo { flex: 1; min-width: 0; }
+.deviceName {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-bottom: 3px;
+}
+.deviceMeta {
+  font-size: 0.75rem;
+  color: #475569;
+}
+
+.revokeBtn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(239,68,68,0.25);
+  background: transparent;
+  color: #f87171;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.revokeBtn:hover { background: rgba(239,68,68,0.1); }
+
+.revokedTag {
+  font-size: 0.72rem;
+  color: #334155;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.noDevices {
+  padding: 36px 20px;
+  text-align: center;
+  color: #334155;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+/* ── Employee App feature cards ──────────────────────────────────────────── */
+.featureGrid {
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.featureCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: border-color 0.2s;
+}
+
+.featureCard.enabled {
+  border-color: rgba(99,102,241,0.2);
+  background: rgba(99,102,241,0.04);
+}
+
+.featureCardIcon {
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+.featureCard.enabled .featureCardIcon {
+  background: rgba(99,102,241,0.12);
+  border-color: rgba(99,102,241,0.3);
+}
+
+.featureText { flex: 1; }
+.featureName {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+.featureDesc {
+  font-size: 0.76rem;
+  color: #475569;
+  margin-top: 2px;
+}
+
+/* ── Save button ─────────────────────────────────────────────────────────── */
+.saveRow {
+  padding: 16px 20px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.saveBtn {
+  width: 100%;
+  padding: 11px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.saveBtn:hover:not(:disabled) { filter: brightness(1.1); }
+.saveBtn:disabled { opacity: 0.6; cursor: default; }
+
+/* ── Success toast ───────────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 28px; right: 28px;
+  background: #0f172a;
+  border: 1px solid rgba(16,185,129,0.3);
+  color: #34d399;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  z-index: 9999;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  animation: slideUp 0.3s ease-out;
+  display: flex; align-items: center; gap: 8px;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

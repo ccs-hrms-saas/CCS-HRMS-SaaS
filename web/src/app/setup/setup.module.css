@@ -1,0 +1,427 @@
+/* ── Setup Wizard ─────────────────────────────────────────────────────────── */
+
+.root {
+  min-height: 100vh;
+  background: #060810;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px 80px;
+  font-family: 'Outfit', -apple-system, sans-serif;
+}
+
+/* ── Brand header ─────────────────────────────────────────────────────────── */
+.brand {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: #6366f1;
+  letter-spacing: -0.5px;
+  margin-bottom: 48px;
+}
+
+/* ── Progress stepper ─────────────────────────────────────────────────────── */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 48px;
+  width: 100%;
+  max-width: 680px;
+}
+
+.stepItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  position: relative;
+}
+
+/* Line connector */
+.stepItem:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: calc(50% + 18px);
+  width: calc(100% - 36px);
+  height: 2px;
+  background: rgba(255,255,255,0.06);
+  transition: background 0.4s;
+}
+
+.stepItem.done:not(:last-child)::after {
+  background: linear-gradient(90deg, #6366f1, rgba(99,102,241,0.3));
+}
+
+.stepDot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.03);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 8px;
+  transition: all 0.3s;
+  z-index: 1;
+}
+
+.stepItem.active .stepDot {
+  border-color: #6366f1;
+  background: rgba(99,102,241,0.15);
+  color: #a5b4fc;
+  box-shadow: 0 0 12px rgba(99,102,241,0.3);
+}
+
+.stepItem.done .stepDot {
+  border-color: #10b981;
+  background: rgba(16,185,129,0.15);
+  color: #34d399;
+}
+
+.stepLabel {
+  font-size: 0.7rem;
+  color: #334155;
+  font-weight: 600;
+  text-align: center;
+  transition: color 0.3s;
+}
+
+.stepItem.active .stepLabel { color: #a5b4fc; }
+.stepItem.done  .stepLabel { color: #10b981; }
+
+/* ── Wizard card ─────────────────────────────────────────────────────────── */
+.card {
+  background: #0c0e17;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 24px;
+  width: 100%;
+  max-width: 680px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  animation: slideIn 0.35s cubic-bezier(0.16,1,0.3,1);
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.cardHead {
+  padding: 32px 36px 0;
+}
+
+.stepNumber {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #6366f1;
+  margin-bottom: 6px;
+}
+
+.stepTitle {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.5px;
+}
+
+.stepDesc {
+  font-size: 0.9rem;
+  color: #475569;
+  margin: 0 0 28px 0;
+  line-height: 1.5;
+}
+
+.cardDivider {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  margin: 0;
+}
+
+.cardBody {
+  padding: 28px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ── Nav footer ──────────────────────────────────────────────────────────── */
+.cardFoot {
+  padding: 20px 36px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.skipBtn {
+  background: transparent;
+  border: none;
+  color: #334155;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+  transition: color 0.2s;
+}
+.skipBtn:hover { color: #64748b; }
+
+.nextBtn {
+  padding: 13px 32px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 4px 14px rgba(99,102,241,0.4);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nextBtn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.nextBtn:disabled { opacity: 0.5; cursor: default; transform: none; }
+
+.backBtn {
+  padding: 13px 22px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: transparent;
+  color: #64748b;
+  font-weight: 600;
+  font-size: 0.92rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.backBtn:hover { color: #e2e8f0; }
+
+/* ── Form elements ───────────────────────────────────────────────────────── */
+.formRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.input, .select {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 13px 16px;
+  color: #fff;
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  width: 100%;
+  box-sizing: border-box;
+}
+.input:focus, .select:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+}
+.input::placeholder { color: #334155; }
+
+/* Day checkboxes */
+.dayGrid {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dayChip {
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.dayChip.selected {
+  background: rgba(99,102,241,0.15);
+  border-color: rgba(99,102,241,0.4);
+  color: #a5b4fc;
+}
+
+/* Department list */
+.deptList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.deptRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.addBtn {
+  background: transparent;
+  border: 1px dashed rgba(255,255,255,0.15);
+  border-radius: 12px;
+  padding: 12px;
+  color: #475569;
+  font-size: 0.88rem;
+  cursor: pointer;
+  font-family: inherit;
+  width: 100%;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.addBtn:hover { border-color: rgba(99,102,241,0.4); color: #a5b4fc; background: rgba(99,102,241,0.04); }
+
+.removeBtn {
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(239,68,68,0.15);
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.removeBtn:hover { color: #f87171; background: rgba(239,68,68,0.08); }
+
+/* Leave type rows */
+.leaveRow {
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.leaveName {
+  font-weight: 700;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  flex: 1;
+}
+
+.leaveInput {
+  width: 72px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 9px 10px;
+  color: #fff;
+  font-size: 0.9rem;
+  font-family: inherit;
+  text-align: center;
+}
+
+/* ── Completion screen ───────────────────────────────────────────────────── */
+.completionCard {
+  text-align: center;
+  padding: 20px 0 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.checkIcon {
+  font-size: 4rem;
+  margin-bottom: 6px;
+  animation: popIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+
+@keyframes popIn {
+  from { transform: scale(0.4); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+.completionTitle {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.5px;
+}
+
+.completionSub {
+  font-size: 1rem;
+  color: #475569;
+  margin-bottom: 28px;
+}
+
+.completionGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+  max-width: 480px;
+  margin-top: 8px;
+}
+
+.completionStat {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  padding: 16px;
+  text-align: center;
+}
+
+.completionStatValue {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #6366f1;
+}
+
+.completionStatLabel {
+  font-size: 0.78rem;
+  color: #475569;
+  margin-top: 4px;
+}
+
+.goDashBtn {
+  margin-top: 28px;
+  padding: 16px 48px;
+  border-radius: 14px;
+  border: none;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-weight: 800;
+  font-size: 1.05rem;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 6px 24px rgba(99,102,241,0.4);
+  transition: all 0.2s;
+  letter-spacing: -0.2px;
+}
+.goDashBtn:hover { filter: brightness(1.1); transform: translateY(-2px); }
+.goDashBtn:disabled { opacity: 0.6; cursor: default; transform: none; }

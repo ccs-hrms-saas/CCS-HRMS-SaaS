@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useViewMode } from "@/context/ViewModeContext";
 import { useAppSettings } from "@/context/AppSettingsContext";
+import { useModules } from "@/context/ModulesContext";
 import { supabase } from "@/lib/supabase";
 import NotificationBell from "@/components/NotificationBell";
 import styles from "./Sidebar.module.css";
@@ -46,50 +47,53 @@ const DEFAULT_ICONS: Record<string, string> = {
   "Policies":          "BookOpen",
 };
 
-// ── Nav definitions ──────────────────────────────────────────────────────────
-const adminNav = [
-  { href: "/dashboard/admin",                   label: "Dashboard"       },
-  { href: "/dashboard/admin/users",             label: "Users"           },
-  { href: "/dashboard/admin/organogram",        label: "Organogram"      },
-  { href: "/dashboard/admin/attendance",        label: "Attendance"      },
-  { href: "/dashboard/admin/leaves",            label: "Leave Approvals" },
-  { href: "/dashboard/admin/announcements",     label: "Announcements"   },
-  { href: "/dashboard/admin/policies",          label: "HR Policies"     },
-  { href: "/dashboard/admin/manual-attendance", label: "Overrides"       },
-  { href: "/dashboard/admin/leave-settings",    label: "Leave Settings"  },
-  { href: "/dashboard/admin/holidays",          label: "Holidays"        },
-  { href: "/dashboard/admin/payroll",           label: "Payroll"         },
-  { href: "/dashboard/admin/reports",           label: "Reports"         },
+// ── Nav definitions with module keys ────────────────────────────────────────
+// moduleKey maps each nav item to its entry in company_modules.
+// If null, the item is always visible (core nav — can never be disabled).
+const adminNav: { href: string; label: string; moduleKey: string | null }[] = [
+  { href: "/dashboard/admin",                   label: "Dashboard",      moduleKey: "kpi_dashboard"    },
+  { href: "/dashboard/admin/users",             label: "Users",          moduleKey: "staff_management" },
+  { href: "/dashboard/admin/organogram",        label: "Organogram",     moduleKey: "organogram"       },
+  { href: "/dashboard/admin/attendance",        label: "Attendance",     moduleKey: "attendance"       },
+  { href: "/dashboard/admin/leaves",            label: "Leave Approvals",moduleKey: "leave_management" },
+  { href: "/dashboard/admin/announcements",     label: "Announcements",  moduleKey: "announcements"    },
+  { href: "/dashboard/admin/policies",          label: "HR Policies",    moduleKey: "hr_policies"      },
+  { href: "/dashboard/admin/manual-attendance", label: "Overrides",      moduleKey: "overrides"        },
+  { href: "/dashboard/admin/leave-settings",    label: "Leave Settings", moduleKey: "leave_settings"   },
+  { href: "/dashboard/admin/holidays",          label: "Holidays",       moduleKey: "holidays"         },
+  { href: "/dashboard/admin/payroll",           label: "Payroll",        moduleKey: "payroll"          },
+  { href: "/dashboard/admin/reports",           label: "Reports",        moduleKey: "reports"          },
 ];
 
-const adminPermissionsItem = { href: "/dashboard/admin/permissions",        label: "Permissions" };
-const adminApprovalsItem   = { href: "/dashboard/admin/approvals",          label: "Approvals"   };
-const settingsItem         = { href: "/dashboard/superadmin/settings",      label: "Settings"    };
+const adminPermissionsItem = { href: "/dashboard/admin/permissions", label: "Permissions", moduleKey: "permissions" };
+const adminApprovalsItem   = { href: "/dashboard/admin/approvals",   label: "Approvals",   moduleKey: "approvals"   };
+const settingsItem         = { href: "/dashboard/superadmin/settings",label: "Settings",    moduleKey: null          };
 
 const personalNav = [
-  { href: "/dashboard/employee/leaves",    label: "My Leaves"        },
-  { href: "/dashboard/employee/payslips",  label: "My Payslips"      },
-  { href: "/dashboard/employee/profile",   label: "My Profile"       },
-  { href: "/dashboard/employee/pin",       label: "My Attendance PIN"},
+  { href: "/dashboard/employee/leaves",    label: "My Leaves"         },
+  { href: "/dashboard/employee/payslips",  label: "My Payslips"       },
+  { href: "/dashboard/employee/profile",   label: "My Profile"        },
+  { href: "/dashboard/employee/pin",       label: "My Attendance PIN" },
 ];
 
-const employeeNav = [
-  { href: "/dashboard/employee",            label: "Dashboard"  },
-  { href: "/dashboard/employee/attendance", label: "Attendance" },
-  { href: "/dashboard/employee/leaves",     label: "Leaves"     },
-  { href: "/dashboard/employee/profile",    label: "My Profile" },
-  { href: "/dashboard/employee/payslips",   label: "My Payslips"},
-  { href: "/dashboard/employee/policies",   label: "Policies"   },
-  { href: "/dashboard/employee/pin",        label: "My PIN"     },
+const employeeNav: { href: string; label: string; moduleKey: string | null }[] = [
+  { href: "/dashboard/employee",            label: "Dashboard",   moduleKey: "kpi_dashboard"    },
+  { href: "/dashboard/employee/attendance", label: "Attendance",  moduleKey: "attendance"       },
+  { href: "/dashboard/employee/leaves",     label: "Leaves",      moduleKey: "leave_management" },
+  { href: "/dashboard/employee/profile",    label: "My Profile",  moduleKey: null               },
+  { href: "/dashboard/employee/payslips",   label: "My Payslips", moduleKey: "payroll"          },
+  { href: "/dashboard/employee/policies",   label: "Policies",    moduleKey: "hr_policies"      },
+  { href: "/dashboard/employee/pin",        label: "My PIN",      moduleKey: null               },
 ];
 
-const myTeamItem = { href: "/dashboard/employee/team", label: "My Team" };
+const myTeamItem = { href: "/dashboard/employee/team", label: "My Team", moduleKey: null };
 
 // ═════════════════════════════════════════════════════════════════════════════
 export default function Sidebar() {
   const { profile, signOut }         = useAuth();
   const { demoView, toggleDemoView } = useViewMode();
   const { settings }                 = useAppSettings();
+  const { isEnabled }                = useModules();
   const pathname                     = usePathname();
   const router                       = useRouter();
 
@@ -145,10 +149,16 @@ export default function Sidebar() {
     if (isOnPersonalPage) setPersonalOpen(true);
   }, [pathname]);
 
-  const adminNavFull = isSuperAdmin
-    ? [...adminNav, adminApprovalsItem, adminPermissionsItem]
-    : adminNav;
-  const empNavFull = hasTeam ? [...employeeNav, myTeamItem] : employeeNav;
+  // Filter nav items through module config
+  const filterNav = (items: { href: string; label: string; moduleKey?: string | null }[]) =>
+    items.filter(item => !item.moduleKey || isEnabled(item.moduleKey));
+
+  const adminNavFull = filterNav(
+    isSuperAdmin
+      ? [...adminNav, adminApprovalsItem, adminPermissionsItem]
+      : adminNav
+  );
+  const empNavFull = filterNav(hasTeam ? [...employeeNav, myTeamItem] : employeeNav);
   const nav        = showAdminNav ? adminNavFull : empNavFull;
 
   const handleSignOut = async () => { await signOut(); router.push("/login"); };

@@ -5,3 +5,12 @@ node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Signing keystore — never commit to git
+ccshrms-keystore.jks
+*.jks
+*.keystore
+
+# Built APKs
+*.apk
+web/android/

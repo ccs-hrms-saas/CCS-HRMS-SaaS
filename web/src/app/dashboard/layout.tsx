@@ -2,10 +2,13 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import styles from "./dashboard.module.css";
 import { ViewModeProvider, useViewMode } from "@/context/ViewModeContext";
+import { ModulesProvider } from "@/context/ModulesContext";
+
+import { supabase } from "@/lib/supabase";
 
 // ── Inner layout reads the demo context ──────────────────────────────────────
 function DashboardInner({ children }: { children: React.ReactNode }) {
@@ -51,9 +54,39 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const setupChecked = useRef(false); // ← prevents repeated checks on re-renders
 
   useEffect(() => {
-    if (!loading && !user) router.push("/login");
+    if (!loading && !user) { router.push("/login"); return; }
+    if (!loading && user && !setupChecked.current) {
+      setupChecked.current = true;
+
+      // Skip if wizard just completed (sessionStorage flag set by /setup page)
+      if (sessionStorage.getItem("setup_just_completed") === "1") {
+        sessionStorage.removeItem("setup_just_completed");
+        return;
+      }
+
+      supabase.from("profiles")
+        .select("role, company_id")
+        .eq("id", user.id)
+        .single()
+        .then(({ data: profile }) => {
+          if (profile?.role === "superadmin" && profile.company_id) {
+            supabase.from("companies")
+              .select("setup_completed")
+              .eq("id", profile.company_id)
+              .single()
+              .then(({ data: co }) => {
+                // Only redirect if column exists AND is explicitly false
+                if (co && co.setup_completed === false) {
+                  router.push("/setup");
+                }
+                // null / undefined / true → stay on dashboard
+              });
+          }
+        });
+    }
   }, [user, loading, router]);
 
   if (loading) return (
@@ -65,8 +98,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user) return null;
 
   return (
-    <ViewModeProvider>
-      <DashboardInner>{children}</DashboardInner>
-    </ViewModeProvider>
+    <ModulesProvider>
+      <ViewModeProvider>
+        <DashboardInner>{children}</DashboardInner>
+      </ViewModeProvider>
+    </ModulesProvider>
   );
 }

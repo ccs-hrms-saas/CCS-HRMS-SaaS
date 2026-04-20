@@ -20,9 +20,24 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) { setError(error.message); }
-    else { router.push("/dashboard"); }
+    const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({ email, password });
+    if (authErr) {
+      setError(authErr.message);
+      setLoading(false);
+      return;
+    }
+    // Route based on role
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("system_role, role")
+      .eq("id", authData.user.id)
+      .single();
+    const sysRole = profile?.system_role;
+    if (sysRole === "platform_owner" || sysRole === "platform_admin") {
+      router.push("/developer");
+    } else {
+      router.push("/dashboard");
+    }
     setLoading(false);
   };
 

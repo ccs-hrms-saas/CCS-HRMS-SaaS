@@ -148,56 +148,59 @@ const Ctx = createContext<AppSettingsCtx>({
   updateSettings: async () => {},
 });
 
-export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
+export function AppSettingsProvider({ children, tenantHost }: { children: React.ReactNode; tenantHost?: string }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading]   = useState(true);
 
   useEffect(() => {
-    supabase.from("app_settings").select("*").limit(1).single()
+    // No tenantHost = platform host (developer layer). Use defaults.
+    if (!tenantHost) {
+      setLoading(false);
+      return;
+    }
+
+    // Middleware has already verified the tenant is active and real.
+    // This context only needs to load the tenant's branding preferences.
+    const subdomain = tenantHost.split(':')[0].split('.')[0]; // strip port
+
+    supabase.from('companies')
+      .select('branding')
+      .or(`domain.eq.${tenantHost},subdomain.eq.${subdomain}`)
+      .limit(1)
+      .maybeSingle()
       .then(({ data }) => {
-        if (data) {
+        if (data?.branding) {
+          const b = data.branding as any;
           const s: AppSettings = {
-            id:          data.id,
-            logo_url:    data.logo_url,
-            theme:       (data.theme as ThemeKey) || "dark_indigo",
-            font_family: (data.font_family as FontFamily) || "Outfit",
-            font_size:   (data.font_size as FontSize) || "md",
-            nav_icons:   (data.nav_icons as Record<string, string>) || {},
+            id:          b.id,
+            logo_url:    b.logo_url,
+            theme:       (b.theme       as ThemeKey)              ?? 'dark_indigo',
+            font_family: (b.font_family as FontFamily)            ?? 'Outfit',
+            font_size:   (b.font_size   as FontSize)              ?? 'md',
+            nav_icons:   (b.nav_icons   as Record<string, string>) ?? {},
           };
           setSettings(s);
           applySettings(s);
         }
         setLoading(false);
       });
-  }, []);
+  }, [tenantHost]);
 
   const updateSettings = useCallback(async (partial: Partial<AppSettings>) => {
     const merged = { ...settings, ...partial };
     setSettings(merged);
     applySettings(merged);
 
-    // Persist to Supabase (update the single row)
-    const { id, ...rest } = merged;
-    if (id) {
-      await supabase.from("app_settings").update({
-        logo_url:    rest.logo_url,
-        theme:       rest.theme,
-        font_family: rest.font_family,
-        font_size:   rest.font_size,
-        nav_icons:   rest.nav_icons,
-        updated_at:  new Date().toISOString(),
-      }).eq("id", id);
-    } else {
-      const { data } = await supabase.from("app_settings").insert({
-        logo_url:    rest.logo_url,
-        theme:       rest.theme,
-        font_family: rest.font_family,
-        font_size:   rest.font_size,
-        nav_icons:   rest.nav_icons,
-      }).select().single();
-      if (data) setSettings(s => ({ ...s, id: data.id }));
-    }
-  }, [settings]);
+    if (!tenantHost) return;
+
+    const subdomain = tenantHost.split('.')[0];
+    
+    // For Multi-Tenant, we push the settings into the companies.branding JSONB column
+    await supabase.from("companies")
+      .update({ branding: merged })
+      .or(`domain.eq.${tenantHost},subdomain.eq.${subdomain}`);
+      
+  }, [settings, tenantHost]);
 
   return (
     <Ctx.Provider value={{ settings, loading, updateSettings }}>

@@ -85,7 +85,7 @@ export default function ManualAttendance() {
            status: "approved"
        });
 
-       if (!lvErr && leaveType !== "Menstruation Leave" && leaveType !== "Leave Without Pay (LWP)") {
+       if (!lvErr && leaveType !== "Leave Without Pay (LWP)") {
            const { data: hRes } = await supabase.from("company_holidays").select("date");
            const hols = new Set<string>();
            (hRes ?? []).forEach(h => hols.add(h.date));

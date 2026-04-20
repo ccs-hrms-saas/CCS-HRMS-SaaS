@@ -61,9 +61,13 @@ export default function EmployeeLeaves() {
 
   // Find balance for selected type
   const activeBalance = balances.find(b => b.leave_types?.name === form.type);
-  const remainingBal = activeBalance ? (activeBalance.accrued - activeBalance.used) : 0;
+  const pendingRequestsForType = leaves.filter(l => l.type === form.type && l.status === "pending");
+  const pendingDaysCount = pendingRequestsForType.reduce((acc, l) => {
+    return acc + getLeaveDaysCount(l.start_date, l.end_date, selectedTypeObj?.count_holidays ?? false, holidays);
+  }, 0);
+  const remainingBal = activeBalance ? (activeBalance.accrued - activeBalance.used - pendingDaysCount) : 0;
   // If it's a type that doesn't use balances (like Leave Without Pay), we don't strict validate
-  const usesBalance = selectedTypeObj?.is_paid && selectedTypeObj?.name !== "Menstruation Leave";
+  const usesBalance = selectedTypeObj?.is_paid;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,12 +126,7 @@ export default function EmployeeLeaves() {
       reason: form.reason, attachment_url, is_violation, violation_reason
     });
 
-    // 2. Adjust used balance locally immediately
-    if (usesBalance && activeBalance) {
-      await supabase.from("leave_balances").update({ used: activeBalance.used + leaveDays }).eq("id", activeBalance.id);
-    }
-
-    // 3. Notify Super Admins about the leave request
+    // 2. Ledger balances are updated upon Admin/Manager approval, not submission.
     fetch("/api/notify", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -121,8 +121,17 @@ export default function OrganogramPage() {
 
   const load = async () => {
     setLoading(true);
+    const companyId = profile?.company_id;
+    if (!companyId) { setLoading(false); return; }
+
     const [empRes, permRes] = await Promise.all([
-      supabase.from("profiles").select("id, full_name, role, designation, manager_id, is_active, avatar_url").eq("is_active", true).order("full_name"),
+      supabase
+        .from("profiles")
+        .select("id, full_name, role, designation, manager_id, is_active, avatar_url")
+        .eq("company_id", companyId)
+        .is("system_role", null)
+        .eq("is_active", true)
+        .order("full_name"),
       profile?.id
         ? supabase.from("admin_permissions").select("permission").eq("user_id", profile.id).eq("permission", "edit_organogram").maybeSingle()
         : Promise.resolve({ data: null }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+
 import { useAuth } from "@/context/AuthContext";
 import { useAppSettings, THEMES, ThemeKey, FontFamily, FontSize } from "@/context/AppSettingsContext";
 import styles from "@/app/dashboard/dashboard.module.css";
@@ -212,19 +213,33 @@ export default function SuperAdminSettings() {
   const { profile, refreshProfile } = useAuth();
   const { settings, updateSettings } = useAppSettings();
 
-  const [tab, setTab]         = useState<"profile" | "branding" | "ui">("profile");
+  const [tab, setTab]         = useState<"profile" | "branding" | "ui" | "downloads">("profile");
   const [uiTab, setUiTab]     = useState<"icons" | "fonts" | "themes">("icons");
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>((profile as any)?.avatar_url ?? null);
   const [logoPreview, setLogoPreview]     = useState<string | null>(settings.logo_url ?? null);
-  const [pickerFor, setPickerFor] = useState<string | null>(null); // nav item label
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
+
+  // APK config (read from platform-level API)
+  const [apkConfig, setApkConfig] = useState<Record<string, string>>({});
+  const [copied, setCopied]       = useState<string | null>(null);
 
   useEffect(() => {
     setLogoPreview(settings.logo_url ?? null);
   }, [settings.logo_url]);
 
+  useEffect(() => {
+    fetch('/api/platform-config').then(r => r.json()).then(cfg => setApkConfig(cfg));
+  }, []);
+
   const flashSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
+
+  function copyLink(url: string, key: string) {
+    navigator.clipboard.writeText(url);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 2000);
+  }
 
   // ── Profile picture upload ─────────────────────────────────────────────────
   const avatarUpload = useImageUpload(async (dataUrl) => {
@@ -312,9 +327,10 @@ export default function SuperAdminSettings() {
 
       {/* Main tabs */}
       <div style={{ display: "flex", gap: 8, marginBottom: 28, flexWrap: "wrap" }}>
-        <button style={TAB_STYLE(tab === "profile")}  onClick={() => setTab("profile")}>👤 Profile</button>
-        <button style={TAB_STYLE(tab === "branding")} onClick={() => setTab("branding")}>🏢 App Branding</button>
-        <button style={TAB_STYLE(tab === "ui")}       onClick={() => setTab("ui")}>🎨 UI Customisation</button>
+        <button style={TAB_STYLE(tab === "profile")}   onClick={() => setTab("profile")}>👤 Profile</button>
+        <button style={TAB_STYLE(tab === "branding")}  onClick={() => setTab("branding")}>🏢 App Branding</button>
+        <button style={TAB_STYLE(tab === "ui")}        onClick={() => setTab("ui")}>🎨 UI Customisation</button>
+        <button style={TAB_STYLE(tab === "downloads")} onClick={() => setTab("downloads")}>📱 Mobile Apps</button>
       </div>
 
       {/* ── TAB: Profile ─────────────────────────────────────────────────────── */}
@@ -633,6 +649,112 @@ export default function SuperAdminSettings() {
           )}
         </div>
       )}
+
+      {/* ── TAB: Mobile Apps / Downloads ──────────────────────────────────────── */}
+      {tab === "downloads" && (() => {
+        const apps = [
+          {
+            key: 'kiosk',
+            label: 'Kiosk Attendance App',
+            emoji: '🖥️',
+            desc: 'Install on a shared device at the entrance. Employees use it to clock in and out with a photo.',
+            shareMsg: 'Download the CCS-HRMS Kiosk Attendance App for your entrance device:',
+            urlKey: 'kiosk_apk_url',
+            verKey: 'kiosk_apk_version',
+          },
+          {
+            key: 'employee',
+            label: 'Employee Mobile App',
+            emoji: '📱',
+            desc: 'Share with every team member. Manage your attendance, leaves and HR info on the go.',
+            shareMsg: 'Download the CCS-HRMS Employee App — manage your attendance and leaves:',
+            urlKey: 'employee_apk_url',
+            verKey: 'employee_apk_version',
+          },
+        ];
+
+        return (
+          <div>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginBottom: 28, maxWidth: 560 }}>
+              Download the Android apps below. Use the QR code or share the link with your team via WhatsApp.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px,1fr))', gap: 24 }}>
+              {apps.map(app => {
+                const url     = apkConfig[app.urlKey];
+                const version = apkConfig[app.verKey] || '—';
+                const qrSrc   = url
+                  ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&color=6366f1&bgcolor=0d0d1a&data=${encodeURIComponent(url)}`
+                  : null;
+                const waLink  = url
+                  ? `https://wa.me/?text=${encodeURIComponent(`${app.shareMsg}\n${url}`)}`
+                  : null;
+
+                return (
+                  <div key={app.key} className="glass-panel" style={{ padding: 28 }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+                      <div style={{ fontSize: '2.4rem', lineHeight: 1 }}>{app.emoji}</div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', marginBottom: 4 }}>{app.label}</div>
+                        {url
+                          ? <span style={{ fontSize: '0.72rem', padding: '2px 10px', borderRadius: 20, background: 'rgba(16,185,129,0.15)', color: '#34d399', fontWeight: 700 }}>v{version} · LIVE</span>
+                          : <span style={{ fontSize: '0.72rem', padding: '2px 10px', borderRadius: 20, background: 'rgba(245,158,11,0.12)', color: '#fbbf24', fontWeight: 700 }}>NOT UPLOADED YET</span>
+                        }
+                      </div>
+                    </div>
+
+                    <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 20 }}>{app.desc}</p>
+
+                    {url ? (
+                      <>
+                        {/* QR + Actions */}
+                        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 20 }}>
+                          <div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: 600 }}>Scan to Download</div>
+                            <div style={{ width: 132, height: 132, borderRadius: 14, overflow: 'hidden', border: '2px solid rgba(99,102,241,0.4)', background: '#0d0d1a' }}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={qrSrc!} alt="Download QR Code" width={130} height={130} style={{ display: 'block' }} />
+                            </div>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 160 }}>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: 600 }}>Download Link</div>
+                            <div style={{ fontSize: '0.72rem', color: '#94a3b8', wordBreak: 'break-all', padding: '8px 12px', background: 'rgba(0,0,0,0.25)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)', marginBottom: 12, lineHeight: 1.5 }}>
+                              {url}
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              <button onClick={() => { navigator.clipboard.writeText(url); setCopied(app.key); setTimeout(() => setCopied(null), 2000); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: 'var(--accent-primary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.78rem', fontWeight: 600 }}>
+                                {copied === app.key ? '✅ Copied!' : '📋 Copy Link'}
+                              </button>
+                              <a href={url} download
+                                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.1)', color: 'var(--success)', textDecoration: 'none', fontSize: '0.78rem', fontWeight: 600 }}>
+                                ⬇️ Download APK
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* WhatsApp */}
+                        <a href={waLink!} target="_blank" rel="noopener noreferrer"
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px 20px', borderRadius: 12, border: '1px solid rgba(37,211,102,0.35)', background: 'linear-gradient(90deg, rgba(37,211,102,0.1), rgba(37,211,102,0.05))', color: '#25d366', textDecoration: 'none', fontWeight: 700, fontSize: '0.88rem' }}>
+                          <span style={{ fontSize: '1.1rem' }}>💬</span>
+                          Share via WhatsApp
+                        </a>
+                      </>
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '32px 20px', borderRadius: 14, border: '1px dashed var(--glass-border)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        <div style={{ fontSize: '2.2rem', marginBottom: 10 }}>🔧</div>
+                        <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--text-primary)' }}>Coming Soon</div>
+                        <div>Your platform administrator will upload this app shortly.</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

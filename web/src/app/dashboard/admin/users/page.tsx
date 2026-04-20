@@ -49,7 +49,14 @@ export default function AdminUsers() {
   const [actionLoading, setActionLoading]       = useState(false);
 
   const load = async () => {
-    const { data } = await supabase.from("profiles").select("*").order("full_name");
+    const companyId = profile?.company_id;
+    if (!companyId) { setLoading(false); return; }
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("company_id", companyId)
+      .is("system_role", null)
+      .order("full_name");
     setUsers(data ?? []);
     setLoading(false);
   };

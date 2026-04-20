@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
 import styles from "../../dashboard.module.css";
+
 
 interface LightboxState { url: string; label: string; name: string; }
 
@@ -25,6 +27,7 @@ const STATUS_ORDER: Record<EmpStatus, number> = {
 };
 
 export default function AdminAttendance() {
+  const { profile } = useAuth();
   const [rows, setRows]               = useState<DayRow[]>([]);
   const [employees, setEmployees]     = useState<any[]>([]);
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -37,11 +40,19 @@ export default function AdminAttendance() {
   const [lightbox, setLightbox]       = useState<LightboxState | null>(null);
 
   useEffect(() => {
-    supabase.from("profiles").select("id, full_name").eq("is_active", true)
-      .not("role", "eq", "superadmin")
+    const companyId = profile?.company_id;
+    if (!companyId) return;
+    supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("company_id", companyId)
+      .is("system_role", null)
+      .eq("is_active", true)
       .order("full_name")
       .then(({ data }) => setEmployees(data ?? []));
-  }, []);
+  }, [profile]);
+
+  useEffect(() => { load(); }, [selectedDate, selectedUser, employees]);
 
   const load = async () => {
     setLoading(true);
@@ -109,7 +120,7 @@ export default function AdminAttendance() {
     setLoading(false);
   };
 
-  useEffect(() => { if (employees.length > 0) load(); }, [selectedDate, selectedUser, employees]);
+
 
   const openLightbox = (url: string, label: string, name: string) => setLightbox({ url, label, name });
 

@@ -61,7 +61,7 @@ export default function EmployeeDashboard() {
       const currTo   = todayStr;
 
       // ── Fetch everything ────────────────────────────────────────────────────
-      const [attnAll, leavePending, leaveApprovedRes, announcementsData, holsRes, adjsRes, waiversRes] = await Promise.all([
+      const [attnAll, leavePending, leaveApprovedRes, announcementsData, holsRes, adjsRes, waiversRes, leaveTypesRes] = await Promise.all([
         // Attendance: fetch both current and eval month
         supabase.from("attendance_records").select("*").eq("user_id", profile.id)
           .gte("date", evalFrom).lte("date", currTo),
@@ -79,6 +79,7 @@ export default function EmployeeDashboard() {
           .eq("user_id", profile.id),
         supabase.from("deficit_waivers").select("hours_waived, month")
           .eq("user_id", profile.id),
+        supabase.from("leave_types").select("name, deduction_hours, count_holidays"),
       ]);
 
       const hols = new Set<string>();
@@ -122,6 +123,24 @@ export default function EmployeeDashboard() {
           evalClocked += (new Date(r.check_out).getTime() - new Date(r.check_in).getTime()) / 3600000;
         // If checked in today but no checkout (currently in office), count as working — skip from deficit
       });
+
+      // Menstruation leave applies a penalty to actual hours logged
+      let evalMlPenalty = 0;
+      leaveApproved.forEach(l => {
+         const t = leaveTypesRes?.data?.find((x: any) => x.name === l.type);
+         if (t?.name === "Menstruation Leave") {
+            let d = new Date(l.start_date);
+            const end = new Date(l.end_date);
+            while (d <= end) {
+               const ds = d.toISOString().split("T")[0];
+               if (ds >= evalFrom && ds <= evalTo) {
+                   evalMlPenalty += Number(t.deduction_hours || 0);
+               }
+               d.setDate(d.getDate() + 1);
+            }
+         }
+      });
+      evalClocked -= evalMlPenalty;
 
       // Past adjustments for the eval month
       let pastAdj = 0;
@@ -180,6 +199,24 @@ export default function EmployeeDashboard() {
         if (r.check_in && r.check_out)
           currClocked += (new Date(r.check_out).getTime() - new Date(r.check_in).getTime()) / 3600000;
       });
+
+      // Menstruation leave applies a penalty to actual hours logged
+      let currMlPenalty = 0;
+      leaveApproved.forEach(l => {
+         const t = leaveTypesRes?.data?.find((x: any) => x.name === l.type);
+         if (t?.name === "Menstruation Leave") {
+            let d = new Date(l.start_date);
+            const end = new Date(l.end_date);
+            while (d <= end) {
+               const ds = d.toISOString().split("T")[0];
+               if (ds >= currFrom && ds <= currTo) {
+                   currMlPenalty += Number(t.deduction_hours || 0);
+               }
+               d.setDate(d.getDate() + 1);
+            }
+         }
+      });
+      currClocked -= currMlPenalty;
 
       const currLeavesThisMonth = leaveApproved.filter(l => l.start_date <= currTo && l.end_date >= currFrom).length;
 

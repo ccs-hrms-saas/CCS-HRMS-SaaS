@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import styles from "../../dashboard.module.css";
-import { isWorkingDay } from "@/lib/dateUtils";
+import { isWorkingDay, getLeaveDaysCount, getCurrentFinancialYear } from "@/lib/dateUtils";
 
 interface Reportee {
   id: string;
@@ -189,7 +189,34 @@ export default function MyTeamPage() {
   // Approve / Reject leave as manager
   const handleLeaveDecision = async (leaveId: string, empId: string, status: "approved" | "rejected") => {
     setLeaveSaving(leaveId);
+
+    // Find the leave request details
+    const teamPendingIds = new Set(team.flatMap(m => m.pendingLeaves).map((req: any) => req.id));
+    const extraPending = standalonePending.filter(req => !teamPendingIds.has(req.id));
+    const pendingAll = [...team.flatMap(m => m.pendingLeaves), ...extraPending];
+    const l = pendingAll.find(req => req.id === leaveId);
+
     await supabase.from("leave_requests").update({ status }).eq("id", leaveId);
+
+    // Adjust Ledger if approved
+    if (l && status === "approved") {
+      const { data: hRes } = await supabase.from("company_holidays").select("date");
+      const hols = new Set<string>();
+      (hRes ?? []).forEach(h => hols.add(h.date));
+
+      const { data: typeRes } = await supabase.from("leave_types").select("*").eq("name", l.type).single();
+      const typeId = typeRes?.id;
+      const countHolidays = typeRes?.count_holidays ?? false;
+
+      if (typeId && l.type !== "Leave Without Pay (LWP)") {
+        const days = getLeaveDaysCount(l.start_date, l.end_date, countHolidays, hols);
+        const fy = getCurrentFinancialYear();
+        const { data: bal } = await supabase.from("leave_balances").select("*").eq("user_id", empId).eq("leave_type_id", typeId).eq("financial_year", fy).single();
+        if (bal) {
+          await supabase.from("leave_balances").update({ used: Number(bal.used) + days }).eq("id", bal.id);
+        }
+      }
+    }
 
     // Notify employee of decision
     fetch("/api/notify", {

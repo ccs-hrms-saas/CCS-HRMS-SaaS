@@ -1,0 +1,286 @@
+/* ── Shared Developer page layout ────────────────────────────────────────── */
+
+.page {
+  padding: 40px;
+  max-width: 1320px;
+  margin: 0 auto;
+  animation: fadeIn 0.35s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pageHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 32px;
+}
+
+.heading {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 4px 0;
+  letter-spacing: -0.4px;
+}
+
+.subheading {
+  color: #475569;
+  font-size: 0.92rem;
+  margin: 0;
+}
+
+/* ── Primary action button ───────────────────────────────────────────────── */
+.primaryBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 22px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.25s;
+  box-shadow: 0 4px 14px rgba(99,102,241,0.35);
+  font-family: inherit;
+  text-decoration: none;
+}
+
+.primaryBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99,102,241,0.5);
+}
+
+/* ── Secondary action button ─────────────────────────────────────────────── */
+.secondaryBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 11px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #64748b;
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.secondaryBtn:hover {
+  color: #e2e8f0;
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.18);
+}
+
+/* ── Search / Filter bar ─────────────────────────────────────────────────── */
+.filterBar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.searchWrap {
+  position: relative;
+  flex: 1;
+  min-width: 240px;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #475569;
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 100%;
+  background: #0c0e17;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 11px;
+  padding: 11px 14px 11px 40px;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+}
+
+.filterSelect {
+  background: #0c0e17;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 11px;
+  padding: 11px 16px;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  min-width: 140px;
+}
+
+.filterSelect:focus { outline: none; border-color: #6366f1; }
+
+/* ── Panel / Table ───────────────────────────────────────────────────────── */
+.panel {
+  background: #0c0e17;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  padding: 13px 24px;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: #334155;
+  background: rgba(0,0,0,0.25);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.table td {
+  padding: 15px 24px;
+  font-size: 0.88rem;
+  color: #94a3b8;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  vertical-align: middle;
+}
+
+.table tr:last-child td { border-bottom: none; }
+.table tbody tr:hover td { background: rgba(255,255,255,0.015); }
+
+.cellPrimary {
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-bottom: 3px;
+}
+
+.cellSub {
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.badgeGreen {
+  background: rgba(16,185,129,0.12);
+  color: #34d399;
+  border: 1px solid rgba(16,185,129,0.25);
+}
+
+.badgeRed {
+  background: rgba(239,68,68,0.12);
+  color: #f87171;
+  border: 1px solid rgba(239,68,68,0.25);
+}
+
+.badgeBlue {
+  background: rgba(99,102,241,0.12);
+  color: #a5b4fc;
+  border: 1px solid rgba(99,102,241,0.25);
+}
+
+.badgeGray {
+  background: rgba(255,255,255,0.05);
+  color: #64748b;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* ── Action buttons ──────────────────────────────────────────────────────── */
+.actionLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6366f1;
+  text-decoration: none;
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: rgba(99,102,241,0.08);
+  border: 1px solid rgba(99,102,241,0.2);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.actionLink:hover {
+  background: rgba(99,102,241,0.18);
+  color: #a5b4fc;
+}
+
+.iconBtn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #64748b;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+}
+
+.iconBtn:hover { color: #e2e8f0; background: rgba(255,255,255,0.05); }
+
+/* ── Empty + Loading states ──────────────────────────────────────────────── */
+.emptyState {
+  padding: 60px 24px;
+  text-align: center;
+  color: #334155;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.emptyState svg { opacity: 0.3; margin-bottom: 12px; }
+
+.loading {
+  padding: 40px;
+  text-align: center;
+  color: #334155;
+  font-size: 0.9rem;
+}
+
+/* ── Count label ─────────────────────────────────────────────────────────── */
+.countLabel {
+  padding: 14px 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-size: 0.82rem;
+  color: #475569;
+  background: rgba(0,0,0,0.1);
+}

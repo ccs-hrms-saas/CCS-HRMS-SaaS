@@ -41,7 +41,7 @@ export default function AdminLeaves() {
         const typeId = typeRes?.id;
         const countHolidays = typeRes?.count_holidays ?? false;
         
-        if (typeId && l.type !== "Menstruation Leave" && l.type !== "Leave Without Pay (LWP)") {
+        if (typeId && l.type !== "Leave Without Pay (LWP)") {
             const days = getLeaveDaysCount(l.start_date, l.end_date, countHolidays, hols);
             // Fetch current balance
             const fy = getCurrentFinancialYear();
