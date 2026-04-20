@@ -16,10 +16,11 @@ const admin = createClient(
  */
 export async function POST(
   _req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const companyId = params.id;
+    const { id } = await params;
+    const companyId = id;
 
     // 1. Find the superadmin profile for this company
     const { data: profile, error: profileErr } = await admin
@@ -76,10 +77,11 @@ export async function POST(
  */
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const companyId = params.id;
+    const { id } = await params;
+    const companyId = id;
 
     // Try superadmin first, then any admin-level role
     let { data: profile } = await admin
