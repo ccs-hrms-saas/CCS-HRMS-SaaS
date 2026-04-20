@@ -1,0 +1,345 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Config Panel Styles — Structured Module Config for Developer Panel
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Tier Selector ─────────────────────────────────────────────────────── */
+.tierGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.tierCard {
+  padding: 14px 12px;
+  border-radius: 14px;
+  border: 2px solid transparent;
+  background: rgba(255,255,255,0.03);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.tierCard:hover {
+  border-color: rgba(99,102,241,0.4);
+  background: rgba(99,102,241,0.06);
+}
+
+.tierCard.active {
+  border-color: #6366f1;
+  background: rgba(99,102,241,0.12);
+}
+
+.tierBadge {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  margin-bottom: 8px;
+}
+
+.tierBadgeBasic    { background: rgba(16,185,129,0.15);  color: #34d399; }
+.tierBadgeStandard { background: rgba(99,102,241,0.15);  color: #818cf8; }
+.tierBadgeAdvanced { background: rgba(245,158,11,0.15);  color: #fbbf24; }
+
+.tierName {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary, #f1f5f9);
+  margin-bottom: 4px;
+}
+
+.tierDesc {
+  font-size: 0.72rem;
+  color: var(--text-secondary, #64748b);
+  line-height: 1.4;
+}
+
+/* ── Section ────────────────────────────────────────────────────────────── */
+.section {
+  margin-bottom: 22px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.sectionTitle {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-secondary, #64748b);
+}
+
+.lockedBadge {
+  margin-left: auto;
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.05);
+  color: var(--text-secondary, #64748b);
+  border: 1px solid rgba(255,255,255,0.08);
+  font-weight: 600;
+}
+
+/* ── Form Fields ────────────────────────────────────────────────────────── */
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.fieldGrid1 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.input {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 9px;
+  padding: 9px 12px;
+  color: var(--text-primary, #f1f5f9);
+  font-family: inherit;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  border-color: #6366f1;
+}
+
+.input:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.select {
+  composes: input;
+  cursor: pointer;
+}
+
+/* ── Toggle Row ─────────────────────────────────────────────────────────── */
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  gap: 12px;
+  transition: opacity 0.2s;
+}
+
+.toggleRow.locked {
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+.toggleLabel {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.toggleHint {
+  font-size: 0.72rem;
+  color: var(--text-secondary, #64748b);
+  margin-top: 2px;
+}
+
+/* ── Toggle Switch ─────────────────────────────────────────────────────── */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.switch input { opacity: 0; width: 0; height: 0; }
+
+.switchSlider {
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.1);
+  border-radius: 24px;
+  transition: background 0.2s;
+}
+
+.switchSlider::before {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.switch input:checked + .switchSlider { background: #6366f1; }
+.switch input:checked + .switchSlider::before { transform: translateX(18px); }
+
+/* ── "Other" Custom Option ─────────────────────────────────────────────── */
+.otherRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.otherInput {
+  composes: input;
+  flex: 1;
+}
+
+.addBtn {
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(99,102,241,0.4);
+  background: rgba(99,102,241,0.1);
+  color: #818cf8;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.addBtn:hover {
+  background: rgba(99,102,241,0.2);
+}
+
+/* ── Custom Extensions (raw k/v) ─────────────────────────────────────────── */
+.customSection {
+  margin-top: 20px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255,255,255,0.1);
+  background: rgba(0,0,0,0.15);
+}
+
+.customTitle {
+  font-size: 0.73rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-secondary, #64748b);
+  margin-bottom: 12px;
+}
+
+.customGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.customTag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(99,102,241,0.1);
+  border: 1px solid rgba(99,102,241,0.2);
+  font-size: 0.75rem;
+  color: #818cf8;
+  font-weight: 600;
+}
+
+.customTagRemove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #475569;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.customTagRemove:hover { color: #ef4444; }
+
+/* ── Actions Row ──────────────────────────────────────────────────────── */
+.actionsRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.saveBtn {
+  padding: 10px 22px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.88rem;
+  transition: opacity 0.2s;
+}
+
+.saveBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.cloneBtn {
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary, #94a3b8);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cloneBtn:hover {
+  border-color: rgba(99,102,241,0.4);
+  color: #818cf8;
+}
+
+/* ── Indented sub-field (shown when parent toggle is on) ─────────────── */
+.subField {
+  margin-left: 16px;
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(99,102,241,0.25);
+}

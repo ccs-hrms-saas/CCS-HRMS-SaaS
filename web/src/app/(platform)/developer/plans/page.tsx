@@ -7,25 +7,33 @@ import dp from "../dev-page.module.css";
 import s from "./plans.module.css";
 
 // ── All module keys available on the platform ──────────────────────────────
-const ALL_MODULES: { key: string; label: string }[] = [
-  { key: "kpi_dashboard",       label: "KPI Dashboard"         },
-  { key: "staff_management",    label: "Staff Management"      },
-  { key: "attendance",          label: "Attendance"            },
-  { key: "kiosk_attendance",    label: "Kiosk Attendance"      },
-  { key: "leave_management",    label: "Leave Management"      },
-  { key: "leave_settings",      label: "Leave Type Config"     },
-  { key: "overrides",           label: "Manual Overrides"      },
-  { key: "payroll",             label: "Payroll"               },
-  { key: "reports",             label: "Reports"               },
-  { key: "announcements",       label: "Announcements"         },
-  { key: "hr_policies",         label: "HR Policies"           },
-  { key: "holidays",            label: "Holidays"              },
-  { key: "appraisals",          label: "Performance Appraisals"},
-  { key: "organogram",          label: "Organogram"            },
-  { key: "permissions",         label: "Permissions"           },
-  { key: "approvals",           label: "Approval Chains"       },
-  { key: "notifications",       label: "Notifications"         },
-  { key: "employee_mobile_app", label: "Employee Mobile App"   },
+const ALL_MODULES: { key: string; label: string; group?: string }[] = [
+  // ── Core
+  { key: "kpi_dashboard",       label: "KPI Dashboard",           group: "Core"          },
+  { key: "staff_management",    label: "Staff Management",         group: "Core"          },
+  { key: "attendance",          label: "Attendance",               group: "Core"          },
+  { key: "kiosk_attendance",    label: "Kiosk Attendance",         group: "Core"          },
+  // ── Leave
+  { key: "leave_management",    label: "Leave Management",         group: "Leave"         },
+  { key: "leave_settings",      label: "Leave Type Config",        group: "Leave"         },
+  // ── Payroll & Finance
+  { key: "payroll",             label: "Payroll",                  group: "Finance"       },
+  { key: "reimbursements",      label: "Reimbursements",           group: "Finance"       },
+  // ── HR Admin
+  { key: "overrides",           label: "Manual Overrides",         group: "HR Admin"      },
+  { key: "profiles",            label: "Profiles & Roles",         group: "HR Admin"      },
+  { key: "approvals",           label: "Approval Chains",          group: "HR Admin"      },
+  { key: "permissions",         label: "Permissions",              group: "HR Admin"      },
+  // ── Communication
+  { key: "announcements",       label: "Announcements",            group: "Communication" },
+  { key: "hr_policies",         label: "HR Policies",              group: "Communication" },
+  { key: "notifications",       label: "Notifications",            group: "Communication" },
+  // ── Reporting & Other
+  { key: "reports",             label: "Reports",                  group: "Reporting"     },
+  { key: "holidays",            label: "Holidays",                 group: "Reporting"     },
+  { key: "appraisals",          label: "Performance Appraisals",   group: "Reporting"     },
+  { key: "organogram",          label: "Organogram",               group: "Reporting"     },
+  { key: "employee_mobile_app", label: "Employee Mobile App",      group: "Mobile"        },
 ];
 
 interface Plan {

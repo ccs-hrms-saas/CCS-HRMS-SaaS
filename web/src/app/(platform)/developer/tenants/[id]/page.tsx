@@ -9,9 +9,16 @@ import {
   ArrowLeft, Globe, Ban, CheckCircle2, Settings2,
   Users, Smartphone, AlertTriangle, LayoutDashboard,
   ToggleLeft, UserCog, Tablet, MonitorSmartphone, Trash2,
+  Receipt, ShieldCheck,
 } from "lucide-react";
 import s from "./tenant-detail.module.css";
 import MobileTab from "./MobileTab";
+import PayrollConfigPanel from "./PayrollConfigPanel";
+import LeaveConfigPanel from "./LeaveConfigPanel";
+import ReimbConfigPanel from "./ReimbConfigPanel";
+import ProfilesConfigPanel from "./ProfilesConfigPanel";
+import TierStatusBadge from "./TierStatusBadge";
+import CapabilitySnapshot from "./CapabilitySnapshot";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Company {
@@ -35,9 +42,9 @@ const MODULE_META: Record<string, { label: string; desc: string; icon: React.Ele
   attendance:          { label: "Attendance",             desc: "Clock-in tracking, grace period, overtime rules",          icon: ToggleLeft },
   kiosk_attendance:    { label: "Kiosk Attendance",       desc: "Android tablet kiosk app for physical punch-ins",         icon: Tablet },
   leave_management:    { label: "Leave Management",       desc: "Leave request workflow, balances, approvals",              icon: ToggleLeft },
-  leave_settings:      { label: "Leave Type Config",      desc: "Who can configure leave types and limits",                 icon: Settings2 },
+  leave_settings:      { label: "Leave Type Config",      desc: "Who can configure leave types and limits — Basic/Standard/Advanced", icon: Settings2 },
   overrides:           { label: "Manual Overrides",       desc: "Who can manually correct attendance records",              icon: UserCog },
-  payroll:             { label: "Payroll",                desc: "Salary processing, payslip generation, tax mode",         icon: ToggleLeft },
+  payroll:             { label: "Payroll",                desc: "Salary processing — Basic/Standard/Advanced tier",        icon: ToggleLeft },
   reports:             { label: "Reports",                desc: "Which downloadable HR reports are available",              icon: ToggleLeft },
   announcements:       { label: "Announcements",          desc: "Who can post announcements and approval rules",            icon: ToggleLeft },
   hr_policies:         { label: "HR Policies",            desc: "Policy document publishing and approval rules",            icon: ToggleLeft },
@@ -48,11 +55,14 @@ const MODULE_META: Record<string, { label: string; desc: string; icon: React.Ele
   approvals:           { label: "Approval Chains",        desc: "Multi-level approval workflows",                          icon: ToggleLeft },
   notifications:       { label: "Notifications",          desc: "In-app and email notification channels",                  icon: ToggleLeft },
   employee_mobile_app: { label: "Employee Mobile App",    desc: "Android app features available to employees",             icon: MonitorSmartphone },
+  reimbursements:      { label: "Reimbursements",         desc: "Expense claims with tiered approval chains — Basic/Standard/Advanced", icon: Receipt },
+  profiles:            { label: "Profiles & Roles",       desc: "Who can manage employee profiles and permissions — Basic/Standard/Advanced", icon: ShieldCheck },
 };
 
 const TABS = [
   { key: "overview",  label: "Overview",      icon: LayoutDashboard },
   { key: "modules",   label: "Modules",       icon: ToggleLeft },
+  { key: "snapshot",  label: "Snapshot",      icon: ShieldCheck },
   { key: "users",     label: "Users",         icon: Users },
   { key: "mobile",    label: "Mobile & Kiosk",icon: Smartphone },
   { key: "domains",   label: "Domains",       icon: Globe },
@@ -78,8 +88,9 @@ export default function TenantDetailPage() {
   const [editDomain,    setEditDomain]    = useState("");
 
   // Module properties panel open state
-  const [openProps,   setOpenProps]   = useState<string | null>(null);
-  const [propsEdit,   setPropsEdit]   = useState<Record<string, any>>({});
+  const [openProps,    setOpenProps]   = useState<string | null>(null);
+  const [propsEdit,    setPropsEdit]   = useState<Record<string, any>>({});
+  const [savingProps,  setSavingProps] = useState(false);
 
   // Superadmin credentials
   const [adminInfo,     setAdminInfo]     = useState<{ email: string; adminName: string } | null>(null);
@@ -156,9 +167,11 @@ export default function TenantDetailPage() {
 
   // ── Module properties save ─────────────────────────────────────────────
   async function saveProps(mod: Module) {
+    setSavingProps(true);
     await supabase.from("company_modules").update({ properties: propsEdit, updated_at: new Date().toISOString() }).eq("id", mod.id);
     await logAudit({ action: "MODULE_PROPERTIES_UPDATED", target_type: "module", target_id: id, old_value: { module_key: mod.module_key }, new_value: { module_key: mod.module_key, properties: propsEdit } });
     setModules(prev => prev.map(m => m.id === mod.id ? { ...m, properties: propsEdit } : m));
+    setSavingProps(false);
     setOpenProps(null);
   }
 
@@ -382,6 +395,13 @@ export default function TenantDetailPage() {
                     <div className={s.moduleInfo}>
                       <div className={s.moduleName}>{meta.label}</div>
                       <div className={s.moduleDesc}>{meta.desc}</div>
+                      {/* Tier status badge — shown inline under the description */}
+                      <div style={{ marginTop: 6 }}>
+                        <TierStatusBadge
+                          moduleKey={mod.module_key}
+                          properties={mod.properties}
+                        />
+                      </div>
                     </div>
                     <div className={s.moduleToggle}>
                       <span className={s.toggleLabel}>{mod.is_enabled ? "On" : "Off"}</span>
@@ -396,33 +416,75 @@ export default function TenantDetailPage() {
                   </div>
                   {isOpen && (
                     <div className={s.propsPanel}>
-                      {Object.entries(propsEdit).map(([key, val]) => (
-                        <div key={key} className={s.propField}>
-                          <label className={s.propLabel}>{key.replace(/_/g, " ")}</label>
-                          {typeof val === "boolean" ? (
-                            <div className={s.propCheckRow}>
-                              <input type="checkbox" className={s.propCheck} checked={val}
-                                onChange={e => setPropsEdit(p => ({ ...p, [key]: e.target.checked }))} />
-                              <span style={{ fontSize: "0.82rem", color: "#94a3b8" }}>{val ? "Enabled" : "Disabled"}</span>
+                      {/* ── Module-Aware Structured Config Panels ─────────────── */}
+                      {mod.module_key === "payroll" ? (
+                        <PayrollConfigPanel
+                          props={propsEdit}
+                          onChange={setPropsEdit}
+                          onSave={() => saveProps(mod)}
+                          saving={savingProps}
+                        />
+                      ) : mod.module_key === "leave_settings" ? (
+                        <LeaveConfigPanel
+                          props={propsEdit}
+                          onChange={setPropsEdit}
+                          onSave={() => saveProps(mod)}
+                          saving={savingProps}
+                        />
+                      ) : mod.module_key === "reimbursements" ? (
+                        <ReimbConfigPanel
+                          props={propsEdit}
+                          onChange={setPropsEdit}
+                          onSave={() => saveProps(mod)}
+                          saving={savingProps}
+                        />
+                      ) : mod.module_key === "profiles" ? (
+                        <ProfilesConfigPanel
+                          props={propsEdit}
+                          onChange={setPropsEdit}
+                          onSave={() => saveProps(mod)}
+                          saving={savingProps}
+                        />
+                      ) : (
+                        /* ── Raw key-value editor (fallback for all other modules) */
+                        <>
+                          {Object.entries(propsEdit).map(([key, val]) => (
+                            <div key={key} className={s.propField}>
+                              <label className={s.propLabel}>{key.replace(/_/g, " ")}</label>
+                              {typeof val === "boolean" ? (
+                                <div className={s.propCheckRow}>
+                                  <input type="checkbox" className={s.propCheck} checked={val}
+                                    onChange={e => setPropsEdit(p => ({ ...p, [key]: e.target.checked }))} />
+                                  <span style={{ fontSize: "0.82rem", color: "#94a3b8" }}>{val ? "Enabled" : "Disabled"}</span>
+                                </div>
+                              ) : Array.isArray(val) ? (
+                                <input className={s.propInput} value={val.join(", ")}
+                                  onChange={e => setPropsEdit(p => ({ ...p, [key]: e.target.value.split(",").map(v => v.trim()) }))} />
+                              ) : (
+                                <input className={s.propInput} value={String(val ?? "")}
+                                  onChange={e => setPropsEdit(p => ({ ...p, [key]: e.target.value }))} />
+                              )}
                             </div>
-                          ) : Array.isArray(val) ? (
-                            <input className={s.propInput} value={val.join(", ")}
-                              onChange={e => setPropsEdit(p => ({ ...p, [key]: e.target.value.split(",").map(v => v.trim()) }))} />
-                          ) : (
-                            <input className={s.propInput} value={String(val ?? "")}
-                              onChange={e => setPropsEdit(p => ({ ...p, [key]: e.target.value }))} />
-                          )}
-                        </div>
-                      ))}
-                      <button className={s.propSaveBtn} onClick={() => saveProps(mod)}>
-                        Save Module Properties
-                      </button>
+                          ))}
+                          <button className={s.propSaveBtn} onClick={() => saveProps(mod)}>
+                            Save Module Properties
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
+
                 </div>
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* ── TAB: Snapshot ─────────────────────────────────────────────────── */}
+      {tab === "snapshot" && company && (
+        <div className={s.panel}>
+          <CapabilitySnapshot modules={modules} companyName={company.name} />
         </div>
       )}
 
