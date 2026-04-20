@@ -16,4 +16,7 @@ export interface Profile {
   avatar_url: string | null
   designation: string | null
   phone_number: string | null
+  company_id: string | null
+  system_role: string | null
+  department: string | null
 }
