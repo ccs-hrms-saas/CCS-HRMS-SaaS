@@ -98,7 +98,7 @@ export default function SetupWizard() {
     setDepartments(prev => prev.map((d, idx) => idx === i ? { name: val } : d));
   }
 
-  function updateLeave(i: number, field: string, val: string | boolean) {
+  function updateLeave(i: number, field: string, val: string | boolean | number) {
     setLeaveTypes(prev => prev.map((lt, idx) => idx === i ? { ...lt, [field]: val } : lt));
   }
 
