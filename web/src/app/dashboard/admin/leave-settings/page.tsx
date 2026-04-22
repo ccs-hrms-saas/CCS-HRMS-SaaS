@@ -1,158 +1,371 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { useModules } from "@/context/ModulesContext";
 import styles from "../../dashboard.module.css";
 
-const DEFAULT_TYPES = [
-  { name: "Earned Leave (EL)",  max_days_per_year: 30, is_paid: true, allow_carry_forward: true,  carry_forward_percent: 50, count_holidays: true,  accrual_rate: 20, frequency: "yearly",  deduction_hours: 8.5 },
-  { name: "Casual Leave (CL)",  max_days_per_year: 8,  is_paid: true, allow_carry_forward: false, carry_forward_percent: 0,  count_holidays: false, accrual_rate: null, frequency: "yearly", deduction_hours: 8.5 },
-  { name: "Sick Leave (SL)",    max_days_per_year: 8,  is_paid: true, allow_carry_forward: false, carry_forward_percent: 0,  count_holidays: false, accrual_rate: null, frequency: "yearly", deduction_hours: 8.5, requires_attachment: true, requires_attachment_after_days: 2 },
-  { name: "Menstruation Leave", max_days_per_year: 1,  is_paid: true, allow_carry_forward: false, carry_forward_percent: 0,  count_holidays: false, accrual_rate: null, frequency: "monthly", deduction_hours: 1.0 },
-  { name: "Leave Without Pay",  max_days_per_year: 365,is_paid: false,allow_carry_forward: false, carry_forward_percent: 0,  count_holidays: false, accrual_rate: null, frequency: "yearly", deduction_hours: 8.5 },
-  { name: "Comp-Off",           max_days_per_year: 0,  is_paid: true, allow_carry_forward: false, carry_forward_percent: 0,  count_holidays: false, accrual_rate: null, frequency: "yearly", deduction_hours: 8.5, expires_in_days: 30 },
-];
+// ── Constants ─────────────────────────────────────────────────────────────────
+const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAYS_LONG  = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-const emptyType = { name: "", max_days_per_year: 12, is_paid: true, allow_carry_forward: false, carry_forward_percent: 0, max_carry_forward: 0, count_holidays: false, accrual_rate: "", frequency: "yearly", deduction_hours: 8.5, requires_attachment: false, requires_attachment_after_days: 2, expires_in_days: "" };
+// ── Leave type classifier ─────────────────────────────────────────────────────
+function leaveCategory(name: string): "cl" | "el" | "sl" | "ml" | "co" | "lwp" | "other" {
+  const n = name.toLowerCase();
+  if (n.includes("casual"))        return "cl";
+  if (n.includes("earned") || n.includes("annual") || n.includes("privilege")) return "el";
+  if (n.includes("sick"))          return "sl";
+  if (n.includes("menstruat") || n.includes(" ml")) return "ml";
+  if (n.includes("comp"))         return "co";
+  if (n.includes("without pay") || n.includes("lwp")) return "lwp";
+  return "other";
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  cl: "CL", el: "EL", sl: "SL", ml: "ML", co: "CO", lwp: "LWP", other: "—",
+};
+const CATEGORY_COLORS: Record<string, string> = {
+  cl: "#818cf8", el: "#34d399", sl: "#f59e0b", ml: "#ec4899", co: "#a78bfa", lwp: "#ef4444", other: "#94a3b8",
+};
+
+// ── Empty form ────────────────────────────────────────────────────────────────
+const emptyForm = {
+  name: "", frequency: "yearly", max_days_per_year: 12, is_paid: true,
+  deduction_hours: 8.5, count_holidays: false,
+  allow_carry_forward: false, carry_forward_percent: 0, max_carry_forward: 0,
+  accrual_rate: "", expires_in_days: "",
+  requires_attachment: false, requires_attachment_after_days: 2,
+  half_day_allowed: false, half_days_per_leave: 2,
+  short_leave_allowed: false, short_leaves_per_leave: 4,
+  co_employee_can_split: false, co_expiry_days: "",
+  max_consecutive_days: "",
+};
+
+// ── Reusable sub-components ───────────────────────────────────────────────────
+const Toggle = ({ label, checked, onChange, disabled, note }: any) => (
+  <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.45 : 1, fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+    <div onClick={() => !disabled && onChange(!checked)} style={{
+      width: 36, height: 19, borderRadius: 10, marginTop: 2, flexShrink: 0,
+      background: checked ? "var(--accent-primary)" : "rgba(255,255,255,0.1)",
+      position: "relative", transition: "background 0.2s", cursor: disabled ? "not-allowed" : "pointer",
+    }}>
+      <div style={{ position: "absolute", top: 2, left: checked ? 18 : 2, width: 15, height: 15, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+    </div>
+    <div>
+      <div>{label}</div>
+      {note && <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 2, opacity: 0.7 }}>{note}</div>}
+    </div>
+  </label>
+);
 
 export default function LeaveSettings() {
-  const [types, setTypes]     = useState<any[]>([]);
+  const { getProps } = useModules();
+  const modProps     = getProps("leave_settings");
+  const isAdvanced   = modProps.tier === "advanced";
+
+  // ── App settings / work schedule ──────────────────────────────────────────
+  const [settings, setSettings]         = useState<any>(null);
+  const [scheduleForm, setScheduleForm] = useState({ week_off_type: "fixed", week_off_days: [0], overtime_tracking: false });
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+
+  // ── Leave types ───────────────────────────────────────────────────────────
+  const [types,   setTypes]   = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing]  = useState<any | null>(null);
-  const [form, setForm]        = useState<any>(emptyType);
-  const [saving, setSaving]    = useState(false);
-  const [seeded, setSeeded]    = useState(false);
+  const [editing,  setEditing]  = useState<any | null>(null);
+  const [form,    setForm]     = useState<any>(emptyForm);
+  const [saving,  setSaving]  = useState(false);
 
-  const load = async () => {
-    const { data } = await supabase.from("leave_types").select("*").order("name");
-    setTypes(data ?? []); setLoading(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [{ data: types }, { data: sett }] = await Promise.all([
+      supabase.from("leave_types").select("*").order("name"),
+      supabase.from("app_settings").select("*").single(),
+    ]);
+    setTypes(types ?? []);
+    if (sett) {
+      setSettings(sett);
+      setScheduleForm({
+        week_off_type:    sett.week_off_type ?? "fixed",
+        week_off_days:    sett.week_off_days ?? [0],
+        overtime_tracking: sett.overtime_tracking ?? false,
+      });
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // ── Work Schedule save ─────────────────────────────────────────────────────
+  const saveSchedule = async () => {
+    setSavingSchedule(true);
+    await supabase.from("app_settings").update({
+      week_off_type:    scheduleForm.week_off_type,
+      week_off_days:    scheduleForm.week_off_type === "fixed" ? scheduleForm.week_off_days : [],
+      overtime_tracking: scheduleForm.overtime_tracking,
+    }).eq("company_id", settings?.company_id);
+    setSavingSchedule(false);
+    load();
   };
 
-  useEffect(() => { load(); }, []);
+  const toggleOffDay = (dow: number) => {
+    setScheduleForm(f => ({
+      ...f,
+      week_off_days: f.week_off_days.includes(dow)
+        ? f.week_off_days.filter((d: number) => d !== dow)
+        : [...f.week_off_days, dow],
+    }));
+  };
 
-  const openNew  = () => { setEditing(null); setForm(emptyType); setShowForm(true); };
-  const openEdit = (t: any) => { 
-    setEditing(t); 
-    setForm({ 
-      ...t, 
-      accrual_rate: t.accrual_rate ?? "", 
-      expires_in_days: t.expires_in_days ?? "" 
-    }); 
-    setShowForm(true); 
+  // ── Leave type CRUD ────────────────────────────────────────────────────────
+  const openNew  = () => { setEditing(null); setForm(emptyForm); setShowForm(true); };
+  const openEdit = (t: any) => {
+    setEditing(t);
+    setForm({
+      ...emptyForm, ...t,
+      accrual_rate:       t.accrual_rate ?? "",
+      expires_in_days:    t.expires_in_days ?? "",
+      co_expiry_days:     t.co_expiry_days ?? "",
+      max_consecutive_days: t.max_consecutive_days ?? "",
+    });
+    setShowForm(true);
   };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
+    const cat = leaveCategory(form.name);
     const payload = {
       ...form,
-      accrual_rate: form.accrual_rate === "" ? null : Number(form.accrual_rate),
-      expires_in_days: form.expires_in_days === "" ? null : Number(form.expires_in_days),
-      max_carry_forward: form.allow_carry_forward ? Number(form.max_carry_forward) : 0,
-      carry_forward_percent: form.allow_carry_forward ? Number(form.carry_forward_percent) : 0,
+      accrual_rate:                form.accrual_rate === ""       ? null : Number(form.accrual_rate),
+      expires_in_days:             form.expires_in_days === ""     ? null : Number(form.expires_in_days),
+      co_expiry_days:              form.co_expiry_days === ""      ? null : Number(form.co_expiry_days),
+      max_consecutive_days:        form.max_consecutive_days === "" ? null : Number(form.max_consecutive_days),
+      max_carry_forward:           form.allow_carry_forward ? Number(form.max_carry_forward) : 0,
+      carry_forward_percent:       form.allow_carry_forward ? Number(form.carry_forward_percent) : 0,
       requires_attachment_after_days: form.requires_attachment ? Number(form.requires_attachment_after_days) : 0,
+      half_days_per_leave:         Number(form.half_days_per_leave),
+      short_leaves_per_leave:      Number(form.short_leaves_per_leave),
+      is_ml_type:                  cat === "ml",
+      counts_as_lwp_for_payroll:   cat === "lwp",
     };
-
-    if (editing) { await supabase.from("leave_types").update(payload).eq("id", editing.id); }
-    else { await supabase.from("leave_types").insert(payload); }
+    if (editing) await supabase.from("leave_types").update(payload).eq("id", editing.id);
+    else          await supabase.from("leave_types").insert(payload);
     setShowForm(false); setSaving(false); load();
   };
 
   const del = async (id: string) => {
-    if(!confirm("Delete this leave type?")) return;
+    if (!confirm("Delete this leave type?")) return;
     await supabase.from("leave_types").delete().eq("id", id); load();
   };
 
-  const seedDefaults = async () => {
-    await supabase.from("leave_types").insert(DEFAULT_TYPES);
-    setSeeded(true); load();
-  };
+  // ── Detect leave category from form name to show relevant fields ──────────
+  const cat = leaveCategory(form.name);
+  const showHalfShort = cat === "cl" || cat === "el" || cat === "other";
+  const showSLFields  = cat === "sl";
+  const showMLFields  = cat === "ml";
+  const showCOFields  = cat === "co";
 
-  if (loading) return <div className={styles.loadingScreen}><div className={styles.spinner}></div></div>;
+  if (loading) return <div className={styles.loadingScreen}><div className={styles.spinner} /></div>;
 
   return (
     <div className="animate-fade-in">
+      {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className={styles.pageHeader} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div><h1>Leave Settings (Dynamic Rules)</h1><p>Define rules for EL, CL, SL, Menstruation, and Comp Offs</p></div>
-        <div style={{ display: "flex", gap: 10 }}>
-          {types.length === 0 && !seeded && (
-            <button onClick={seedDefaults} style={{ padding: "12px 20px", borderRadius: 10, border: "1px solid rgba(99,102,241,0.4)", background: "rgba(99,102,241,0.1)", color: "var(--accent-primary)", cursor: "pointer", fontFamily: "Outfit,sans-serif", fontSize: "0.88rem", fontWeight: 600 }}>
-              ⚡ Load CCSPL Defaults
-            </button>
-          )}
-          <button className={styles.primaryBtn} style={{ width: "auto", padding: "12px 24px" }} onClick={openNew}>+ Add Leave Type</button>
+        <div>
+          <h1>Leave Settings</h1>
+          <p>Configure work schedule, week off policy, and leave types</p>
         </div>
+        <button className={styles.primaryBtn} style={{ width: "auto", padding: "12px 24px" }} onClick={openNew}>
+          + Add Leave Type
+        </button>
       </div>
 
+      {/* ══ SECTION 1: Work Schedule ════════════════════════════════════════ */}
+      <div className="glass-panel" style={{ marginBottom: 20, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", cursor: "pointer" }} onClick={() => setScheduleOpen(o => !o)}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>🗓️ Work Schedule & Week Off</div>
+            <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: 2 }}>
+              {scheduleForm.week_off_type === "fixed"
+                ? `Fixed — ${(scheduleForm.week_off_days ?? []).map((d: number) => DAYS_LONG[d]).join(" & ")} off`
+                : "Rotating — each employee has their own off day"}
+              {scheduleForm.overtime_tracking && " · overtime tracked"}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {!isAdvanced && (
+              <span style={{ fontSize: "0.7rem", padding: "3px 10px", borderRadius: 20, background: "rgba(245,158,11,0.1)", color: "#f59e0b", fontWeight: 700, border: "1px solid rgba(245,158,11,0.3)" }}>
+                Advanced tier to edit
+              </span>
+            )}
+            <span style={{ fontSize: "0.9rem", transition: "transform 0.2s", transform: scheduleOpen ? "rotate(180deg)" : "none", color: "var(--text-secondary)" }}>▾</span>
+          </div>
+        </div>
+
+        {scheduleOpen && (
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "20px 24px", background: "rgba(0,0,0,0.08)", display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Week Off Type */}
+            <div>
+              <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-secondary)", marginBottom: 10 }}>Week Off Type</div>
+              <div style={{ display: "flex", gap: 10 }}>
+                {(["fixed", "rotating"] as const).map(type => (
+                  <div key={type} onClick={() => isAdvanced && setScheduleForm(f => ({ ...f, week_off_type: type }))} style={{
+                    flex: 1, padding: "11px 16px", borderRadius: 11, cursor: isAdvanced ? "pointer" : "not-allowed",
+                    transition: "all 0.2s", border: `1px solid ${scheduleForm.week_off_type === type ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.08)"}`,
+                    background: scheduleForm.week_off_type === type ? "rgba(99,102,241,0.1)" : "rgba(255,255,255,0.02)",
+                    color: scheduleForm.week_off_type === type ? "#818cf8" : "var(--text-secondary)",
+                    fontWeight: 600, fontSize: "0.83rem", opacity: isAdvanced ? 1 : 0.6,
+                  }}>
+                    {type === "fixed" ? "🗓️ Fixed" : "🔄 Rotating"}
+                    <div style={{ fontSize: "0.7rem", fontWeight: 400, marginTop: 3, color: "var(--text-secondary)" }}>
+                      {type === "fixed" ? "All employees share the same off day(s)" : "Each employee has their own off day"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Fixed: day picker */}
+            {scheduleForm.week_off_type === "fixed" && (
+              <div>
+                <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-secondary)", marginBottom: 8 }}>Off Day(s)</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {DAYS_SHORT.map((d, i) => (
+                    <div key={d} onClick={() => isAdvanced && toggleOffDay(i)} style={{
+                      padding: "6px 14px", borderRadius: 20, cursor: isAdvanced ? "pointer" : "not-allowed",
+                      fontSize: "0.8rem", fontWeight: 600, transition: "all 0.2s",
+                      border: `1px solid ${(scheduleForm.week_off_days ?? []).includes(i) ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.08)"}`,
+                      background: (scheduleForm.week_off_days ?? []).includes(i) ? "rgba(99,102,241,0.15)" : "transparent",
+                      color: (scheduleForm.week_off_days ?? []).includes(i) ? "#818cf8" : "var(--text-secondary)",
+                    }}>{d}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Rotating info */}
+            {scheduleForm.week_off_type === "rotating" && (
+              <div style={{ padding: "10px 16px", borderRadius: 10, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)", fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                ℹ️ Rotating mode: assign each employee's off day when creating them or from their profile card.
+              </div>
+            )}
+
+            {/* Overtime */}
+            <div>
+              <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-secondary)", marginBottom: 8 }}>Overtime</div>
+              <Toggle
+                label="Track overtime hours"
+                note="Calculated vs office end time. Never shown to employees — superadmin view only."
+                checked={scheduleForm.overtime_tracking}
+                onChange={(v: boolean) => isAdvanced && setScheduleForm(f => ({ ...f, overtime_tracking: v }))}
+                disabled={!isAdvanced}
+              />
+            </div>
+
+            {isAdvanced && (
+              <div>
+                <button onClick={saveSchedule} disabled={savingSchedule} className={styles.primaryBtn} style={{ width: "auto", padding: "9px 22px" }}>
+                  {savingSchedule ? "Saving…" : "💾 Save Schedule Settings"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ══ SECTION 2: Leave Types ══════════════════════════════════════════ */}
       <div className={`glass-panel ${styles.tableWrap}`}>
         <table>
           <thead>
             <tr>
-              <th>Leave Type</th>
+              <th>Type</th>
+              <th>Leave Name</th>
               <th>Allowance</th>
               <th>Deduction</th>
-              <th>Holidays Count?</th>
               <th>Carry Fwd</th>
-              <th>Special Rules</th>
+              <th>Half / Short</th>
+              <th>Special</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {types.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text-secondary)", padding: 40 }}>No leave types configured.</td></tr>
-            ) : types.map(t => (
-              <tr key={t.id}>
-                <td style={{ fontWeight: 600 }}>{t.name} <br/><span style={{fontSize: '0.7rem', color:'var(--text-secondary)'}}>{t.is_paid ? 'Paid' : 'Unpaid'}</span></td>
-                <td>
-                  {t.accrual_rate ? `1 per ${t.accrual_rate} worked days` : `${t.max_days_per_year} days`}
-                  <br/><span style={{fontSize: '0.7rem', color:'var(--text-secondary)'}}>Per {t.frequency}</span>
-                </td>
-                <td>{t.deduction_hours} hrs<br/><span style={{fontSize: '0.7rem', color:'var(--text-secondary)'}}>per day off</span></td>
-                <td>
-                   <span className={`${styles.statBadge} ${t.count_holidays ? styles.badgeWarning : styles.badgeSuccess}`}>
-                      {t.count_holidays ? "Yes (Deducted)" : "No (Skipped)"}
-                   </span>
-                </td>
-                <td>
-                  {t.allow_carry_forward ? `${t.carry_forward_percent}% (Max ${t.max_carry_forward} total)` : "No"}
-                </td>
-                <td style={{ fontSize: "0.82rem", color: "var(--text-secondary)", maxWidth: 200 }}>
-                  {t.requires_attachment && `Needs cert after ${t.requires_attachment_after_days} days. `}
-                  {t.expires_in_days && `Expires in ${t.expires_in_days} days. `}
-                </td>
-                <td>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => openEdit(t)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--glass-border)", background: "rgba(255,255,255,0.05)", color: "var(--text-secondary)", cursor: "pointer", fontSize: "0.8rem" }}>✏️</button>
-                    <button onClick={() => del(t.id)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "var(--danger)", cursor: "pointer", fontSize: "0.8rem" }}>🗑</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+              <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--text-secondary)", padding: 40 }}>No leave types configured. Use the Setup Wizard or click "+ Add Leave Type".</td></tr>
+            ) : types.map(t => {
+              const cat = leaveCategory(t.name);
+              const badge = CATEGORY_LABELS[cat];
+              const color = CATEGORY_COLORS[cat];
+              return (
+                <tr key={t.id}>
+                  <td>
+                    <span style={{ padding: "2px 9px", borderRadius: 20, fontSize: "0.7rem", fontWeight: 800, background: `${color}18`, color, border: `1px solid ${color}30` }}>{badge}</span>
+                  </td>
+                  <td style={{ fontWeight: 600 }}>
+                    {t.name}
+                    <br /><span style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>{t.is_paid ? "Paid" : "Unpaid"}</span>
+                  </td>
+                  <td>
+                    {t.accrual_rate ? `1 per ${t.accrual_rate} days worked` : `${t.max_days_per_year} days`}
+                    <br /><span style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>Per {t.frequency}</span>
+                  </td>
+                  <td>{t.deduction_hours}h/day</td>
+                  <td>{t.allow_carry_forward ? `${t.carry_forward_percent}% (max ${t.max_carry_forward}d)` : "—"}</td>
+                  <td>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.75rem" }}>
+                      {t.half_day_allowed  && <span style={{ color: "#818cf8" }}>½ day · {t.half_days_per_leave} = 1 {badge}</span>}
+                      {t.short_leave_allowed && <span style={{ color: "#34d399" }}>Short leave · {t.short_leaves_per_leave} = 1 {badge}</span>}
+                      {!t.half_day_allowed && !t.short_leave_allowed && <span style={{ color: "var(--text-secondary)" }}>—</span>}
+                    </div>
+                  </td>
+                  <td style={{ fontSize: "0.78rem", color: "var(--text-secondary)", maxWidth: 180 }}>
+                    {t.requires_attachment && `Cert after ${t.requires_attachment_after_days}d. `}
+                    {t.co_expiry_days     && `Expires ${t.co_expiry_days}d. `}
+                    {t.co_employee_can_split && `Emp can split. `}
+                    {t.max_consecutive_days && `Max ${t.max_consecutive_days} consec. `}
+                    {t.is_ml_type && "ML type. "}
+                    {!t.requires_attachment && !t.co_expiry_days && !t.max_consecutive_days && !t.is_ml_type && "—"}
+                  </td>
+                  <td>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={() => openEdit(t)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--glass-border)", background: "rgba(255,255,255,0.05)", color: "var(--text-secondary)", cursor: "pointer", fontSize: "0.8rem" }}>✏️</button>
+                      <button onClick={() => del(t.id)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "var(--danger)", cursor: "pointer", fontSize: "0.8rem" }}>🗑</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
+      {/* ══ Leave Type Drawer ════════════════════════════════════════════════ */}
       {showForm && (
         <div className="overlay" onClick={() => setShowForm(false)}>
-          <div className="drawer" style={{maxWidth: 550}} onClick={e => e.stopPropagation()}>
+          <div className="drawer" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div className="drawerHeader">
               <h2>{editing ? "Edit Leave Type" : "New Leave Type"}</h2>
               <button onClick={() => setShowForm(false)} className="closeBtn">✕</button>
             </div>
-            
-            <form onSubmit={save} style={{display: 'flex', flexDirection: 'column', gap: 16}}>
-              
-              <div className={styles.formGroup} style={{marginBottom: 0}}>
+            <form onSubmit={save} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+              {/* Name + frequency */}
+              <div className={styles.formGroup} style={{ marginBottom: 0 }}>
                 <label>Leave Name *</label>
-                <input className="premium-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
+                <input className="premium-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required placeholder="e.g. Casual Leave" />
+                {cat !== "other" && (
+                  <div style={{ fontSize: "0.72rem", marginTop: 4, color: CATEGORY_COLORS[cat] }}>
+                    Detected as: <strong>{CATEGORY_LABELS[cat]}</strong> — relevant fields are shown below
+                  </div>
+                )}
               </div>
 
-              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16}}>
-                <div className={styles.formGroup} style={{marginBottom: 0}}>
-                  <label>Max Days (per Frequency)</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                  <label>Max Days *</label>
                   <input type="number" className="premium-input" value={form.max_days_per_year} onChange={e => setForm({ ...form, max_days_per_year: e.target.value })} />
                 </div>
-                <div className={styles.formGroup} style={{marginBottom: 0}}>
+                <div className={styles.formGroup} style={{ marginBottom: 0 }}>
                   <label>Frequency</label>
                   <select className="premium-input" value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>
                     <option value="yearly">Yearly</option>
@@ -161,64 +374,108 @@ export default function LeaveSettings() {
                 </div>
               </div>
 
-              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16}}>
-                <div className={styles.formGroup} style={{marginBottom: 0}}>
-                  <label>Accrual Rate (optional)</label>
-                  <input type="number" className="premium-input" placeholder="e.g. 20" value={form.accrual_rate} onChange={e => setForm({ ...form, accrual_rate: e.target.value })} />
-                  <span style={{fontSize: '0.7rem', color: "var(--text-secondary)", marginTop: 4, display: 'block'}}>Worked days needed to earn 1 leave</span>
-                </div>
-                <div className={styles.formGroup} style={{marginBottom: 0}}>
-                  <label>Deduction Hours *</label>
-                  <input type="number" step="0.5" className="premium-input" value={form.deduction_hours} onChange={e => setForm({ ...form, deduction_hours: e.target.value })} required />
-                  <span style={{fontSize: '0.7rem', color: "var(--text-secondary)", marginTop: 4, display: 'block'}}>Usually 8.5. Set to 1.0 for Menstruation leave.</span>
-                </div>
+              {/* Basic flags */}
+              <div style={{ display: "flex", gap: 20, flexWrap: "wrap", padding: 14, background: "rgba(0,0,0,0.2)", borderRadius: 12, border: "1px solid var(--glass-border)" }}>
+                {[
+                  { label: "Is Paid",             field: "is_paid" },
+                  { label: "Holidays count as leave", field: "count_holidays" },
+                  { label: "Allow Carry Forward", field: "allow_carry_forward" },
+                  { label: "Requires Document",   field: "requires_attachment" },
+                ].map(({ label, field }) => (
+                  <label key={field} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                    <input type="checkbox" checked={!!form[field]} onChange={e => setForm({ ...form, [field]: e.target.checked })} style={{ accentColor: "var(--accent-primary)", width: 15, height: 15 }} />
+                    {label}
+                  </label>
+                ))}
               </div>
 
-              <div style={{ display: "flex", gap: 20, flexWrap: "wrap", padding: "16px", background: "rgba(0,0,0,0.2)", borderRadius: 12, border: "1px solid var(--glass-border)" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "0.9rem" }}>
-                    <input type="checkbox" checked={form.is_paid} onChange={e => setForm({ ...form, is_paid: e.target.checked })} style={{ accentColor: "var(--accent-primary)", width: 16, height: 16 }} />
-                    Is Paid
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "0.9rem" }}>
-                    <input type="checkbox" checked={form.count_holidays} onChange={e => setForm({ ...form, count_holidays: e.target.checked })} style={{ accentColor: "var(--accent-primary)", width: 16, height: 16 }} />
-                    Holidays fall in leave count as leave
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "0.9rem" }}>
-                    <input type="checkbox" checked={form.allow_carry_forward} onChange={e => setForm({ ...form, allow_carry_forward: e.target.checked })} style={{ accentColor: "var(--accent-primary)", width: 16, height: 16 }} />
-                    Allow Carry Forward
-                  </label>
-                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "0.9rem" }}>
-                    <input type="checkbox" checked={form.requires_attachment} onChange={e => setForm({ ...form, requires_attachment: e.target.checked })} style={{ accentColor: "var(--accent-primary)", width: 16, height: 16 }} />
-                    Requires Document/Cert
-                  </label>
-              </div>
-
+              {/* Carry forward config */}
               {form.allow_carry_forward && (
-                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16}}>
-                   <div className={styles.formGroup} style={{marginBottom: 0}}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div className={styles.formGroup} style={{ marginBottom: 0 }}>
                     <label>Carry Forward %</label>
                     <input type="number" className="premium-input" value={form.carry_forward_percent} onChange={e => setForm({ ...form, carry_forward_percent: e.target.value })} />
                   </div>
-                   <div className={styles.formGroup} style={{marginBottom: 0}}>
-                    <label>Max Accumulate Limit</label>
+                  <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                    <label>Max Accumulation</label>
                     <input type="number" className="premium-input" value={form.max_carry_forward} onChange={e => setForm({ ...form, max_carry_forward: e.target.value })} />
                   </div>
                 </div>
               )}
 
+              {/* SL: proof threshold */}
               {form.requires_attachment && (
-                 <div className={styles.formGroup} style={{marginBottom: 0}}>
-                    <label>Require attachment if consecutive days {'>'}= </label>
-                    <input type="number" className="premium-input" value={form.requires_attachment_after_days} onChange={e => setForm({ ...form, requires_attachment_after_days: e.target.value })} />
-                 </div>
+                <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                  <label>Require document after consecutive days ≥</label>
+                  <input type="number" className="premium-input" value={form.requires_attachment_after_days} onChange={e => setForm({ ...form, requires_attachment_after_days: e.target.value })} />
+                </div>
               )}
 
-              <div className={styles.formGroup} style={{marginBottom: 0}}>
-                  <label>Expires In (Days) (Comp Offs only)</label>
-                  <input type="number" className="premium-input" placeholder="Leave blank if unlimited" value={form.expires_in_days} onChange={e => setForm({ ...form, expires_in_days: e.target.value })} />
+              {/* CL/EL: half day + short leave */}
+              {showHalfShort && (
+                <>
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 12, fontSize: "0.75rem", fontWeight: 700, color: "#818cf8", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    Half Day & Short Leave
+                  </div>
+                  <Toggle label="Allow half day applications" checked={form.half_day_allowed} onChange={(v: boolean) => setForm({ ...form, half_day_allowed: v })} />
+                  {form.half_day_allowed && (
+                    <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                      <label>How many half days = 1 full leave day?</label>
+                      <input type="number" className="premium-input" value={form.half_days_per_leave} min={1} onChange={e => setForm({ ...form, half_days_per_leave: e.target.value })} style={{ maxWidth: 160 }} />
+                    </div>
+                  )}
+                  <Toggle label="Allow short leave (partial hour) applications" checked={form.short_leave_allowed} onChange={(v: boolean) => setForm({ ...form, short_leave_allowed: v })} />
+                  {form.short_leave_allowed && (
+                    <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                      <label>How many short leaves = 1 full leave day?</label>
+                      <input type="number" className="premium-input" value={form.short_leaves_per_leave} min={1} onChange={e => setForm({ ...form, short_leaves_per_leave: e.target.value })} style={{ maxWidth: 160 }} />
+                    </div>
+                  )}
+                  <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                    <label>Max consecutive days (optional)</label>
+                    <input type="number" className="premium-input" placeholder="Leave blank = no limit" value={form.max_consecutive_days} onChange={e => setForm({ ...form, max_consecutive_days: e.target.value })} style={{ maxWidth: 200 }} />
+                  </div>
+                </>
+              )}
+
+              {/* EL: accrual */}
+              {(cat === "el" || cat === "other") && (
+                <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                  <label>Accrual Rate (optional)</label>
+                  <input type="number" className="premium-input" placeholder="e.g. 20 (1 EL per 20 worked days)" value={form.accrual_rate} onChange={e => setForm({ ...form, accrual_rate: e.target.value })} />
+                </div>
+              )}
+
+              {/* CO: expiry + split */}
+              {showCOFields && (
+                <>
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 12, fontSize: "0.75rem", fontWeight: 700, color: "#a78bfa", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    Comp Off Settings
+                  </div>
+                  <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                    <label>Expires after (days)</label>
+                    <input type="number" className="premium-input" placeholder="e.g. 30" value={form.co_expiry_days} onChange={e => setForm({ ...form, co_expiry_days: e.target.value })} style={{ maxWidth: 160 }} />
+                  </div>
+                  <Toggle label="Employee can take Comp Off as half day" checked={form.co_employee_can_split} onChange={(v: boolean) => setForm({ ...form, co_employee_can_split: v })} />
+                </>
+              )}
+
+              {/* ML note */}
+              {showMLFields && (
+                <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(236,72,153,0.06)", border: "1px solid rgba(236,72,153,0.2)", fontSize: "0.8rem", color: "#f9a8d4" }}>
+                  🌸 Detected as Menstruation Leave. Set frequency to <strong>Monthly</strong> and deduction hours to ~1.0. Lapse tracking is managed via the Payroll module.
+                </div>
+              )}
+
+              <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                <label>Deduction Hours per day *</label>
+                <input type="number" step="0.5" className="premium-input" value={form.deduction_hours} onChange={e => setForm({ ...form, deduction_hours: e.target.value })} style={{ maxWidth: 160 }} required />
+                <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)", marginTop: 4 }}>Typically 8.5. Set to 1.0 for ML.</div>
               </div>
 
-              <button type="submit" className={styles.primaryBtn} disabled={saving} style={{ marginTop: 8 }}>{saving ? "Saving…" : "💾 Save Settings"}</button>
+              <button type="submit" className={styles.primaryBtn} disabled={saving} style={{ marginTop: 4 }}>
+                {saving ? "Saving…" : "💾 Save Leave Type"}
+              </button>
             </form>
           </div>
         </div>

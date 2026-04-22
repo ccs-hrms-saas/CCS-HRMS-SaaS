@@ -3,21 +3,11 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
-import { isWorkingDay, getLeaveDaysCount } from "@/lib/dateUtils";
+import { isWorkingDay, getLeaveDaysCount, buildWorkSchedule, WorkSchedule } from "@/lib/dateUtils";
 import styles from "../../dashboard.module.css";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DAYS   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-
-function isWeeklyOff(date: Date): boolean {
-  const dow = date.getDay();
-  if (dow === 0) return true;
-  if (dow === 6) {
-    const weekNum = Math.ceil(date.getDate() / 7);
-    if (weekNum === 1 || weekNum === 3) return true;
-  }
-  return false;
-}
 
 /** Return leave type abbreviation for the calendar cell label */
 function leaveAbbr(type: string): string {
@@ -35,11 +25,20 @@ export default function EmployeeAttendance() {
   const { profile } = useAuth();
   const [records, setRecords]   = useState<Record<string, any>>({});
   const [holidays, setHolidays] = useState<Record<string, string>>({});
-  /** dateStr → approved leave type for that day */
   const [leaveDays, setLeaveDays] = useState<Record<string, string>>({});
   const [year, setYear]   = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth());
   const [loading, setLoading] = useState(true);
+  const [schedule, setSchedule] = useState<WorkSchedule | undefined>(undefined);
+
+  // Load app_settings once to build the schedule context for this employee
+  useEffect(() => {
+    if (!profile) return;
+    supabase.from("app_settings").select("week_off_type, week_off_days").single()
+      .then(({ data }) => {
+        setSchedule(buildWorkSchedule(data, profile));
+      });
+  }, [profile]);
 
   useEffect(() => {
     if (!profile) return;
@@ -97,7 +96,7 @@ export default function EmployeeAttendance() {
   const holidaySet = new Set<string>(Object.keys(holidays));
 
   const totalWorkdays = Array.from({ length: daysInMonth }, (_, i) =>
-    isWorkingDay(new Date(year, month, i + 1), holidaySet) ? 1 : 0
+    isWorkingDay(new Date(year, month, i + 1), holidaySet, schedule) ? 1 : 0
   ).reduce((a: number, b: number) => a + b, 0);
   const totalWorkingHours = totalWorkdays * 8.5;
   const presentCount = Object.values(records).filter(r => r.check_in).length;
@@ -125,7 +124,7 @@ export default function EmployeeAttendance() {
     if (dateStr === today)          return { kind: "today" };
     if (!isPast && dateStr !== today) return { kind: "future" };
     if (holidaySet.has(dateStr))    return { kind: "holiday", holidayName: holidays[dateStr] };
-    if (isWeeklyOff(d))             return { kind: "weekly_off" };
+    if (!isWorkingDay(d, holidaySet, schedule)) return { kind: "weekly_off" };
     if (rec?.check_in)              return { kind: "present" };
     if (leaveDays[dateStr])         return { kind: "on_leave", leaveType: leaveDays[dateStr] };
     return { kind: "absent" };

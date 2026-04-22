@@ -9,7 +9,7 @@ import {
   ArrowLeft, Globe, Ban, CheckCircle2, Settings2,
   Users, Smartphone, AlertTriangle, LayoutDashboard,
   ToggleLeft, UserCog, Tablet, MonitorSmartphone, Trash2,
-  Receipt, ShieldCheck,
+  Receipt, ShieldCheck, TrendingUp,
 } from "lucide-react";
 import s from "./tenant-detail.module.css";
 import MobileTab from "./MobileTab";
@@ -17,6 +17,7 @@ import PayrollConfigPanel from "./PayrollConfigPanel";
 import LeaveConfigPanel from "./LeaveConfigPanel";
 import ReimbConfigPanel from "./ReimbConfigPanel";
 import ProfilesConfigPanel from "./ProfilesConfigPanel";
+import IncentivesConfigPanel from "./IncentivesConfigPanel";
 import TierStatusBadge from "./TierStatusBadge";
 import CapabilitySnapshot from "./CapabilitySnapshot";
 
@@ -57,6 +58,7 @@ const MODULE_META: Record<string, { label: string; desc: string; icon: React.Ele
   employee_mobile_app: { label: "Employee Mobile App",    desc: "Android app features available to employees",             icon: MonitorSmartphone },
   reimbursements:      { label: "Reimbursements",         desc: "Expense claims with tiered approval chains — Basic/Standard/Advanced", icon: Receipt },
   profiles:            { label: "Profiles & Roles",       desc: "Who can manage employee profiles and permissions — Basic/Standard/Advanced", icon: ShieldCheck },
+  incentives:          { label: "Incentive Structure",    desc: "Goal-based incentive plans with payout rules — Basic/Standard/Advanced", icon: TrendingUp },
 };
 
 const TABS = [
@@ -440,6 +442,13 @@ export default function TenantDetailPage() {
                         />
                       ) : mod.module_key === "profiles" ? (
                         <ProfilesConfigPanel
+                          props={propsEdit}
+                          onChange={setPropsEdit}
+                          onSave={() => saveProps(mod)}
+                          saving={savingProps}
+                        />
+                      ) : mod.module_key === "incentives" ? (
+                        <IncentivesConfigPanel
                           props={propsEdit}
                           onChange={setPropsEdit}
                           onSave={() => saveProps(mod)}

@@ -177,12 +177,56 @@ export const PROFILES_TIER_DEFAULTS: Record<TierKey, TierFeatureMap> = {
   },
 };
 
+// ── Incentives ────────────────────────────────────────────────────────────────
+export const INCENTIVES_TIER_DEFAULTS: Record<TierKey, TierFeatureMap> = {
+  basic: {
+    multi_goal_enabled:           false,
+    open_ended_value_enabled:     false,
+    target_cap_enabled:           false,
+    percentage_payout_enabled:    false,
+    payout_upper_cap_enabled:     false,
+    custom_tenure_enabled:        false,
+    role_scoping_enabled:         false,
+    department_scoping_enabled:   false,
+    show_in_payslip:              false,
+    self_reporting_enabled:       false,
+    max_active_plans:             null, // numeric — skip boolean diff
+  },
+  standard: {
+    multi_goal_enabled:           true,
+    open_ended_value_enabled:     true,
+    target_cap_enabled:           true,
+    percentage_payout_enabled:    true,
+    payout_upper_cap_enabled:     true,
+    custom_tenure_enabled:        false,
+    role_scoping_enabled:         false,
+    department_scoping_enabled:   false,
+    show_in_payslip:              false,
+    self_reporting_enabled:       false,
+    max_active_plans:             null,
+  },
+  advanced: {
+    multi_goal_enabled:           true,
+    open_ended_value_enabled:     true,
+    target_cap_enabled:           true,
+    percentage_payout_enabled:    true,
+    payout_upper_cap_enabled:     true,
+    custom_tenure_enabled:        true,
+    role_scoping_enabled:         true,
+    department_scoping_enabled:   true,
+    show_in_payslip:              true,
+    self_reporting_enabled:       true,
+    max_active_plans:             null,
+  },
+};
+
 // ── Module map ────────────────────────────────────────────────────────────────
 export const MODULE_TIER_DEFAULTS: Record<string, Record<TierKey, TierFeatureMap>> = {
   payroll:        PAYROLL_TIER_DEFAULTS,
   leave_settings: LEAVE_TIER_DEFAULTS,
   reimbursements: REIMB_TIER_DEFAULTS,
   profiles:       PROFILES_TIER_DEFAULTS,
+  incentives:     INCENTIVES_TIER_DEFAULTS,
 };
 
 // ── Human readable feature labels ─────────────────────────────────────────────
@@ -223,6 +267,17 @@ export const FEATURE_LABELS: Record<string, string> = {
   designation_change_approval:      'Designation Change Approval',
   granular_field_permissions:       'Granular Field Permissions',
   team_scoped_manager_edit:         'Team-Scoped Manager Edit',
+  // Incentives
+  multi_goal_enabled:               'Multiple Goals Per Plan',
+  open_ended_value_enabled:         'Open-Ended Value Goals',
+  target_cap_enabled:               'Minimum Target / Achievement Cap',
+  percentage_payout_enabled:        'Percentage-Based Payout',
+  payout_upper_cap_enabled:         'Upper Cap on Payout',
+  custom_tenure_enabled:            'Custom Date Range Tenure',
+  role_scoping_enabled:             'Scope by Role',
+  department_scoping_enabled:       'Scope by Department',
+  show_in_payslip:                  'Show in Payslip',
+  self_reporting_enabled:           'Employee Self-Reporting',
 };
 
 // ── Diff engine ───────────────────────────────────────────────────────────────

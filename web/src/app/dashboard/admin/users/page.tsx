@@ -15,9 +15,12 @@ interface Profile {
   left_on: string | null;
 }
 
+const DAYS_LONG = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
 const emptyForm = { 
   full_name: "", email: "", password: "", role: "employee", manager_id: "",
-  phone_number: "", gender: "Male", designation: "", joining_date: "", remuneration: "" 
+  phone_number: "", gender: "Male", designation: "", joining_date: "", remuneration: "",
+  weekly_off_day: "",
 };
 
 export default function AdminUsers() {
@@ -48,6 +51,9 @@ export default function AdminUsers() {
   const [creditForm, setCreditForm]             = useState({ type_name: "Earned Leave (EL)", days: 1, add_to_used: false });
   const [actionLoading, setActionLoading]       = useState(false);
 
+  // Week off schedule config
+  const [weekOffMode, setWeekOffMode] = useState<"fixed"|"rotating">("fixed");
+
   const load = async () => {
     const companyId = profile?.company_id;
     if (!companyId) { setLoading(false); return; }
@@ -61,7 +67,12 @@ export default function AdminUsers() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // Load app settings to detect week off mode
+    supabase.from("app_settings").select("week_off_type").single()
+      .then(({ data }) => { if (data?.week_off_type) setWeekOffMode(data.week_off_type); });
+  }, []);
 
   const isSuperAdmin = profile?.role === "superadmin";
 
@@ -88,7 +99,9 @@ export default function AdminUsers() {
        joining_letter_url = urlData.publicUrl;
     }
 
-    const payload = { ...form, joining_letter_url };
+    const payload = { ...form, joining_letter_url,
+      weekly_off_day: weekOffMode === "rotating" && form.weekly_off_day !== "" ? Number(form.weekly_off_day) : null,
+    };
 
     const res = await fetch("/api/create-user", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -107,7 +120,12 @@ export default function AdminUsers() {
   /* ── Edit ── */
   const openEdit = async (u: any) => {
     setEditUser(u); setEditLetterFile(null); setEditError("");
-    setEditForm({ full_name: u.full_name, phone_number: u.phone_number || "", gender: u.gender || "Male", designation: u.designation || "", joining_date: u.joining_date ? u.joining_date.split("T")[0] : "", remuneration: u.remuneration || "", new_email: "", new_password: "" });
+    setEditForm({
+      full_name: u.full_name, phone_number: u.phone_number || "", gender: u.gender || "Male",
+      designation: u.designation || "", joining_date: u.joining_date ? u.joining_date.split("T")[0] : "",
+      remuneration: u.remuneration || "", new_email: "", new_password: "",
+      weekly_off_day: u.weekly_off_day !== null && u.weekly_off_day !== undefined ? String(u.weekly_off_day) : "",
+    });
     // Load existing appraisals
     const { data: existing } = await supabase.from("employee_appraisals").select("*").eq("user_id", u.id).order("appraisal_date", { ascending: false });
     setAppraisalRows((existing ?? []).map((a: any) => ({ date: a.appraisal_date, file: null, existingUrl: a.letter_url, id: a.id })));
@@ -136,6 +154,8 @@ export default function AdminUsers() {
       joining_date:  editForm.joining_date || null,
       remuneration:  editForm.remuneration ? Number(editForm.remuneration) : null,
       joining_letter_url,
+      weekly_off_day: weekOffMode === "rotating" && editForm.weekly_off_day !== ""
+        ? Number(editForm.weekly_off_day) : null,
     }).eq("id", editUser.id);
 
     // --- Update auth account if email/password supplied ---
@@ -542,6 +562,19 @@ export default function AdminUsers() {
                   {activeUsers.map(m => (<option key={m.id} value={m.id}>{m.full_name}{m.role !== "employee" ? ` (${m.role})` : ""}</option>))}
                 </select>
               </div>
+
+              {/* Week Off Day — only shown in rotating mode */}
+              {weekOffMode === "rotating" && (
+                <div className={styles.formGroup} style={{ marginBottom: 0, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 10, padding: "12px 14px" }}>
+                  <label style={{ color: "var(--accent-primary)" }}>🔄 Weekly Off Day *</label>
+                  <select className="premium-input" value={form.weekly_off_day} onChange={e => setForm({...form, weekly_off_day: e.target.value})} required>
+                    <option value="">-- Select off day --</option>
+                    {DAYS_LONG.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                  </select>
+                  <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 4 }}>This employee's rotating week off day. Can be changed from their profile card.</div>
+                </div>
+              )}
+
               <button type="submit" className={styles.primaryBtn} disabled={saving} style={{ marginTop: 8 }}>
                 {saving ? "Creating Profile..." : "Create User Profile"}
               </button>
@@ -600,6 +633,17 @@ export default function AdminUsers() {
                     <input type="number" className="premium-input" placeholder="0.00" value={editForm.remuneration} onChange={e => setEditForm({...editForm, remuneration: e.target.value})} />
                   </div>
                 </div>
+
+                {/* Week Off Day — only in rotating mode */}
+                {weekOffMode === "rotating" && (
+                  <div className={styles.formGroup} style={{ marginBottom: 0, marginTop: 14, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 10, padding: "10px 12px" }}>
+                    <label style={{ color: "var(--accent-primary)" }}>🔄 Weekly Off Day</label>
+                    <select className="premium-input" value={editForm.weekly_off_day} onChange={e => setEditForm({...editForm, weekly_off_day: e.target.value})}>
+                      <option value="">-- Select off day --</option>
+                      {DAYS_LONG.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                    </select>
+                  </div>
+                )}
 
                 <div className={styles.formGroup} style={{ marginBottom: 0, marginTop: 14 }}>
                   <label>Joining Letter {editUser.joining_letter_url && <a href={editUser.joining_letter_url} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8, fontSize: "0.78rem", color: "var(--accent-primary)" }}>📄 View Current</a>}</label>

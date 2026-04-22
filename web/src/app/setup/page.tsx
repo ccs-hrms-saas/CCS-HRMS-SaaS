@@ -8,70 +8,70 @@ import s from "./setup.module.css";
 
 // ── Step definitions ───────────────────────────────────────────────────────
 const STEPS = [
-  { id: 1, label: "Welcome",    emoji: "👋" },
+  { id: 1, label: "Welcome",     emoji: "👋" },
   { id: 2, label: "Schedule",   emoji: "🕘" },
   { id: 3, label: "Departments",emoji: "🏢" },
   { id: 4, label: "Leaves",     emoji: "📋" },
   { id: 5, label: "Done",       emoji: "🎉" },
 ];
 
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAYS_SHORT  = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAYS_LONG   = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WORK_DAYS   = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-const DEFAULT_LEAVE_TYPES = [
-  { name: "Sick Leave",    max_days: 12, is_paid: true  },
-  { name: "Casual Leave",  max_days: 10, is_paid: true  },
-  { name: "Annual Leave",  max_days: 15, is_paid: true  },
-  { name: "Unpaid Leave",  max_days: 0,  is_paid: false },
-];
+// ── Defaults per leave type ────────────────────────────────────────────────
+const CL_DEFAULT  = { enabled: true,  days: 10, carry: false, carry_pct: 0,  carry_max: 0,  half: true,  half_per: 2, short: true,  short_per: 4, consec: true,  consec_limit: 2 };
+const EL_DEFAULT  = { enabled: false, days: 15, carry: true,  carry_pct: 50, carry_max: 15, half: true,  half_per: 2, short: false, short_per: 4, consec: false, consec_limit: 0, accrual: "" };
+const SL_DEFAULT  = { enabled: true,  days: 12, proof_after: 2 };
+const ML_DEFAULT  = { enabled: false, per_month: 1, lapse_award: "Comp-Off", lapse_threshold: 4 };
+const CO_DEFAULT  = { enabled: false, expiry: 30, employee_split: true };
+// LWP is always created, no config
 
 // ── Main Wizard ────────────────────────────────────────────────────────────
 export default function SetupWizard() {
   const router = useRouter();
-  const [step,      setStep]      = useState(1);
-  const [company,   setCompany]   = useState<{ id: string; name: string } | null>(null);
-  const [saving,    setSaving]    = useState(false);
+  const [step,    setStep]    = useState(1);
+  const [company, setCompany] = useState<{ id: string; name: string } | null>(null);
+  const [saving,  setSaving]  = useState(false);
 
-  // Step 2 — Work schedule
-  const [workDays,      setWorkDays]      = useState(["Mon","Tue","Wed","Thu","Fri"]);
-  const [startTime,     setStartTime]     = useState("09:00");
-  const [endTime,       setEndTime]       = useState("18:00");
-  const [graceMinutes,  setGraceMinutes]  = useState("15");
+  // ── Step 2 state — Work Schedule ──────────────────────────────────────────
+  const [workDays,       setWorkDays]       = useState(["Mon","Tue","Wed","Thu","Fri"]);
+  const [startTime,      setStartTime]      = useState("09:00");
+  const [endTime,        setEndTime]        = useState("18:00");
+  const [graceMinutes,   setGraceMinutes]   = useState("15");
+  const [weekOffType,    setWeekOffType]    = useState<"fixed"|"rotating">("fixed");
+  const [fixedOffDays,   setFixedOffDays]   = useState<number[]>([0]); // 0=Sun
+  const [overtimeTrack,  setOvertimeTrack]  = useState(false);
 
-  // Step 3 — Departments
+  // ── Step 3 state — Departments ────────────────────────────────────────────
   const [departments, setDepartments] = useState([
     { name: "Human Resources" },
     { name: "Operations" },
   ]);
 
-  // Step 4 — Leave types
-  const [leaveTypes, setLeaveTypes] = useState(DEFAULT_LEAVE_TYPES);
+  // ── Step 4 state — Leave Policy ───────────────────────────────────────────
+  // 4a: what categories to configure
+  const [configLeaves,  setConfigLeaves]  = useState(true);
+  const [configWeekOff, setConfigWeekOff] = useState(false);
 
-  // Summary counters for completion screen
+  // 4b: per-leave-type config
+  const [cl, setCl] = useState<any>(CL_DEFAULT);
+  const [el, setEl] = useState<any>(EL_DEFAULT);
+  const [sl, setSl] = useState<any>(SL_DEFAULT);
+  const [ml, setMl] = useState<any>(ML_DEFAULT);
+  const [co, setCo] = useState<any>(CO_DEFAULT);
+
+  // Summary
   const [summary, setSummary] = useState({ depts: 0, leaves: 0 });
 
-  // ── Load current company ─────────────────────────────────────────────────
+  // ── Load company ──────────────────────────────────────────────────────────
   useEffect(() => {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push("/login"); return; }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("company_id, role")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile?.company_id || profile.role !== "superadmin") {
-        router.push("/dashboard");
-        return;
-      }
-
-      const { data: co } = await supabase
-        .from("companies")
-        .select("id, name, setup_completed")
-        .eq("id", profile.company_id)
-        .single();
-
+      const { data: profile } = await supabase.from("profiles").select("company_id, role").eq("id", user.id).single();
+      if (!profile?.company_id || profile.role !== "superadmin") { router.push("/dashboard"); return; }
+      const { data: co } = await supabase.from("companies").select("id, name, setup_completed").eq("id", profile.company_id).single();
       if (!co) { router.push("/dashboard"); return; }
       if (co.setup_completed) { router.push("/dashboard"); return; }
       setCompany({ id: co.id, name: co.name });
@@ -79,89 +79,151 @@ export default function SetupWizard() {
     init();
   }, [router]);
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  function toggleDay(day: string) {
-    setWorkDays(prev =>
-      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
-    );
+  // ── Helpers — work days ────────────────────────────────────────────────────
+  function toggleWorkDay(day: string) {
+    setWorkDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
+  }
+  function toggleFixedOffDay(dow: number) {
+    setFixedOffDays(prev => prev.includes(dow) ? prev.filter(d => d !== dow) : [...prev, dow]);
   }
 
-  function addDept() {
-    setDepartments(prev => [...prev, { name: "" }]);
-  }
+  // ── Helpers — departments ─────────────────────────────────────────────────
+  const addDept    = () => setDepartments(prev => [...prev, { name: "" }]);
+  const removeDept = (i: number) => setDepartments(prev => prev.filter((_, idx) => idx !== i));
+  const updateDept = (i: number, val: string) => setDepartments(prev => prev.map((d, idx) => idx === i ? { name: val } : d));
 
-  function removeDept(i: number) {
-    setDepartments(prev => prev.filter((_, idx) => idx !== i));
-  }
-
-  function updateDept(i: number, val: string) {
-    setDepartments(prev => prev.map((d, idx) => idx === i ? { name: val } : d));
-  }
-
-  function updateLeave(i: number, field: string, val: string | boolean | number) {
-    setLeaveTypes(prev => prev.map((lt, idx) => idx === i ? { ...lt, [field]: val } : lt));
-  }
-
-  function addLeave() {
-    setLeaveTypes(prev => [...prev, { name: "", max_days: 6, is_paid: true }]);
-  }
-
-  // ── Save each step ────────────────────────────────────────────────────────
+  // ── Save Step 2 ────────────────────────────────────────────────────────────
   async function saveSchedule() {
     if (!company) return;
     await supabase.from("app_settings").upsert({
-      company_id:    company.id,
-      work_days:     workDays,
-      work_start:    startTime,
-      work_end:      endTime,
-      grace_minutes: parseInt(graceMinutes) || 15,
+      company_id:       company.id,
+      work_days:        workDays,
+      work_start:       startTime,
+      work_end:         endTime,
+      grace_minutes:    parseInt(graceMinutes) || 15,
+      week_off_type:    weekOffType,
+      week_off_days:    weekOffType === "fixed" ? fixedOffDays : [],
+      overtime_tracking: overtimeTrack,
     }, { onConflict: "company_id" });
   }
 
+  // ── Save Step 3 ────────────────────────────────────────────────────────────
   async function saveDepartments() {
     if (!company) return;
     const valid = departments.filter(d => d.name.trim());
-    // Delete old, insert new
     await supabase.from("departments").delete().eq("company_id", company.id);
     if (valid.length > 0) {
-      await supabase.from("departments").insert(
-        valid.map(d => ({ company_id: company.id, name: d.name.trim() }))
-      );
+      await supabase.from("departments").insert(valid.map(d => ({ company_id: company.id, name: d.name.trim() })));
     }
   }
 
+  // ── Save Step 4 ────────────────────────────────────────────────────────────
   async function saveLeaveTypes() {
     if (!company) return;
-    const valid = leaveTypes.filter(l => l.name.trim());
-    // Delete the two seeded defaults, re-insert all from wizard
     await supabase.from("leave_types").delete().eq("company_id", company.id);
-    if (valid.length > 0) {
-      await supabase.from("leave_types").insert(
-        valid.map(l => ({
-          company_id:       company.id,
-          name:             l.name.trim(),
-          max_days_per_year:l.max_days,
-          is_paid:          l.is_paid,
-          deduction_hours:  8.5,
-        }))
-      );
-    }
+
+    const rows: any[] = [];
+
+    if (cl.enabled) rows.push({
+      company_id:             company.id,
+      name:                   "Casual Leave",
+      max_days_per_year:      cl.days,
+      frequency:              "yearly",
+      is_paid:                true,
+      deduction_hours:        8.5,
+      allow_carry_forward:    cl.carry,
+      carry_forward_percent:  cl.carry_pct,
+      max_carry_forward:      cl.carry_max,
+      half_day_allowed:       cl.half,
+      half_days_per_leave:    cl.half_per,
+      short_leave_allowed:    cl.short,
+      short_leaves_per_leave: cl.short_per,
+      max_consecutive_days:   cl.consec ? cl.consec_limit : null,
+      eligible_for_deficit_adj: true,
+      counts_as_lwp_for_payroll: false,
+      is_ml_type:             false,
+    });
+
+    if (el.enabled) rows.push({
+      company_id:             company.id,
+      name:                   "Earned Leave",
+      max_days_per_year:      el.days,
+      frequency:              "yearly",
+      is_paid:                true,
+      deduction_hours:        8.5,
+      allow_carry_forward:    el.carry,
+      carry_forward_percent:  el.carry_pct,
+      max_carry_forward:      el.carry_max,
+      half_day_allowed:       el.half,
+      half_days_per_leave:    el.half_per,
+      short_leave_allowed:    el.short,
+      short_leaves_per_leave: el.short_per,
+      max_consecutive_days:   el.consec ? el.consec_limit : null,
+      accrual_rate:           el.accrual !== "" ? Number(el.accrual) : null,
+      eligible_for_deficit_adj: true,
+      counts_as_lwp_for_payroll: false,
+      is_ml_type:             false,
+    });
+
+    if (sl.enabled) rows.push({
+      company_id:                    company.id,
+      name:                          "Sick Leave",
+      max_days_per_year:             sl.days,
+      frequency:                     "yearly",
+      is_paid:                       true,
+      deduction_hours:               8.5,
+      requires_attachment:           sl.proof_after > 0,
+      requires_attachment_after_days: sl.proof_after,
+      eligible_for_deficit_adj:      false,
+      counts_as_lwp_for_payroll:     false,
+      is_ml_type:                    false,
+    });
+
+    if (ml.enabled) rows.push({
+      company_id:             company.id,
+      name:                   "Menstruation Leave",
+      max_days_per_year:      ml.per_month,
+      frequency:              "monthly",
+      is_paid:                true,
+      deduction_hours:        1.0,
+      is_ml_type:             true,
+      eligible_for_deficit_adj: false,
+      counts_as_lwp_for_payroll: false,
+    });
+
+    if (co.enabled) rows.push({
+      company_id:           company.id,
+      name:                 "Comp-Off",
+      max_days_per_year:    0,
+      frequency:            "yearly",
+      is_paid:              true,
+      deduction_hours:      8.5,
+      expires_in_days:      co.expiry,
+      co_employee_can_split: co.employee_split,
+      half_day_allowed:     co.employee_split,
+      half_days_per_leave:  2,
+      eligible_for_deficit_adj: false,
+      counts_as_lwp_for_payroll: false,
+      is_ml_type:           false,
+    });
+
+    // LWP — always created
+    rows.push({
+      company_id:                company.id,
+      name:                      "Leave Without Pay",
+      max_days_per_year:         365,
+      frequency:                 "yearly",
+      is_paid:                   false,
+      deduction_hours:           8.5,
+      counts_as_lwp_for_payroll: true,
+      eligible_for_deficit_adj:  false,
+      is_ml_type:                false,
+    });
+
+    if (rows.length > 0) await supabase.from("leave_types").insert(rows);
   }
 
-  async function completeSetup() {
-    if (!company) return;
-    setSaving(true);
-    await supabase
-      .from("companies")
-      .update({ setup_completed: true })
-      .eq("id", company.id);
-    setSaving(false);
-    // Tell the dashboard layout to skip the setup check on next load
-    sessionStorage.setItem("setup_just_completed", "1");
-    router.push("/dashboard");
-  }
-
-  // ── Next step handler ─────────────────────────────────────────────────────
+  // ── Next handler ───────────────────────────────────────────────────────────
   async function handleNext() {
     setSaving(true);
     try {
@@ -172,69 +234,108 @@ export default function SetupWizard() {
       }
       if (step === 4) {
         await saveLeaveTypes();
-        setSummary(s => ({ ...s, leaves: leaveTypes.filter(l => l.name.trim()).length }));
+        setSummary(s => ({ ...s, leaves: [cl, el, sl, ml, co].filter(x => x.enabled).length + 1 /* LWP */ }));
       }
       setStep(prev => prev + 1);
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
-  if (!company) {
-    return (
-      <div className={s.root}>
-        <div style={{ color: "#334155", marginTop: 120 }}>Loading your workspace…</div>
-      </div>
-    );
+  async function completeSetup() {
+    if (!company) return;
+    setSaving(true);
+    await supabase.from("companies").update({ setup_completed: true }).eq("id", company.id);
+    setSaving(false);
+    sessionStorage.setItem("setup_just_completed", "1");
+    router.push("/dashboard");
   }
+
+  // ── Loading ────────────────────────────────────────────────────────────────
+  if (!company) return (
+    <div className={s.root}><div style={{ color: "#334155", marginTop: 120 }}>Loading your workspace…</div></div>
+  );
+
+  // ── Small helpers for the form ────────────────────────────────────────────
+  const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+    <div style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: 0.6, color: "#6366f1", textTransform: "uppercase", marginBottom: 10, marginTop: 18 }}>
+      {children}
+    </div>
+  );
+
+  const Toggle = ({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
+    <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.45 : 1, fontSize: "0.88rem", color: "#cbd5e1" }}>
+      <div onClick={() => !disabled && onChange(!checked)} style={{
+        width: 38, height: 20, borderRadius: 10, background: checked ? "#6366f1" : "rgba(255,255,255,0.1)",
+        position: "relative", transition: "background 0.2s", cursor: disabled ? "not-allowed" : "pointer", flexShrink: 0,
+      }}>
+        <div style={{
+          position: "absolute", top: 2, left: checked ? 20 : 2, width: 16, height: 16,
+          borderRadius: "50%", background: "#fff", transition: "left 0.2s",
+        }} />
+      </div>
+      {label}
+    </label>
+  );
+
+  const NumInput = ({ label, value, onChange, min, max, note }: any) => (
+    <div className={s.fieldGroup} style={{ marginBottom: 0 }}>
+      <label className={s.label}>{label}</label>
+      <input type="number" className={s.input} value={value} min={min} max={max}
+        onChange={e => onChange(Number(e.target.value))} style={{ maxWidth: 140 }} />
+      {note && <div style={{ fontSize: "0.7rem", color: "#475569", marginTop: 4 }}>{note}</div>}
+    </div>
+  );
+
+  const LeaveCard = ({ icon, title, checked, onToggle, children }: any) => (
+    <div style={{ border: `1px solid ${checked ? "rgba(99,102,241,0.35)" : "rgba(255,255,255,0.07)"}`, borderRadius: 14, overflow: "hidden", marginBottom: 10, transition: "border-color 0.2s" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: checked ? "rgba(99,102,241,0.07)" : "rgba(255,255,255,0.02)", cursor: "pointer" }} onClick={() => onToggle(!checked)}>
+        <div style={{ fontSize: "1.3rem" }}>{icon}</div>
+        <div style={{ flex: 1, fontWeight: 700, fontSize: "0.9rem", color: "#e2e8f0" }}>{title}</div>
+        <div style={{
+          width: 38, height: 20, borderRadius: 10, background: checked ? "#6366f1" : "rgba(255,255,255,0.1)",
+          position: "relative", transition: "background 0.2s", flexShrink: 0,
+        }}>
+          <div style={{ position: "absolute", top: 2, left: checked ? 20 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+        </div>
+      </div>
+      {checked && (
+        <div style={{ padding: "16px 18px", borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.15)", display: "flex", flexDirection: "column", gap: 14 }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className={s.root}>
-      {/* Brand */}
       <div className={s.brand}>CCS HRMS</div>
 
       {/* Stepper */}
       <div className={s.stepper}>
         {STEPS.map(st => (
-          <div
-            key={st.id}
-            className={`${s.stepItem} ${st.id === step ? s.active : ""} ${st.id < step ? s.done : ""}`}
-          >
-            <div className={s.stepDot}>
-              {st.id < step ? <Check size={14} /> : st.emoji}
-            </div>
+          <div key={st.id} className={`${s.stepItem} ${st.id === step ? s.active : ""} ${st.id < step ? s.done : ""}`}>
+            <div className={s.stepDot}>{st.id < step ? <Check size={14} /> : st.emoji}</div>
             <div className={s.stepLabel}>{st.label}</div>
           </div>
         ))}
       </div>
 
-      {/* Step cards */}
-
-      {/* ── STEP 1: Welcome ─────────────────────────────────────────────── */}
+      {/* ── STEP 1: Welcome ────────────────────────────────────────────────── */}
       {step === 1 && (
         <div className={s.card}>
           <div className={s.cardHead}>
             <div className={s.stepNumber}>Step 1 of 4</div>
             <h1 className={s.stepTitle}>Welcome to CCS HRMS, {company.name}! 👋</h1>
-            <p className={s.stepDesc}>
-              Let's set up your workspace in 4 quick steps — work schedule, departments, and leave policy.
-              This takes about 3 minutes.
-            </p>
+            <p className={s.stepDesc}>Let's set up your workspace in 4 quick steps. This takes about 5 minutes.</p>
           </div>
           <hr className={s.cardDivider} />
           <div className={s.cardBody}>
-            <div style={{
-              display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12,
-            }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
               {[
-                { emoji: "🕘", title: "Work Schedule", desc: "Set your working hours and days" },
+                { emoji: "🕘", title: "Work Schedule", desc: "Working hours, week off, grace period" },
                 { emoji: "🏢", title: "Departments",   desc: "Add your organisation's departments" },
-                { emoji: "📋", title: "Leave Policy",  desc: "Configure leave types and limits" },
+                { emoji: "📋", title: "Leave Policy",  desc: "Configure each leave type in detail" },
               ].map(item => (
-                <div key={item.title} style={{
-                  background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
-                  borderRadius: 14, padding: "18px 16px", textAlign: "center",
-                }}>
+                <div key={item.title} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 14, padding: "18px 16px", textAlign: "center" }}>
                   <div style={{ fontSize: "1.8rem", marginBottom: 8 }}>{item.emoji}</div>
                   <div style={{ fontWeight: 700, color: "#e2e8f0", fontSize: "0.9rem", marginBottom: 4 }}>{item.title}</div>
                   <div style={{ fontSize: "0.78rem", color: "#475569" }}>{item.desc}</div>
@@ -244,174 +345,279 @@ export default function SetupWizard() {
           </div>
           <div className={s.cardFoot}>
             <span />
-            <button className={s.nextBtn} onClick={() => setStep(2)}>
-              Let's Begin <ArrowRight size={16} />
-            </button>
+            <button className={s.nextBtn} onClick={() => setStep(2)}>Let's Begin <ArrowRight size={16} /></button>
           </div>
         </div>
       )}
 
-      {/* ── STEP 2: Work Schedule ───────────────────────────────────────── */}
+      {/* ── STEP 2: Work Schedule ──────────────────────────────────────────── */}
       {step === 2 && (
         <div className={s.card}>
           <div className={s.cardHead}>
             <div className={s.stepNumber}>Step 2 of 4</div>
             <h1 className={s.stepTitle}>Work Schedule 🕘</h1>
-            <p className={s.stepDesc}>
-              Define your standard working days and hours. This drives attendance tracking and leave calculations.
-            </p>
+            <p className={s.stepDesc}>Define working hours, week off policy, and grace period.</p>
           </div>
           <hr className={s.cardDivider} />
           <div className={s.cardBody}>
-            <div className={s.fieldGroup}>
-              <label className={s.label}>Working Days</label>
-              <div className={s.dayGrid}>
-                {DAYS.map(day => (
-                  <div
-                    key={day}
-                    className={`${s.dayChip} ${workDays.includes(day) ? s.selected : ""}`}
-                    onClick={() => toggleDay(day)}
-                  >
-                    {day}
-                  </div>
-                ))}
-              </div>
+
+            {/* Working Days */}
+            <SectionLabel>Working Days</SectionLabel>
+            <div className={s.dayGrid}>
+              {WORK_DAYS.map(day => (
+                <div key={day} className={`${s.dayChip} ${workDays.includes(day) ? s.selected : ""}`} onClick={() => toggleWorkDay(day)}>{day}</div>
+              ))}
             </div>
-            <div className={s.formRow}>
+
+            {/* Hours + Grace */}
+            <div className={s.formRow} style={{ marginTop: 16 }}>
               <div className={s.fieldGroup}>
                 <label className={s.label}>Office Start Time</label>
-                <input type="time" className={s.input} value={startTime}
-                  onChange={e => setStartTime(e.target.value)} />
+                <input type="time" className={s.input} value={startTime} onChange={e => setStartTime(e.target.value)} />
               </div>
               <div className={s.fieldGroup}>
                 <label className={s.label}>Office End Time</label>
-                <input type="time" className={s.input} value={endTime}
-                  onChange={e => setEndTime(e.target.value)} />
+                <input type="time" className={s.input} value={endTime} onChange={e => setEndTime(e.target.value)} />
+              </div>
+              <div className={s.fieldGroup}>
+                <label className={s.label}>Grace Period (minutes)</label>
+                <input type="number" className={s.input} value={graceMinutes} min={0} max={60} onChange={e => setGraceMinutes(e.target.value)} />
               </div>
             </div>
-            <div className={s.fieldGroup} style={{ maxWidth: 240 }}>
-              <label className={s.label}>Grace Period (minutes late allowed)</label>
-              <input type="number" className={s.input} value={graceMinutes} min={0} max={60}
-                onChange={e => setGraceMinutes(e.target.value)} />
+
+            {/* Week Off */}
+            <SectionLabel>Week Off Policy</SectionLabel>
+            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+              {(["fixed", "rotating"] as const).map(type => (
+                <div key={type} onClick={() => setWeekOffType(type)} style={{
+                  flex: 1, padding: "12px 16px", borderRadius: 12, cursor: "pointer", textAlign: "center", transition: "all 0.2s",
+                  border: `1px solid ${weekOffType === type ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.08)"}`,
+                  background: weekOffType === type ? "rgba(99,102,241,0.1)" : "transparent",
+                  color: weekOffType === type ? "#818cf8" : "#64748b", fontWeight: 600, fontSize: "0.85rem",
+                }}>
+                  {type === "fixed" ? "🗓️ Fixed" : "🔄 Rotating"}
+                  <div style={{ fontSize: "0.7rem", fontWeight: 400, marginTop: 4, color: "#475569" }}>
+                    {type === "fixed" ? "All employees share the same off day" : "Each employee has their own off day"}
+                  </div>
+                </div>
+              ))}
             </div>
+
+            {weekOffType === "fixed" && (
+              <>
+                <div style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: 8 }}>Select which day(s) are off:</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {DAYS_SHORT.map((d, i) => (
+                    <div key={d} onClick={() => toggleFixedOffDay(i)} style={{
+                      padding: "6px 14px", borderRadius: 20, cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, transition: "all 0.2s",
+                      border: `1px solid ${fixedOffDays.includes(i) ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.08)"}`,
+                      background: fixedOffDays.includes(i) ? "rgba(99,102,241,0.15)" : "transparent",
+                      color: fixedOffDays.includes(i) ? "#818cf8" : "#64748b",
+                    }}>{d}</div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {weekOffType === "rotating" && (
+              <div style={{ padding: "12px 16px", borderRadius: 12, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)", fontSize: "0.83rem", color: "#94a3b8", lineHeight: 1.6 }}>
+                ℹ️ In rotating mode, you assign each employee's off day when you create them, and you can change it anytime from their profile card.
+              </div>
+            )}
+
+            {/* Overtime */}
+            <SectionLabel>Overtime</SectionLabel>
+            <Toggle
+              label="Track overtime hours (superadmin view only — never shown to employees)"
+              checked={overtimeTrack}
+              onChange={setOvertimeTrack}
+            />
+            {overtimeTrack && (
+              <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: 6, paddingLeft: 48 }}>
+                Overtime = time worked beyond <strong>{endTime}</strong>. Grace period does not apply.
+              </div>
+            )}
           </div>
           <div className={s.cardFoot}>
             <button className={s.backBtn} onClick={() => setStep(1)}>Back</button>
-            <button className={s.nextBtn} onClick={handleNext} disabled={saving || workDays.length === 0}>
-              {saving ? "Saving…" : <>Save & Continue <ArrowRight size={16} /></>}
+            <button className={s.nextBtn} onClick={handleNext} disabled={saving || workDays.length === 0 || (weekOffType === "fixed" && fixedOffDays.length === 0)}>
+              {saving ? "Saving…" : <><span>Save & Continue</span> <ArrowRight size={16} /></>}
             </button>
           </div>
         </div>
       )}
 
-      {/* ── STEP 3: Departments ─────────────────────────────────────────── */}
+      {/* ── STEP 3: Departments ────────────────────────────────────────────── */}
       {step === 3 && (
         <div className={s.card}>
           <div className={s.cardHead}>
             <div className={s.stepNumber}>Step 3 of 4</div>
             <h1 className={s.stepTitle}>Departments 🏢</h1>
-            <p className={s.stepDesc}>
-              Add your organisation's departments. Employees will be assigned to one when you create them.
-            </p>
+            <p className={s.stepDesc}>Add your organisation's departments. Employees will be assigned when you create them.</p>
           </div>
           <hr className={s.cardDivider} />
           <div className={s.cardBody}>
             <div className={s.deptList}>
               {departments.map((d, i) => (
                 <div key={i} className={s.deptRow}>
-                  <input
-                    className={s.input}
-                    value={d.name}
-                    onChange={e => updateDept(i, e.target.value)}
-                    placeholder={`Department ${i + 1}`}
-                  />
+                  <input className={s.input} value={d.name} onChange={e => updateDept(i, e.target.value)} placeholder={`Department ${i + 1}`} />
                   <button className={s.removeBtn} onClick={() => removeDept(i)}>✕</button>
                 </div>
               ))}
-              <button className={s.addBtn} onClick={addDept}>
-                <Plus size={14} /> Add Department
-              </button>
+              <button className={s.addBtn} onClick={addDept}><Plus size={14} /> Add Department</button>
             </div>
           </div>
           <div className={s.cardFoot}>
             <button className={s.backBtn} onClick={() => setStep(2)}>Back</button>
-            <button
-              className={s.nextBtn}
-              onClick={handleNext}
-              disabled={saving || departments.filter(d => d.name.trim()).length === 0}
-            >
-              {saving ? "Saving…" : <>Save & Continue <ArrowRight size={16} /></>}
+            <button className={s.nextBtn} onClick={handleNext} disabled={saving || departments.filter(d => d.name.trim()).length === 0}>
+              {saving ? "Saving…" : <><span>Save & Continue</span> <ArrowRight size={16} /></>}
             </button>
           </div>
         </div>
       )}
 
-      {/* ── STEP 4: Leave Types ──────────────────────────────────────────── */}
+      {/* ── STEP 4: Leave Policy ───────────────────────────────────────────── */}
       {step === 4 && (
-        <div className={s.card}>
+        <div className={s.card} style={{ maxWidth: 660 }}>
           <div className={s.cardHead}>
             <div className={s.stepNumber}>Step 4 of 4</div>
             <h1 className={s.stepTitle}>Leave Policy 📋</h1>
-            <p className={s.stepDesc}>
-              Review and adjust your leave types. You can always add more later from Leave Settings.
-            </p>
+            <p className={s.stepDesc}>Configure exactly what you offer. Enable only the leave types that apply to your organisation.</p>
           </div>
           <hr className={s.cardDivider} />
-          <div className={s.cardBody}>
-            {leaveTypes.map((lt, i) => (
-              <div key={i} className={s.leaveRow}>
-                <input
-                  className={s.input}
-                  style={{ padding: "10px 14px", borderRadius: 10, fontSize: "0.9rem" }}
-                  value={lt.name}
-                  onChange={e => updateLeave(i, "name", e.target.value)}
-                  placeholder="Leave type name"
-                />
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  <input
-                    type="number"
-                    className={s.leaveInput}
-                    value={lt.max_days}
-                    min={0}
-                    onChange={e => updateLeave(i, "max_days", parseInt(e.target.value) || 0)}
-                  />
-                  <span style={{ fontSize: "0.78rem", color: "#475569", whiteSpace: "nowrap" }}>days/yr</span>
+          <div className={s.cardBody} style={{ maxHeight: 520, overflowY: "auto", paddingRight: 4 }}>
+
+            {/* ── Phase 4a: What to configure ─────────────────────────────── */}
+            <SectionLabel>What does your organisation offer?</SectionLabel>
+            <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
+              {[
+                { key: "leaves",  label: "📋 Standard Leaves",  desc: "CL, EL, SL, ML, CO etc.", checked: configLeaves,  set: setConfigLeaves },
+                { key: "weekoff", label: "🗓️ Week Off",          desc: weekOffType === "fixed" ? `Fixed — ${fixedOffDays.map(d => DAYS_LONG[d]).join(", ")}` : "Rotating — assigned per employee", checked: configWeekOff, set: setConfigWeekOff },
+              ].map(item => (
+                <div key={item.key} onClick={() => item.set(!item.checked)} style={{
+                  flex: 1, minWidth: 180, padding: "12px 16px", borderRadius: 12, cursor: "pointer", transition: "all 0.2s",
+                  border: `1px solid ${item.checked ? "rgba(99,102,241,0.45)" : "rgba(255,255,255,0.08)"}`,
+                  background: item.checked ? "rgba(99,102,241,0.1)" : "rgba(255,255,255,0.02)",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{
+                      width: 18, height: 18, borderRadius: 4, border: `2px solid ${item.checked ? "#6366f1" : "#475569"}`,
+                      background: item.checked ? "#6366f1" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                    }}>
+                      {item.checked && <Check size={11} color="#fff" />}
+                    </div>
+                    <span style={{ fontWeight: 700, fontSize: "0.88rem", color: item.checked ? "#818cf8" : "#94a3b8" }}>{item.label}</span>
+                  </div>
+                  <div style={{ fontSize: "0.72rem", color: "#475569", marginTop: 6, paddingLeft: 26 }}>{item.desc}</div>
                 </div>
-                <div
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
-                    padding: "7px 12px", borderRadius: 10,
-                    background: lt.is_paid ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.03)",
-                    border: `1px solid ${lt.is_paid ? "rgba(16,185,129,0.2)" : "rgba(255,255,255,0.08)"}`,
-                    cursor: "pointer", transition: "all 0.2s",
-                  }}
-                  onClick={() => updateLeave(i, "is_paid", !lt.is_paid)}
-                >
-                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: lt.is_paid ? "#34d399" : "#475569" }}>
-                    {lt.is_paid ? "✓ Paid" : "Unpaid"}
-                  </span>
-                </div>
-                <button className={s.removeBtn} onClick={() => setLeaveTypes(prev => prev.filter((_, idx) => idx !== i))}>✕</button>
+              ))}
+            </div>
+
+            {/* ── Phase 4b: Week Off confirmation ─────────────────────────── */}
+            {configWeekOff && (
+              <div style={{ padding: "12px 16px", borderRadius: 12, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)", fontSize: "0.83rem", color: "#94a3b8", marginBottom: 16 }}>
+                ✅ <strong style={{ color: "#818cf8" }}>Week Off</strong> was configured in Step 2:{" "}
+                {weekOffType === "fixed"
+                  ? `Fixed — ${fixedOffDays.map(d => DAYS_LONG[d]).join(" & ")}`
+                  : "Rotating — assign each employee's day when you create them"}
+                <div style={{ fontSize: "0.7rem", marginTop: 4 }}>You can change this any time from Leave Settings.</div>
               </div>
-            ))}
-            <button className={s.addBtn} onClick={addLeave}>
-              <Plus size={14} /> Add Leave Type
-            </button>
+            )}
+
+            {/* ── Phase 4b: Standard Leaves ────────────────────────────────── */}
+            {configLeaves && (
+              <>
+                {/* CL */}
+                <LeaveCard icon="🏖️" title="Casual Leave (CL)" checked={cl.enabled} onToggle={(v: boolean) => setCl({ ...cl, enabled: v })}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <NumInput label="Days per year" value={cl.days} onChange={(v: number) => setCl({ ...cl, days: v })} min={1} />
+                    <NumInput label="Max consecutive CL days" value={cl.consec_limit} onChange={(v: number) => setCl({ ...cl, consec_limit: v })} min={1} />
+                  </div>
+                  <Toggle label="Allow carry forward" checked={cl.carry} onChange={v => setCl({ ...cl, carry: v })} />
+                  {cl.carry && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, paddingLeft: 48 }}>
+                      <NumInput label="Carry forward %" value={cl.carry_pct} onChange={(v: number) => setCl({ ...cl, carry_pct: v })} min={0} max={100} />
+                      <NumInput label="Max carry forward days" value={cl.carry_max} onChange={(v: number) => setCl({ ...cl, carry_max: v })} min={0} />
+                    </div>
+                  )}
+                  <Toggle label="Allow half day CL" checked={cl.half} onChange={v => setCl({ ...cl, half: v })} />
+                  {cl.half && <NumInput label="Half days = 1 CL" value={cl.half_per} onChange={(v: number) => setCl({ ...cl, half_per: v })} min={1} note="e.g. 2 means 2 half days consume 1 CL" />}
+                  <Toggle label="Allow short leave against CL" checked={cl.short} onChange={v => setCl({ ...cl, short: v })} />
+                  {cl.short && <NumInput label="Short leaves = 1 CL" value={cl.short_per} onChange={(v: number) => setCl({ ...cl, short_per: v })} min={1} note="e.g. 4 means 4 short leaves consume 1 CL" />}
+                </LeaveCard>
+
+                {/* EL */}
+                <LeaveCard icon="🌴" title="Earned / Annual Leave (EL)" checked={el.enabled} onToggle={(v: boolean) => setEl({ ...el, enabled: v })}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <NumInput label="Days per year" value={el.days} onChange={(v: number) => setEl({ ...el, days: v })} min={1} />
+                    <div className={s.fieldGroup} style={{ marginBottom: 0 }}>
+                      <label className={s.label}>Accrual rate (optional)</label>
+                      <input type="number" className={s.input} placeholder="e.g. 20" value={el.accrual}
+                        onChange={e => setEl({ ...el, accrual: e.target.value })} />
+                      <div style={{ fontSize: "0.7rem", color: "#475569", marginTop: 4 }}>Worked days needed to earn 1 EL. Leave blank for upfront grant.</div>
+                    </div>
+                  </div>
+                  <Toggle label="Allow carry forward" checked={el.carry} onChange={v => setEl({ ...el, carry: v })} />
+                  {el.carry && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, paddingLeft: 48 }}>
+                      <NumInput label="Carry forward %" value={el.carry_pct} onChange={(v: number) => setEl({ ...el, carry_pct: v })} min={0} max={100} />
+                      <NumInput label="Max carry forward days" value={el.carry_max} onChange={(v: number) => setEl({ ...el, carry_max: v })} min={0} />
+                    </div>
+                  )}
+                  <Toggle label="Allow half day EL" checked={el.half} onChange={v => setEl({ ...el, half: v })} />
+                  {el.half && <NumInput label="Half days = 1 EL" value={el.half_per} onChange={(v: number) => setEl({ ...el, half_per: v })} min={1} note="e.g. 2 means 2 half days consume 1 EL" />}
+                  <Toggle label="Allow short leave against EL" checked={el.short} onChange={v => setEl({ ...el, short: v })} />
+                  {el.short && <NumInput label="Short leaves = 1 EL" value={el.short_per} onChange={(v: number) => setEl({ ...el, short_per: v })} min={1} />}
+                </LeaveCard>
+
+                {/* SL */}
+                <LeaveCard icon="🤒" title="Sick Leave (SL)" checked={sl.enabled} onToggle={(v: boolean) => setSl({ ...sl, enabled: v })}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <NumInput label="Days per year" value={sl.days} onChange={(v: number) => setSl({ ...sl, days: v })} min={1} />
+                    <NumInput label="Medical proof required after (days)" value={sl.proof_after} onChange={(v: number) => setSl({ ...sl, proof_after: v })} min={0} note="0 = always required" />
+                  </div>
+                </LeaveCard>
+
+                {/* ML */}
+                <LeaveCard icon="🌸" title="Menstruation Leave (ML)" checked={ml.enabled} onToggle={(v: boolean) => setMl({ ...ml, enabled: v })}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <NumInput label="Days per month" value={ml.per_month} onChange={(v: number) => setMl({ ...ml, per_month: v })} min={1} />
+                    <NumInput label="Unused ML lapses after (months)" value={ml.lapse_threshold} onChange={(v: number) => setMl({ ...ml, lapse_threshold: v })} min={1} />
+                  </div>
+                  <div className={s.fieldGroup} style={{ marginBottom: 0 }}>
+                    <label className={s.label}>Lapsed ML awarded as</label>
+                    <select className={s.input} value={ml.lapse_award} onChange={e => setMl({ ...ml, lapse_award: e.target.value })}>
+                      <option value="Comp-Off">Comp-Off</option>
+                      <option value="Cash">Cash payout</option>
+                      <option value="None">Lapses with no award</option>
+                    </select>
+                  </div>
+                </LeaveCard>
+
+                {/* CO */}
+                <LeaveCard icon="🔄" title="Comp Off (CO)" checked={co.enabled} onToggle={(v: boolean) => setCo({ ...co, enabled: v })}>
+                  <NumInput label="Comp Off expires after (days)" value={co.expiry} onChange={(v: number) => setCo({ ...co, expiry: v })} min={1} note="Days from date of earning. After this it lapses." />
+                  <Toggle label="Employee can take Comp Off as half day" checked={co.employee_split} onChange={v => setCo({ ...co, employee_split: v })} />
+                </LeaveCard>
+
+                {/* LWP — always ON notice */}
+                <div style={{ padding: "11px 16px", borderRadius: 12, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", gap: 12, fontSize: "0.83rem", color: "#64748b" }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(99,102,241,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem" }}>🔒</div>
+                  <div><strong style={{ color: "#94a3b8" }}>Leave Without Pay (LWP)</strong> — always included automatically. No configuration needed.</div>
+                </div>
+              </>
+            )}
           </div>
           <div className={s.cardFoot}>
             <button className={s.backBtn} onClick={() => setStep(3)}>Back</button>
-            <button
-              className={s.nextBtn}
-              onClick={handleNext}
-              disabled={saving || leaveTypes.filter(l => l.name.trim()).length === 0}
-            >
-              {saving ? "Saving…" : <>Finish Setup <Check size={16} /></>}
+            <button className={s.nextBtn} onClick={handleNext} disabled={saving || (!configLeaves && !configWeekOff)}>
+              {saving ? "Saving…" : <><span>Finish Setup</span> <Check size={16} /></>}
             </button>
           </div>
         </div>
       )}
 
-      {/* ── STEP 5: Complete ─────────────────────────────────────────────── */}
+      {/* ── STEP 5: Complete ───────────────────────────────────────────────── */}
       {step === 5 && (
         <div className={s.card}>
           <div className={s.cardBody} style={{ paddingTop: 40, paddingBottom: 40 }}>
@@ -419,31 +625,16 @@ export default function SetupWizard() {
               <div className={s.checkIcon}>🎉</div>
               <div className={s.completionTitle}>{company.name} is ready!</div>
               <div className={s.completionSub}>Your workspace has been fully configured.</div>
-
               <div className={s.completionGrid}>
-                <div className={s.completionStat}>
-                  <div className={s.completionStatValue}>{workDays.length}</div>
-                  <div className={s.completionStatLabel}>Working Days / Week</div>
-                </div>
-                <div className={s.completionStat}>
-                  <div className={s.completionStatValue}>{summary.depts}</div>
-                  <div className={s.completionStatLabel}>Departments Created</div>
-                </div>
-                <div className={s.completionStat}>
-                  <div className={s.completionStatValue}>{summary.leaves}</div>
-                  <div className={s.completionStatLabel}>Leave Types</div>
-                </div>
-                <div className={s.completionStat}>
-                  <div className={s.completionStatValue}>{startTime}–{endTime}</div>
-                  <div className={s.completionStatLabel}>Office Hours</div>
-                </div>
+                <div className={s.completionStat}><div className={s.completionStatValue}>{workDays.length}</div><div className={s.completionStatLabel}>Working Days / Week</div></div>
+                <div className={s.completionStat}><div className={s.completionStatValue}>{summary.depts}</div><div className={s.completionStatLabel}>Departments Created</div></div>
+                <div className={s.completionStat}><div className={s.completionStatValue}>{summary.leaves}</div><div className={s.completionStatLabel}>Leave Types</div></div>
+                <div className={s.completionStat}><div className={s.completionStatValue}>{weekOffType === "fixed" ? fixedOffDays.map(d => DAYS_SHORT[d]).join("+") : "Rotating"}</div><div className={s.completionStatLabel}>Week Off Mode</div></div>
               </div>
-
               <div style={{ fontSize: "0.88rem", color: "#475569", marginTop: 20, lineHeight: 1.6 }}>
-                Next: Go to your dashboard → create employees,<br />
+                Next: Go to your dashboard → create employees{weekOffType === "rotating" ? " (you'll assign each employee's off day there)" : ""},<br />
                 assign them to departments, and start tracking attendance.
               </div>
-
               <button className={s.goDashBtn} onClick={completeSetup} disabled={saving}>
                 {saving ? "Saving…" : "Go to Dashboard →"}
               </button>

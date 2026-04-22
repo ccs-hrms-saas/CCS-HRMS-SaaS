@@ -36,6 +36,8 @@ const DEFAULT_ICONS: Record<string, string> = {
   "Approvals":     "CheckCircle",
   "Permissions":   "ShieldCheck",
   "Settings":      "Settings",
+  "Reimbursements": "Receipt",
+  "Incentives":    "TrendingUp",
   // Employee nav
   "My Leaves":         "CalendarDays",
   "My Payslips":       "Receipt",
@@ -61,8 +63,10 @@ const adminNav: { href: string; label: string; moduleKey: string | null }[] = [
   { href: "/dashboard/admin/manual-attendance", label: "Overrides",      moduleKey: "overrides"        },
   { href: "/dashboard/admin/leave-settings",    label: "Leave Settings", moduleKey: "leave_settings"   },
   { href: "/dashboard/admin/holidays",          label: "Holidays",       moduleKey: "holidays"         },
-  { href: "/dashboard/admin/payroll",           label: "Payroll",        moduleKey: "payroll"          },
-  { href: "/dashboard/admin/reports",           label: "Reports",        moduleKey: "reports"          },
+  { href: "/dashboard/admin/payroll",           label: "Payroll",          moduleKey: "payroll"          },
+  { href: "/dashboard/admin/reports",           label: "Reports",          moduleKey: "reports"          },
+  { href: "/dashboard/admin/reimbursements",    label: "Reimbursements",   moduleKey: "reimbursements"   },
+  { href: "/dashboard/admin/incentives",        label: "Incentives",       moduleKey: "incentives"       },
 ];
 
 const adminPermissionsItem = { href: "/dashboard/admin/permissions", label: "Permissions", moduleKey: "permissions" };
@@ -79,11 +83,13 @@ const personalNav = [
 const employeeNav: { href: string; label: string; moduleKey: string | null }[] = [
   { href: "/dashboard/employee",            label: "Dashboard",   moduleKey: "kpi_dashboard"    },
   { href: "/dashboard/employee/attendance", label: "Attendance",  moduleKey: "attendance"       },
-  { href: "/dashboard/employee/leaves",     label: "Leaves",      moduleKey: "leave_management" },
-  { href: "/dashboard/employee/profile",    label: "My Profile",  moduleKey: null               },
-  { href: "/dashboard/employee/payslips",   label: "My Payslips", moduleKey: "payroll"          },
-  { href: "/dashboard/employee/policies",   label: "Policies",    moduleKey: "hr_policies"      },
-  { href: "/dashboard/employee/pin",        label: "My PIN",      moduleKey: null               },
+  { href: "/dashboard/employee/leaves",       label: "Leaves",       moduleKey: "leave_management" },
+  { href: "/dashboard/employee/profile",       label: "My Profile",   moduleKey: null               },
+  { href: "/dashboard/employee/payslips",      label: "My Payslips",  moduleKey: "payroll"          },
+  { href: "/dashboard/employee/policies",      label: "Policies",     moduleKey: "hr_policies"      },
+  { href: "/dashboard/employee/reimbursements",label: "Reimbursements",moduleKey: "reimbursements"   },
+  { href: "/dashboard/employee/incentives",    label: "Incentives",   moduleKey: "incentives"       },
+  { href: "/dashboard/employee/pin",           label: "My PIN",       moduleKey: null               },
 ];
 
 const myTeamItem = { href: "/dashboard/employee/team", label: "My Team", moduleKey: null };

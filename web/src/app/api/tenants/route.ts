@@ -198,6 +198,26 @@ const DEFAULT_TENANT_MODULES = [
       _custom: {},
     },
   },
+  // ── NEW: Incentive Structure (Basic = 1 plan, flat payout only, fixed values)
+  {
+    module_key: 'incentives',
+    is_enabled: false,
+    properties: {
+      tier: 'basic',
+      max_active_plans: 1,
+      multi_goal_enabled: false,
+      open_ended_value_enabled: false,
+      target_cap_enabled: false,
+      percentage_payout_enabled: false,
+      payout_upper_cap_enabled: false,
+      custom_tenure_enabled: false,
+      role_scoping_enabled: false,
+      department_scoping_enabled: false,
+      show_in_payslip: false,
+      self_reporting_enabled: false,
+      _custom: {},
+    },
+  },
 ];
 
 export async function POST(req: Request) {
@@ -275,7 +295,14 @@ export async function POST(req: Request) {
 
     // 5. Seed Default App Settings
     await supabaseAdmin.from('app_settings').insert({
-      company_id: companyId, theme: 'dark_indigo', font_family: 'Outfit', font_size: 'md',
+      company_id:       companyId,
+      theme:            'dark_indigo',
+      font_family:      'Outfit',
+      font_size:        'md',
+      // Work schedule defaults — superadmin configures via Setup Wizard
+      week_off_type:    'fixed',     // 'fixed' | 'rotating'
+      week_off_days:    [0],         // [0] = Sunday
+      overtime_tracking: false,      // true = compute & store, hidden from employees
     });
 
     // 6. Seed company_modules (all 18 modules with sensible defaults)
