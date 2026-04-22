@@ -276,7 +276,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   custom_tenure_enabled:            'Custom Date Range Tenure',
   role_scoping_enabled:             'Scope by Role',
   department_scoping_enabled:       'Scope by Department',
-  show_in_payslip:                  'Show in Payslip',
+  incentive_show_in_payslip:        'Show Incentive in Payslip',
   self_reporting_enabled:           'Employee Self-Reporting',
 };
 
