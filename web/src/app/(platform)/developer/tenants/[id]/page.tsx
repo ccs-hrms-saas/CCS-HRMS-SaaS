@@ -191,16 +191,27 @@ export default function TenantDetailPage() {
   // ── Delete tenant ──────────────────────────────────────────────────────
   async function deleteTenant() {
     const confirmed = confirm(
-      `⚠️ PERMANENT DELETE\n\nThis will permanently delete "${company?.name}" and ALL their data.\n\nType the company name to confirm:`
+      `⚠️ PERMANENT DELETE\n\nThis will permanently delete "${company?.name}" and ALL their data including every employee account.\n\nAll email addresses will be freed immediately.\n\nThis CANNOT be undone. Continue?`
     );
     if (!confirmed) return;
+
     await logAudit({
       action:      "TENANT_DELETED",
       target_type: "company",
       target_id:   id,
       old_value:   { name: company?.name, subdomain: company?.subdomain },
     });
-    await supabase.from("companies").delete().eq("id", id);
+
+    // Server-side route: deletes all auth.users for the company first,
+    // then deletes the company row (cascades to all data).
+    const res = await fetch(`/api/tenants/${id}`, { method: "DELETE" });
+    const json = await res.json();
+
+    if (!res.ok) {
+      alert(`Delete failed: ${json.error}`);
+      return;
+    }
+
     router.push("/developer/tenants");
   }
 
