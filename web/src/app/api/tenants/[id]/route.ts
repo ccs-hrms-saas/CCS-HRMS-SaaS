@@ -37,13 +37,24 @@ export async function DELETE(
       return NextResponse.json({ error: profilesErr.message }, { status: 500 });
     }
 
-    // 2. Delete every auth user — this frees their email addresses immediately.
-    //    Run sequentially to stay within Supabase rate limits.
+    // 2. Delete all profile rows for this company first.
+    //    profiles.id has a FK → auth.users.id, so profiles must be removed
+    //    before auth users or the delete will violate the constraint.
+    const { error: profilesDelErr } = await supabaseAdmin
+      .from('profiles')
+      .delete()
+      .eq('company_id', companyId);
+
+    if (profilesDelErr) {
+      console.error('Failed to delete profiles for company', companyId, profilesDelErr);
+      return NextResponse.json({ error: profilesDelErr.message }, { status: 500 });
+    }
+
+    // 3. Now delete every auth user — FK is clear, email addresses are freed.
     const failedDeletions: string[] = [];
     for (const profile of profiles ?? []) {
       const { error } = await supabaseAdmin.auth.admin.deleteUser(profile.id);
       if (error) {
-        // Log but don't abort — we still want to remove the company row.
         console.warn(`Could not delete auth user ${profile.id}:`, error.message);
         failedDeletions.push(profile.id);
       }
