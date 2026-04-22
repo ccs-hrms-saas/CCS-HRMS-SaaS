@@ -16,9 +16,9 @@ const supabaseAdmin = createClient(
  */
 export async function DELETE(
   _req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const companyId = params.id;
+  const { id: companyId } = await params;
 
   if (!companyId) {
     return NextResponse.json({ error: 'Missing company id' }, { status: 400 });
