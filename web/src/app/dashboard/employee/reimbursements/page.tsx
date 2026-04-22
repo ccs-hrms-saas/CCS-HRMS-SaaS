@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import { useModules } from "@/context/ModulesContext";
-import styles from "../../../dashboard.module.css";
+import styles from "../../dashboard.module.css";
 
 interface ReimbType  { id: string; name: string; description: string | null; max_amount: number | null; requires_receipt: boolean; }
 interface MyRequest  { id: string; type_id: string; amount: number; approved_amount: number | null; description: string | null; receipt_url: string | null; status: string; rejection_reason: string | null; created_at: string; reimbursement_types: { name: string } | null; }

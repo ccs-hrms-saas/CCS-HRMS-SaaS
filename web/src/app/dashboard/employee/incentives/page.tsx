@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
-import styles from "../../../dashboard.module.css";
+import styles from "../../dashboard.module.css";
 
 interface MyRecord {
   id: string; period_label: string; achieved_value: number;
