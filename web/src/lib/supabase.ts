@@ -19,4 +19,5 @@ export interface Profile {
   company_id: string | null
   system_role: string | null
   department: string | null
+  weekly_off_day: number | null
 }
