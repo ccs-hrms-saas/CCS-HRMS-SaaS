@@ -97,6 +97,7 @@
   bottom: 0;
   background: rgba(0, 0, 0, 0.88);
   z-index: 9999;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: center;
