@@ -96,7 +96,10 @@ export default function TenantDetailPage() {
   const [editWlName,    setEditWlName]    = useState("");
   const [editWlLogo,    setEditWlLogo]    = useState("");
   const [savingWl,      setSavingWl]      = useState(false);
+  const [wlError,       setWlError]       = useState<string | null>(null);
+  const [wlSaved,       setWlSaved]       = useState(false);
   const [demoEnabled,   setDemoEnabled]   = useState(true);
+  const [demoError,     setDemoError]     = useState<string | null>(null);
   const [savingDemo,    setSavingDemo]    = useState(false);
   const [openProps,    setOpenProps]   = useState<string | null>(null);
   const [propsEdit,    setPropsEdit]   = useState<Record<string, any>>({});
@@ -164,21 +167,31 @@ export default function TenantDetailPage() {
 
   // ── White-label save ────────────────────────────────────────────────────
   async function saveWhiteLabel() {
-    setSavingWl(true);
-    await supabase.from("companies").update({
+    setSavingWl(true); setWlError(null); setWlSaved(false);
+    const { error } = await supabase.from("companies").update({
       white_label_tier:     editWlTier,
       white_label_name:     editWlTier >= 2 ? (editWlName || null) : null,
       white_label_logo_url: editWlTier === 3 ? (editWlLogo || null) : null,
     }).eq("id", id);
-    await load();
+    if (error) {
+      setWlError(error.message);
+    } else {
+      setWlSaved(true);
+      setTimeout(() => setWlSaved(false), 3000);
+      await load();
+    }
     setSavingWl(false);
   }
 
   // ── Demo mode toggle ────────────────────────────────────────────────────
   async function toggleDemoMode(val: boolean) {
-    setSavingDemo(true);
-    setDemoEnabled(val);
-    await supabase.from("companies").update({ demo_mode_enabled: val }).eq("id", id);
+    setSavingDemo(true); setDemoError(null);
+    setDemoEnabled(val); // optimistic
+    const { error } = await supabase.from("companies").update({ demo_mode_enabled: val }).eq("id", id);
+    if (error) {
+      setDemoEnabled(!val); // revert
+      setDemoError(error.message);
+    }
     setSavingDemo(false);
   }
 
@@ -406,8 +419,13 @@ export default function TenantDetailPage() {
             )}
 
             <button className={s.saveBtn} onClick={saveWhiteLabel} disabled={savingWl}>
-              {savingWl ? "Saving…" : "Save White Label"}
+              {savingWl ? "Saving…" : wlSaved ? "✅ Saved!" : "Save White Label"}
             </button>
+            {wlError && (
+              <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171", fontSize: "0.8rem" }}>
+                ❌ Error: {wlError}
+              </div>
+            )}
           </div>
 
           <div className={s.infoCard} style={{ marginTop: 16 }}>
@@ -425,6 +443,11 @@ export default function TenantDetailPage() {
                 ? "✅ Demo button visible to superadmin in tenant dashboard"
                 : "⛔ Demo button hidden — employees only see their own view"}
             </div>
+            {demoError && (
+              <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 8, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171", fontSize: "0.8rem" }}>
+                ❌ Error: {demoError}
+              </div>
+            )}
           </div>
 
           <div className={s.infoCard} style={{ marginTop: 16 }}>
