@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import styles from "../../dashboard.module.css";
@@ -485,12 +486,12 @@ export default function AdminUsers() {
       )}
 
       {/* ── Add Employee Drawer ── */}
-      {showForm && (
+      {showForm && createPortal(
         <div className={userStyles.overlay} onClick={() => setShowForm(false)}>
-          <div className="drawer" style={{maxWidth: 600, overflowY: 'auto'}} onClick={e => e.stopPropagation()}>
-            <div className="drawerHeader">
+          <div className={userStyles.drawer} style={{maxWidth: 600, overflowY: 'auto'}} onClick={e => e.stopPropagation()}>
+            <div className={userStyles.drawerHeader}>
               <h2>Add New Employee</h2>
-              <button onClick={() => setShowForm(false)} className="closeBtn">✕</button>
+              <button onClick={() => setShowForm(false)} className={userStyles.closeBtn}>✕</button>
             </div>
             {error && <div style={{ color: "var(--danger)", background: "rgba(239,68,68,0.1)", padding: 12, borderRadius: 8, marginBottom: 16 }}>{error}</div>}
             <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -580,7 +581,8 @@ export default function AdminUsers() {
               </button>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Edit Employee Drawer ── */}
@@ -710,7 +712,8 @@ export default function AdminUsers() {
               </button>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Mark as Left Confirm ── */}
@@ -734,7 +737,8 @@ export default function AdminUsers() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Permanent Delete Confirm ── */}
@@ -759,10 +763,11 @@ export default function AdminUsers() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       {/* ── Comp-Off Grant Modal ── */}
-      {compOffTarget && (
+      {compOffTarget && createPortal(
         <div className={userStyles.overlay} onClick={() => setCompOffTarget(null)}>
           <div className={userStyles.drawer} style={{maxWidth: 420}} onClick={e => e.stopPropagation()}>
             <div className={userStyles.drawerHeader}>
@@ -787,11 +792,12 @@ export default function AdminUsers() {
               </button>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Credit Leave Ledger Modal ── */}
-      {creditTarget && (
+      {creditTarget && createPortal(
         <div className={userStyles.overlay} onClick={() => setCreditTarget(null)}>
           <div className={userStyles.drawer} style={{maxWidth: 420}} onClick={e => e.stopPropagation()}>
             <div className={userStyles.drawerHeader}>
@@ -828,7 +834,8 @@ export default function AdminUsers() {
               </button>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
