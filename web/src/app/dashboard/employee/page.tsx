@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import { useAppSettings } from "@/context/AppSettingsContext";
 import styles from "../dashboard.module.css";
 
 // ─── Alert Levels ─────────────────────────────────────────────────────────────
@@ -21,6 +22,8 @@ interface DeficitState {
 
 export default function EmployeeDashboard() {
   const { profile } = useAuth();
+  const { companyName, whiteLabel } = useAppSettings();
+  const displayName = (whiteLabel.tier >= 2 && whiteLabel.name) ? whiteLabel.name : (companyName || "");
   const [stats, setStats]         = useState({ presentDays: 0, totalHours: 0, targetHours: 0, approvedLeaves: 0, pendingLeaves: 0 });
   const [deficit, setDeficit]     = useState<DeficitState>({ deficit: 0, evalMonthLabel: "", daysLeft: 0, alertLevel: "none", isSalaryPeriod: false });
   const [pendingTeamLeaves, setPendingTeamLeaves] = useState(0);
@@ -275,7 +278,7 @@ export default function EmployeeDashboard() {
     <div className="animate-fade-in">
       <div className={styles.pageHeader}>
         <h1>Welcome, {profile?.full_name?.split(" ")[0]} 👋</h1>
-        <p>{todayLabel}</p>
+        <p>{displayName ? <><span style={{ color: "var(--accent-primary)", fontWeight: 600 }}>{displayName}</span> &nbsp;·&nbsp; </> : null}{todayLabel}</p>
       </div>
 
       {/* ── Manager: Pending Team Leave Alert ──────────────────────────────── */}

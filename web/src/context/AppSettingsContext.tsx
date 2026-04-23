@@ -22,10 +22,20 @@ export interface AppSettings {
   nav_icons:   Record<string, string>;  // { "Dashboard": "LayoutDashboard", ... }
 }
 
+export interface WhiteLabelConfig {
+  tier:     1 | 2 | 3;      // 1 = none, 2 = name only, 3 = name + logo
+  name:     string;          // effective display name (or "" if tier 1)
+  logoUrl:  string | null;   // effective logo URL (tier 3 only)
+}
+
 interface AppSettingsCtx {
-  settings:       AppSettings;
-  loading:        boolean;
-  updateSettings: (partial: Partial<AppSettings>) => Promise<void>;
+  settings:         AppSettings;
+  companyName:      string;          // raw company name from DB
+  whiteLabel:       WhiteLabelConfig;
+  demoModeEnabled:  boolean;
+  loading:          boolean;
+  updateSettings:   (partial: Partial<AppSettings>) => Promise<void>;
+  refetch:          () => Promise<void>;
 }
 
 // ── Theme Map ─────────────────────────────────────────────────────────────────
@@ -130,6 +140,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   nav_icons:   {},
 };
 
+const DEFAULT_WHITE_LABEL: WhiteLabelConfig = { tier: 1, name: "", logoUrl: null };
+
 // ── Apply settings to :root ───────────────────────────────────────────────────
 function applySettings(s: AppSettings) {
   const root = document.documentElement;
@@ -141,69 +153,129 @@ function applySettings(s: AppSettings) {
   document.body.style.fontSize   = FONT_SIZES[s.font_size];
 }
 
+// ── Known platform hosts that do NOT map to a specific tenant via hostname ────
+const PLATFORM_HOSTNAMES = new Set([
+  "localhost", "127.0.0.1",
+  "ccs-hrms-saas.vercel.app",
+  "ccshrms.com", "www.ccshrms.com",
+  "app.ccshrms.com",
+]);
+
 // ── Context ───────────────────────────────────────────────────────────────────
 const Ctx = createContext<AppSettingsCtx>({
-  settings:       DEFAULT_SETTINGS,
-  loading:        true,
-  updateSettings: async () => {},
+  settings:        DEFAULT_SETTINGS,
+  companyName:     "",
+  whiteLabel:      DEFAULT_WHITE_LABEL,
+  demoModeEnabled: true,
+  loading:         true,
+  updateSettings:  async () => {},
+  refetch:         async () => {},
 });
 
 export function AppSettingsProvider({ children, tenantHost }: { children: React.ReactNode; tenantHost?: string }) {
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [loading, setLoading]   = useState(true);
+  const [settings,        setSettings]        = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [companyName,     setCompanyName]      = useState("");
+  const [whiteLabel,      setWhiteLabel]       = useState<WhiteLabelConfig>(DEFAULT_WHITE_LABEL);
+  const [demoModeEnabled, setDemoModeEnabled]  = useState(true);
+  const [loading,         setLoading]          = useState(true);
+  const [companyId,       setCompanyId]        = useState<string | null>(null);
 
-  useEffect(() => {
-    // No tenantHost = platform host (developer layer). Use defaults.
-    if (!tenantHost) {
-      setLoading(false);
-      return;
+  // ── Helper: apply company row data to state ────────────────────────────────
+  function applyCompanyData(co: any) {
+    // Branding / UI settings
+    const b = co.branding as any;
+    if (b) {
+      const s: AppSettings = {
+        id:          b.id,
+        logo_url:    b.logo_url,
+        theme:       (b.theme       as ThemeKey)              ?? "dark_indigo",
+        font_family: (b.font_family as FontFamily)            ?? "Outfit",
+        font_size:   (b.font_size   as FontSize)              ?? "md",
+        nav_icons:   (b.nav_icons   as Record<string, string>) ?? {},
+      };
+      setSettings(s);
+      applySettings(s);
     }
 
-    // Middleware has already verified the tenant is active and real.
-    // This context only needs to load the tenant's branding preferences.
-    const subdomain = tenantHost.split(':')[0].split('.')[0]; // strip port
+    // Company identity
+    setCompanyName(co.name ?? "");
+    setCompanyId(co.id ?? null);
 
-    supabase.from('companies')
-      .select('branding')
-      .or(`domain.eq.${tenantHost},subdomain.eq.${subdomain}`)
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data?.branding) {
-          const b = data.branding as any;
-          const s: AppSettings = {
-            id:          b.id,
-            logo_url:    b.logo_url,
-            theme:       (b.theme       as ThemeKey)              ?? 'dark_indigo',
-            font_family: (b.font_family as FontFamily)            ?? 'Outfit',
-            font_size:   (b.font_size   as FontSize)              ?? 'md',
-            nav_icons:   (b.nav_icons   as Record<string, string>) ?? {},
-          };
-          setSettings(s);
-          applySettings(s);
+    // White-label
+    const tier = (co.white_label_tier ?? 1) as 1 | 2 | 3;
+    const wlName = (tier >= 2 && co.white_label_name) ? (co.white_label_name as string) : "";
+    const wlLogo = (tier === 3 && co.white_label_logo_url) ? (co.white_label_logo_url as string) : null;
+    setWhiteLabel({ tier, name: wlName, logoUrl: wlLogo });
+
+    // Demo mode
+    setDemoModeEnabled(co.demo_mode_enabled !== false); // default true
+  }
+
+  const fetchSettings = useCallback(async () => {
+    setLoading(true);
+
+    // ── Strategy 1: Host-based lookup (subdomain or custom domain) ─────────────
+    if (tenantHost) {
+      const hostname = tenantHost.split(":")[0]; // strip port
+      if (!PLATFORM_HOSTNAMES.has(hostname)) {
+        const subdomain = hostname.split(".")[0];
+        const { data: co } = await supabase
+          .from("companies")
+          .select("id, name, branding, white_label_tier, white_label_name, white_label_logo_url, demo_mode_enabled")
+          .or(`domain.eq.${hostname},subdomain.eq.${subdomain}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (co) {
+          applyCompanyData(co);
+          setLoading(false);
+          return;
         }
-        setLoading(false);
-      });
-  }, [tenantHost]);
+      }
+    }
+
+    // ── Strategy 2: Auth-based lookup (user on main platform domain) ───────────
+    // Fetch the logged-in user's profile to get their company_id
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoading(false); return; }
+
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("company_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!prof?.company_id) { setLoading(false); return; }
+
+    const { data: co } = await supabase
+      .from("companies")
+      .select("id, name, branding, white_label_tier, white_label_name, white_label_logo_url, demo_mode_enabled")
+      .eq("id", prof.company_id)
+      .single();
+
+    if (co) applyCompanyData(co);
+    setLoading(false);
+  }, [tenantHost]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { fetchSettings(); }, [fetchSettings]);
 
   const updateSettings = useCallback(async (partial: Partial<AppSettings>) => {
     const merged = { ...settings, ...partial };
     setSettings(merged);
     applySettings(merged);
 
-    if (!tenantHost) return;
+    if (!companyId) return;
 
-    const subdomain = tenantHost.split('.')[0];
-    
-    // For Multi-Tenant, we push the settings into the companies.branding JSONB column
     await supabase.from("companies")
       .update({ branding: merged })
-      .or(`domain.eq.${tenantHost},subdomain.eq.${subdomain}`);
-      
-  }, [settings, tenantHost]);
+      .eq("id", companyId);
+  }, [settings, companyId]);
 
   return (
-    <Ctx.Provider value={{ settings, loading, updateSettings }}>
+    <Ctx.Provider value={{
+      settings, companyName, whiteLabel, demoModeEnabled,
+      loading, updateSettings, refetch: fetchSettings,
+    }}>
       {children}
     </Ctx.Provider>
   );

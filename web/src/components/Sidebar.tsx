@@ -98,7 +98,7 @@ const myTeamItem = { href: "/dashboard/employee/team", label: "My Team", moduleK
 export default function Sidebar() {
   const { profile, signOut }         = useAuth();
   const { demoView, toggleDemoView } = useViewMode();
-  const { settings }                 = useAppSettings();
+  const { settings, companyName, whiteLabel, demoModeEnabled } = useAppSettings();
   const { isEnabled }                = useModules();
   const pathname                     = usePathname();
   const router                       = useRouter();
@@ -169,9 +169,9 @@ export default function Sidebar() {
 
   const handleSignOut = async () => { await signOut(); router.push("/login"); };
 
-  // ── Demo Toggle ────────────────────────────────────────────────────────────
+  // ── Demo Toggle (only shown if developer has enabled demo mode for this tenant)
   const DemoToggle = () => {
-    if (!realIsAdmin) return null;
+    if (!realIsAdmin || !demoModeEnabled) return null;
     return (
       <button onClick={toggleDemoView}
         title={isDemo ? "Exit Employee View Demo" : "Preview Employee View (Demo)"}
@@ -235,13 +235,22 @@ export default function Sidebar() {
   };
 
   // ── App Logo / Name ────────────────────────────────────────────────────────
+  // Effective logo: white-label logo (tier 3) > branding logo > nothing
+  const effectiveLogo = (whiteLabel.tier === 3 && whiteLabel.logoUrl)
+    ? whiteLabel.logoUrl
+    : settings.logo_url ?? null;
+  // Effective display name: white-label name (tier 2+) > raw company name > "CCS-HRMS"
+  const effectiveName = (whiteLabel.tier >= 2 && whiteLabel.name)
+    ? whiteLabel.name
+    : (companyName || "CCS-HRMS");
+
   const AppLogo = () => (
-    settings.logo_url
-      ? <img src={settings.logo_url} alt="App Logo"
+    effectiveLogo
+      ? <img src={effectiveLogo} alt={effectiveName}
           style={{ height: 36, maxWidth: 130, objectFit: "contain", borderRadius: 6 }} />
       : (
         <div>
-          <div className={styles.logoName}>CCS-HRMS</div>
+          <div className={styles.logoName}>{effectiveName}</div>
           <div className={styles.logoSub}>
             {isDemo ? "Employee Portal" : (realIsAdmin ? "Admin Portal" : "Employee Portal")}
             {isDemo && <span style={{ color: "#c4b5fd", marginLeft: 4 }}>• Demo</span>}
@@ -256,7 +265,7 @@ export default function Sidebar() {
       <aside className={styles.sidebar}>
         <div className={styles.logo}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
-            {!settings.logo_url && <div className={styles.logoIcon} />}
+            {!effectiveLogo && <div className={styles.logoIcon} />}
             <AppLogo />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
@@ -357,19 +366,19 @@ export default function Sidebar() {
       {/* ═══ MOBILE TOP HEADER ═══ */}
       <header className={styles.mobileHeader}>
         <div className={styles.mobileHeaderLeft}>
-          {settings.logo_url
-            ? <img src={settings.logo_url} alt="Logo" style={{ height: 32, maxWidth: 110, objectFit: "contain" }} />
+          {effectiveLogo
+            ? <img src={effectiveLogo} alt={effectiveName} style={{ height: 32, maxWidth: 110, objectFit: "contain" }} />
             : <>
                 <div className={styles.logoIcon} style={{ width: 34, height: 34, minWidth: 34, borderRadius: 8 }} />
                 <div>
-                  <div className={styles.logoName} style={{ fontSize: "0.9rem" }}>CCS-HRMS</div>
+                  <div className={styles.logoName} style={{ fontSize: "0.9rem" }}>{effectiveName}</div>
                   <div className={styles.logoSub}>{isDemo ? "Employee Demo" : (realIsAdmin ? "Admin" : "Employee")} Portal</div>
                 </div>
               </>}
         </div>
 
         <div className={styles.mobileHeaderRight}>
-          {realIsAdmin && (
+          {realIsAdmin && demoModeEnabled && (
             <button onClick={toggleDemoView} style={{
               padding: "4px 10px", borderRadius: 20, fontSize: "0.7rem", fontWeight: 700,
               border: isDemo ? "1px solid rgba(124,58,237,0.5)" : "1px solid rgba(255,255,255,0.15)",

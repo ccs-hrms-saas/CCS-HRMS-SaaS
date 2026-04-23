@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 
+import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import { useAppSettings, THEMES, ThemeKey, FontFamily, FontSize } from "@/context/AppSettingsContext";
 import styles from "@/app/dashboard/dashboard.module.css";
@@ -213,13 +214,20 @@ export default function SuperAdminSettings() {
   const { profile, refreshProfile } = useAuth();
   const { settings, updateSettings } = useAppSettings();
 
-  const [tab, setTab]         = useState<"profile" | "branding" | "ui" | "downloads">("profile");
+  const [tab, setTab]         = useState<"profile" | "branding" | "whitelabel" | "ui" | "downloads">("profile");
   const [uiTab, setUiTab]     = useState<"icons" | "fonts" | "themes">("icons");
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>((profile as any)?.avatar_url ?? null);
   const [logoPreview, setLogoPreview]     = useState<string | null>(settings.logo_url ?? null);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+
+  // White-label state
+  const [wlTier,     setWlTier]     = useState<number>(1);
+  const [wlName,     setWlName]     = useState("");
+  const [wlLogo,     setWlLogo]     = useState("");
+  const [wlSaving,   setWlSaving]   = useState(false);
+  const [companyId,  setCompanyId]  = useState<string | null>(null);
 
   // APK config (read from platform-level API)
   const [apkConfig, setApkConfig] = useState<Record<string, string>>({});
@@ -228,6 +236,34 @@ export default function SuperAdminSettings() {
   useEffect(() => {
     setLogoPreview(settings.logo_url ?? null);
   }, [settings.logo_url]);
+
+  // Load white-label settings from DB
+  useEffect(() => {
+    if (!profile?.id) return;
+    const fetch = async () => {
+      const { data: prof } = await supabase.from("profiles").select("company_id").eq("id", profile.id).single();
+      if (!prof?.company_id) return;
+      setCompanyId(prof.company_id);
+      const { data: co } = await supabase.from("companies").select("white_label_tier, white_label_name, white_label_logo_url").eq("id", prof.company_id).single();
+      if (co) {
+        setWlTier(co.white_label_tier ?? 1);
+        setWlName(co.white_label_name ?? "");
+        setWlLogo(co.white_label_logo_url ?? "");
+      }
+    };
+    fetch();
+  }, [profile?.id]);
+
+  async function saveWhiteLabel() {
+    if (!companyId) return;
+    setWlSaving(true);
+    await supabase.from("companies").update({
+      white_label_name:     wlTier >= 2 ? (wlName || null) : null,
+      white_label_logo_url: wlTier === 3 ? (wlLogo || null) : null,
+    }).eq("id", companyId);
+    setWlSaving(false);
+    flashSaved();
+  }
 
   useEffect(() => {
     fetch('/api/platform-config').then(r => r.json()).then(cfg => setApkConfig(cfg));
@@ -327,10 +363,11 @@ export default function SuperAdminSettings() {
 
       {/* Main tabs */}
       <div style={{ display: "flex", gap: 8, marginBottom: 28, flexWrap: "wrap" }}>
-        <button style={TAB_STYLE(tab === "profile")}   onClick={() => setTab("profile")}>👤 Profile</button>
-        <button style={TAB_STYLE(tab === "branding")}  onClick={() => setTab("branding")}>🏢 App Branding</button>
-        <button style={TAB_STYLE(tab === "ui")}        onClick={() => setTab("ui")}>🎨 UI Customisation</button>
-        <button style={TAB_STYLE(tab === "downloads")} onClick={() => setTab("downloads")}>📱 Mobile Apps</button>
+        <button style={TAB_STYLE(tab === "profile")}     onClick={() => setTab("profile")}>👤 Profile</button>
+        <button style={TAB_STYLE(tab === "branding")}    onClick={() => setTab("branding")}>🏢 App Branding</button>
+        {wlTier >= 2 && <button style={TAB_STYLE(tab === "whitelabel")} onClick={() => setTab("whitelabel")}>🏷️ White Label</button>}
+        <button style={TAB_STYLE(tab === "ui")}          onClick={() => setTab("ui")}>🎨 UI Customisation</button>
+        <button style={TAB_STYLE(tab === "downloads")}   onClick={() => setTab("downloads")}>📱 Mobile Apps</button>
       </div>
 
       {/* ── TAB: Profile ─────────────────────────────────────────────────────── */}
@@ -437,6 +474,73 @@ export default function SuperAdminSettings() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── TAB: White Label ──────────────────────────────────────────────────────── */}
+      {tab === "whitelabel" && (
+        <div className="glass-panel" style={{ padding: 32, maxWidth: 560 }}>
+          <h2 style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: 8, color: "var(--text-primary)" }}>
+            White Labelling — Tier {wlTier}
+          </h2>
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginBottom: 28 }}>
+            {wlTier === 2 && "Your plan allows a custom display name. This appears in the sidebar and welcome banner for all users."}
+            {wlTier === 3 && "Your plan allows a custom display name and logo. Both appear throughout the dashboard."}
+          </p>
+
+          {/* Display Name */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: 8 }}>Display Name</div>
+            <input
+              value={wlName}
+              onChange={e => setWlName(e.target.value)}
+              placeholder="Your company name"
+              style={{
+                width: "100%", padding: "12px 16px", borderRadius: 12,
+                background: "rgba(0,0,0,0.2)", border: "1px solid var(--glass-border)",
+                color: "var(--text-primary)", fontFamily: "inherit", fontSize: "0.95rem",
+                outline: "none", boxSizing: "border-box",
+              }}
+            />
+            <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: 6 }}>
+              Shown in sidebar header and "🏢 {wlName || "Your Name"}" welcome banner.
+            </div>
+          </div>
+
+          {/* Logo URL — tier 3 only */}
+          {wlTier === 3 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: 8 }}>Logo URL</div>
+              <input
+                value={wlLogo}
+                onChange={e => setWlLogo(e.target.value)}
+                placeholder="https://your-cdn.com/logo.png"
+                style={{
+                  width: "100%", padding: "12px 16px", borderRadius: 12,
+                  background: "rgba(0,0,0,0.2)", border: "1px solid var(--glass-border)",
+                  color: "var(--text-primary)", fontFamily: "inherit", fontSize: "0.95rem",
+                  outline: "none", boxSizing: "border-box",
+                }}
+              />
+              {wlLogo && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginBottom: 6 }}>Preview:</div>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={wlLogo} alt="Logo preview" style={{ maxHeight: 60, maxWidth: 200, objectFit: "contain", borderRadius: 8, border: "1px solid var(--glass-border)", padding: 6 }} />
+                </div>
+              )}
+            </div>
+          )}
+
+          <button onClick={saveWhiteLabel} disabled={wlSaving}
+            style={{
+              padding: "12px 28px", borderRadius: 12, border: "none", cursor: "pointer",
+              background: "linear-gradient(90deg,var(--accent-primary),var(--accent-secondary))",
+              color: "#fff", fontFamily: "inherit", fontWeight: 700, fontSize: "0.9rem",
+              opacity: wlSaving ? 0.7 : 1,
+            }}>
+            {wlSaving ? "Saving…" : "✅ Save White Label Settings"}
+          </button>
         </div>
       )}
 

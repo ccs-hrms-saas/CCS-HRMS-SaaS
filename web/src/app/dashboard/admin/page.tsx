@@ -2,12 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAppSettings } from "@/context/AppSettingsContext";
 import styles from "../dashboard.module.css";
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({ totalEmployees: 0, presentToday: 0, pendingLeaves: 0, announcements: 0 });
   const [recentAttendance, setRecentAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { companyName, whiteLabel } = useAppSettings();
+
+  // Effective display name respects white-label tier
+  const displayName = (whiteLabel.tier >= 2 && whiteLabel.name) ? whiteLabel.name : (companyName || "Dashboard");
 
   useEffect(() => {
     const load = async () => {
@@ -33,12 +38,13 @@ export default function AdminDashboard() {
 
   const today = new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
+
   if (loading) return <div className={styles.loadingScreen}><div className={styles.spinner}></div></div>;
 
   return (
     <div className="animate-fade-in">
       <div className={styles.pageHeader}>
-        <h1>Admin Dashboard</h1>
+        <h1>🏢 {displayName}</h1>
         <p>{today}</p>
       </div>
 

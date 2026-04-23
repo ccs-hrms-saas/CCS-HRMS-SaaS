@@ -25,6 +25,8 @@ import CapabilitySnapshot from "./CapabilitySnapshot";
 interface Company {
   id: string; name: string; subdomain: string | null; domain: string | null;
   is_active: boolean; created_at: string; branding: Record<string, any>;
+  white_label_tier: number; white_label_name: string | null; white_label_logo_url: string | null;
+  demo_mode_enabled: boolean;
 }
 interface Module {
   id: string; module_key: string; is_enabled: boolean; properties: Record<string, any>;
@@ -89,7 +91,13 @@ export default function TenantDetailPage() {
   const [editSubdomain, setEditSubdomain] = useState("");
   const [editDomain,    setEditDomain]    = useState("");
 
-  // Module properties panel open state
+  // White-label edit state
+  const [editWlTier,    setEditWlTier]    = useState<number>(1);
+  const [editWlName,    setEditWlName]    = useState("");
+  const [editWlLogo,    setEditWlLogo]    = useState("");
+  const [savingWl,      setSavingWl]      = useState(false);
+  const [demoEnabled,   setDemoEnabled]   = useState(true);
+  const [savingDemo,    setSavingDemo]    = useState(false);
   const [openProps,    setOpenProps]   = useState<string | null>(null);
   const [propsEdit,    setPropsEdit]   = useState<Record<string, any>>({});
   const [savingProps,  setSavingProps] = useState(false);
@@ -113,6 +121,10 @@ export default function TenantDetailPage() {
       setEditName(co.name);
       setEditSubdomain(co.subdomain ?? "");
       setEditDomain(co.domain ?? "");
+      setEditWlTier(co.white_label_tier ?? 1);
+      setEditWlName(co.white_label_name ?? "");
+      setEditWlLogo(co.white_label_logo_url ?? "");
+      setDemoEnabled(co.demo_mode_enabled !== false);
     }
     setModules(mods ?? []);
     setUsers(usrs ?? []);
@@ -148,6 +160,26 @@ export default function TenantDetailPage() {
     }).eq("id", id);
     await load();
     setSaving(false);
+  }
+
+  // ── White-label save ────────────────────────────────────────────────────
+  async function saveWhiteLabel() {
+    setSavingWl(true);
+    await supabase.from("companies").update({
+      white_label_tier:     editWlTier,
+      white_label_name:     editWlTier >= 2 ? (editWlName || null) : null,
+      white_label_logo_url: editWlTier === 3 ? (editWlLogo || null) : null,
+    }).eq("id", id);
+    await load();
+    setSavingWl(false);
+  }
+
+  // ── Demo mode toggle ────────────────────────────────────────────────────
+  async function toggleDemoMode(val: boolean) {
+    setSavingDemo(true);
+    setDemoEnabled(val);
+    await supabase.from("companies").update({ demo_mode_enabled: val }).eq("id", id);
+    setSavingDemo(false);
   }
 
   // ── Quick suspend / activate ───────────────────────────────────────────
@@ -326,6 +358,75 @@ export default function TenantDetailPage() {
           </div>
 
           {/* ── Superadmin Credentials card ─────────────────────────── */}
+          <div className={s.infoCard} style={{ marginTop: 16 }}>
+            <h3 className={s.infoCardTitle}>🏷️ White Labelling</h3>
+
+            {/* Tier selector */}
+            <div className={s.infoRow} style={{ alignItems: "flex-start", flexDirection: "column", gap: 8 }}>
+              <span className={s.infoKey}>Tier</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                {[1, 2, 3].map(t => (
+                  <button key={t} onClick={() => setEditWlTier(t)}
+                    style={{
+                      padding: "6px 18px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
+                      fontWeight: 700, fontSize: "0.82rem",
+                      border: editWlTier === t ? "2px solid #6366f1" : "1px solid rgba(255,255,255,0.1)",
+                      background: editWlTier === t ? "rgba(99,102,241,0.18)" : "rgba(255,255,255,0.04)",
+                      color: editWlTier === t ? "#818cf8" : "#64748b",
+                    }}>
+                    Tier {t}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: "0.77rem", color: "#475569" }}>
+                {editWlTier === 1 && "No white-labelling — CCS-HRMS branding shown"}
+                {editWlTier === 2 && "Display name only — tenant can set a custom name"}
+                {editWlTier === 3 && "Full white-label — custom name + logo"}
+              </div>
+            </div>
+
+            {/* Display name (tier 2+) */}
+            {editWlTier >= 2 && (
+              <div className={s.infoRow}>
+                <span className={s.infoKey}>Display Name</span>
+                <input className={s.editInput} value={editWlName}
+                  onChange={e => setEditWlName(e.target.value)}
+                  placeholder="e.g. Ali Radiance Saloon" />
+              </div>
+            )}
+
+            {/* Logo URL (tier 3 only) */}
+            {editWlTier === 3 && (
+              <div className={s.infoRow}>
+                <span className={s.infoKey}>Logo URL</span>
+                <input className={s.editInput} value={editWlLogo}
+                  onChange={e => setEditWlLogo(e.target.value)}
+                  placeholder="https://example.com/logo.png" />
+              </div>
+            )}
+
+            <button className={s.saveBtn} onClick={saveWhiteLabel} disabled={savingWl}>
+              {savingWl ? "Saving…" : "Save White Label"}
+            </button>
+          </div>
+
+          <div className={s.infoCard} style={{ marginTop: 16 }}>
+            <h3 className={s.infoCardTitle}>🎭 Demo Mode</h3>
+            <div className={s.infoRow}>
+              <span className={s.infoKey}>Employee View Demo</span>
+              <label className={s.switch} title={demoEnabled ? "Click to disable" : "Click to enable"}>
+                <input type="checkbox" checked={demoEnabled} disabled={savingDemo}
+                  onChange={e => toggleDemoMode(e.target.checked)} />
+                <span className={s.switchSlider} />
+              </label>
+            </div>
+            <div style={{ fontSize: "0.78rem", color: "#475569", marginTop: 8 }}>
+              {demoEnabled
+                ? "✅ Demo button visible to superadmin in tenant dashboard"
+                : "⛔ Demo button hidden — employees only see their own view"}
+            </div>
+          </div>
+
           <div className={s.infoCard} style={{ marginTop: 16 }}>
             <h3 className={s.infoCardTitle}>🔑 Superadmin Credentials</h3>
 
