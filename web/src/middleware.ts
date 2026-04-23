@@ -7,6 +7,8 @@ const PLATFORM_HOSTS = new Set([
   'localhost',
   '127.0.0.1',
   'ccs-hrms-saas.vercel.app',
+  'ccshrms.com',
+  'www.ccshrms.com',
   'app.ccshrms.com',
 ]);
 
