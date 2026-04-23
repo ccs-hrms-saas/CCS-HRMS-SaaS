@@ -9,9 +9,9 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    const { full_name, email, password, role, manager_id, phone_number, gender, designation, joining_date, remuneration, joining_letter_url } = await req.json()
+    const { full_name, email, password, role, manager_id, phone_number, gender, designation, joining_date, remuneration, joining_letter_url, company_id } = await req.json()
 
-    if (!full_name || !email || !password || !role || !gender || !designation || !joining_date || !remuneration) {
+    if (!full_name || !email || !password || !role || !gender || !designation || !joining_date || !remuneration || !company_id) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
         id: userId,
         full_name,
         role,
+        company_id,
         manager_id: manager_id || null,
         phone_number: phone_number || null,
         gender,
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
 
     // Step 2.5: Seed default leave balances for current financial year
     const fy = new Date().getMonth() < 3 ? new Date().getFullYear() - 1 : new Date().getFullYear()
-    const { data: types } = await supabaseAdmin.from('leave_types').select('*').eq('is_paid', true)
+    const { data: types } = await supabaseAdmin.from('leave_types').select('*').eq('is_paid', true).eq('company_id', company_id)
     
     if (types && types.length > 0) {
       const balancesToInsert = types
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
         .map((t: any) => ({
           user_id: userId,
           leave_type_id: t.id,
+          company_id,
           financial_year: fy,
           accrued: t.name === 'Earned Leave (EL)' ? 0 : (t.max_days_per_year || 0),
           used: 0
@@ -78,6 +80,7 @@ export async function POST(req: NextRequest) {
     // Step 4: Create a welcome notification for the new employee
     await supabaseAdmin.from('notifications').insert({
       user_id: userId,
+      company_id,
       title: '👋 Welcome to CCS-HRMS!',
       message: `Hi ${full_name.split(' ')[0]}, your account is set up. Complete your profile to get started.`,
       link: '/dashboard/employee/profile',

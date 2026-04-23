@@ -104,6 +104,7 @@ export default function AdminUsers() {
 
     const payload = { ...form, joining_letter_url,
       weekly_off_day: weekOffMode === "rotating" && form.weekly_off_day !== "" ? Number(form.weekly_off_day) : null,
+      company_id: profile?.company_id,
     };
 
     const res = await fetch("/api/create-user", {
