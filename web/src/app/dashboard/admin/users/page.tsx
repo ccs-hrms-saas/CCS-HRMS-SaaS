@@ -34,6 +34,8 @@ export default function AdminUsers() {
   const [error, setError]       = useState("");
   const [success, setSuccess]   = useState("");
   const [letterFile, setLetterFile] = useState<File | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => { setIsMounted(true); }, []);
 
   const [editUser, setEditUser]             = useState<any | null>(null);
   const [editForm, setEditForm]             = useState<any>({});
@@ -486,11 +488,27 @@ export default function AdminUsers() {
       )}
 
       {/* ── Add Employee Drawer ── */}
-      {showForm && createPortal(
-        <div className={userStyles.overlay} onClick={() => setShowForm(false)}>
-          <div className={userStyles.drawer} style={{maxWidth: 600, overflowY: 'auto'}} onClick={e => e.stopPropagation()}>
-            <div className={userStyles.drawerHeader}>
-              <h2>Add New Employee</h2>
+      {showForm && isMounted && createPortal(
+        <div
+          onClick={() => setShowForm(false)}
+          style={{
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+            background: 'rgba(0,0,0,0.92)', zIndex: 2147483647,
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'flex-start', padding: '40px 20px',
+            overflowY: 'auto', boxSizing: 'border-box',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#0d0f18', border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 20, padding: 32, width: '100%', maxWidth: 600,
+              flexShrink: 0, boxShadow: '0 32px 80px rgba(0,0,0,0.95)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 700 }}>Add New Employee</h2>
               <button onClick={() => setShowForm(false)} className={userStyles.closeBtn}>✕</button>
             </div>
             {error && <div style={{ color: "var(--danger)", background: "rgba(239,68,68,0.1)", padding: 12, borderRadius: 8, marginBottom: 16 }}>{error}</div>}
@@ -586,11 +604,23 @@ export default function AdminUsers() {
       )}
 
       {/* ── Edit Employee Drawer ── */}
-      {editUser && (
-        <div className={userStyles.overlay} onClick={() => setEditUser(null)}>
-          <div className={userStyles.drawer} style={{ maxWidth: 620, overflowY: "auto", maxHeight: "92vh" }} onClick={e => e.stopPropagation()}>
-            <div className={userStyles.drawerHeader}>
-              <h2>Edit Profile — {editUser.full_name}</h2>
+      {editUser && isMounted && createPortal(
+        <div
+          onClick={() => setEditUser(null)}
+          style={{
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+            background: 'rgba(0,0,0,0.92)', zIndex: 2147483647,
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'flex-start', padding: '40px 20px',
+            overflowY: 'auto', boxSizing: 'border-box',
+          }}
+        >
+          <div
+            style={{ maxWidth: 620, background: '#0d0f18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 20, padding: 32, width: '100%', flexShrink: 0, boxShadow: '0 32px 80px rgba(0,0,0,0.95)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 700 }}>Edit Profile — {editUser.full_name}</h2>
               <button onClick={() => setEditUser(null)} className={userStyles.closeBtn}>✕</button>
             </div>
             {editError && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--danger)", padding: "12px 16px", borderRadius: 10, marginBottom: 20, fontSize: "0.85rem" }}>⚠️ {editError}</div>}
@@ -717,9 +747,20 @@ export default function AdminUsers() {
       )}
 
       {/* ── Mark as Left Confirm ── */}
-      {deactivateTarget && (
-        <div className={userStyles.overlay} onClick={() => setDeactivateTarget(null)}>
-          <div className={userStyles.confirmModal} onClick={e => e.stopPropagation()}>
+      {deactivateTarget && isMounted && createPortal(
+        <div
+          onClick={() => setDeactivateTarget(null)}
+          style={{
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+            background: 'rgba(0,0,0,0.92)', zIndex: 2147483647,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '20px', boxSizing: 'border-box',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#0d0f18', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 20, padding: 36, width: '100%', maxWidth: 420, textAlign: 'center', boxShadow: '0 32px 80px rgba(0,0,0,0.95)' }}
+          >
             <div style={{ fontSize: "2.5rem", marginBottom: 16 }}>🚪</div>
             <h2 style={{ marginBottom: 10 }}>Mark as Left?</h2>
             <p style={{ color: "var(--text-secondary)", marginBottom: 28, lineHeight: 1.6 }}>
@@ -742,9 +783,20 @@ export default function AdminUsers() {
       )}
 
       {/* ── Permanent Delete Confirm ── */}
-      {permDeleteTarget && (
-        <div className={userStyles.overlay} onClick={() => setPermDeleteTarget(null)}>
-          <div className={userStyles.confirmModal} onClick={e => e.stopPropagation()}>
+      {permDeleteTarget && isMounted && createPortal(
+        <div
+          onClick={() => setPermDeleteTarget(null)}
+          style={{
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+            background: 'rgba(0,0,0,0.92)', zIndex: 2147483647,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '20px', boxSizing: 'border-box',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#0d0f18', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 20, padding: 36, width: '100%', maxWidth: 420, textAlign: 'center', boxShadow: '0 32px 80px rgba(0,0,0,0.95)' }}
+          >
             <div style={{ fontSize: "2.5rem", marginBottom: 16 }}>⚠️</div>
             <h2 style={{ marginBottom: 10 }}>Permanently Delete?</h2>
             <p style={{ color: "var(--text-secondary)", marginBottom: 28, lineHeight: 1.6 }}>
@@ -767,11 +819,23 @@ export default function AdminUsers() {
         document.body
       )}
       {/* ── Comp-Off Grant Modal ── */}
-      {compOffTarget && createPortal(
-        <div className={userStyles.overlay} onClick={() => setCompOffTarget(null)}>
-          <div className={userStyles.drawer} style={{maxWidth: 420}} onClick={e => e.stopPropagation()}>
-            <div className={userStyles.drawerHeader}>
-              <h2 style={{ fontSize: "1.1rem" }}>🎁 Grant Comp-Off to {compOffTarget.full_name?.split(" ")[0]}</h2>
+      {compOffTarget && isMounted && createPortal(
+        <div
+          onClick={() => setCompOffTarget(null)}
+          style={{
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+            background: 'rgba(0,0,0,0.92)', zIndex: 2147483647,
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'flex-start', padding: '40px 20px',
+            overflowY: 'auto', boxSizing: 'border-box',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#0d0f18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 20, padding: 32, width: '100%', maxWidth: 420, flexShrink: 0, boxShadow: '0 32px 80px rgba(0,0,0,0.95)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>🎁 Grant Comp-Off to {compOffTarget.full_name?.split(" ")[0]}</h2>
               <button onClick={() => setCompOffTarget(null)} className={userStyles.closeBtn}>✕</button>
             </div>
             <form onSubmit={handleGrantCompOff}>
@@ -797,11 +861,23 @@ export default function AdminUsers() {
       )}
 
       {/* ── Credit Leave Ledger Modal ── */}
-      {creditTarget && createPortal(
-        <div className={userStyles.overlay} onClick={() => setCreditTarget(null)}>
-          <div className={userStyles.drawer} style={{maxWidth: 420}} onClick={e => e.stopPropagation()}>
-            <div className={userStyles.drawerHeader}>
-              <h2 style={{ fontSize: "1.1rem" }}>💳 Adjust Leave Ledger for {creditTarget.full_name?.split(" ")[0]}</h2>
+      {creditTarget && isMounted && createPortal(
+        <div
+          onClick={() => setCreditTarget(null)}
+          style={{
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+            background: 'rgba(0,0,0,0.92)', zIndex: 2147483647,
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'flex-start', padding: '40px 20px',
+            overflowY: 'auto', boxSizing: 'border-box',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#0d0f18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 20, padding: 32, width: '100%', maxWidth: 420, flexShrink: 0, boxShadow: '0 32px 80px rgba(0,0,0,0.95)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>💳 Adjust Leave Ledger for {creditTarget.full_name?.split(" ")[0]}</h2>
               <button onClick={() => setCreditTarget(null)} className={userStyles.closeBtn}>✕</button>
             </div>
             <div style={{fontSize: "0.8rem", color: "var(--text-secondary)", marginBottom: 16}}>
