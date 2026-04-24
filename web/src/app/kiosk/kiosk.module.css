@@ -4,8 +4,6 @@
    Also works on tablets and desktop in landscape.
    ══════════════════════════════════════════════════════════════════════ */
 
-/* ── Base reset ───────────────────────────────────────────────────────── */
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 /* ── Root kiosk container ─────────────────────────────────────────────── */
 .kiosk {
