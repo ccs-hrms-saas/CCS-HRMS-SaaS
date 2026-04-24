@@ -93,8 +93,11 @@ export async function POST(req: NextRequest) {
 
     // ── 5A. Mode: Present ─────────────────────────────────────────────────
     if (mode === 'present') {
-      const inISO  = new Date(`${date}T${check_in}:00`).toISOString()
-      const outISO = check_out ? new Date(`${date}T${check_out}:00`).toISOString() : null
+      // IMPORTANT: Admin enters times in IST. Append +05:30 so JS correctly
+      // converts to UTC before storing. Without this, "10:35" is treated as
+      // UTC and stored as 10:35Z, which displays as 16:05 IST — wrong.
+      const inISO  = new Date(`${date}T${check_in}:00+05:30`).toISOString()
+      const outISO = check_out ? new Date(`${date}T${check_out}:00+05:30`).toISOString() : null
 
       // Validate times make sense
       if (outISO && new Date(outISO) <= new Date(inISO)) {
