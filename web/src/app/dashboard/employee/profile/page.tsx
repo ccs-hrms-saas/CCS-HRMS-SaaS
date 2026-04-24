@@ -16,6 +16,8 @@ export default function EmployeeProfile() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+  // Signed URL cache for private-bucket document thumbnails (1hr expiry)
+  const [docThumbs, setDocThumbs] = useState<Record<string, string>>({});
 
   const avatarRef = useRef<HTMLInputElement>(null);
   const aadharFrontRef = useRef<HTMLInputElement>(null);
@@ -38,6 +40,25 @@ export default function EmployeeProfile() {
   };
 
   useEffect(() => { loadData(); }, [profile]);
+
+  // Generate signed thumbnail URLs for any private-bucket document paths
+  useEffect(() => {
+    if (!data) return;
+    const DOC_COLS = ["aadhar_front_url", "aadhar_back_url", "pan_url"];
+    const pending = DOC_COLS.filter(c => data[c]?.startsWith("documents:"));
+    if (!pending.length) return;
+    (async () => {
+      const results: Record<string, string> = {};
+      await Promise.all(pending.map(async (col) => {
+        const storagePath = data[col].replace("documents:", "");
+        const { data: sd } = await supabase.storage
+          .from("documents")
+          .createSignedUrl(storagePath, 3600);
+        if (sd?.signedUrl) results[col] = sd.signedUrl;
+      }));
+      setDocThumbs(prev => ({ ...prev, ...results }));
+    })();
+  }, [data]);
 
   const handleChange = (e: any) => setData({ ...data, [e.target.name]: e.target.value });
 
@@ -89,8 +110,10 @@ export default function EmployeeProfile() {
       return;
     }
 
-    // 4. Immediately update local state
+    // 4. Immediately update local state (triggers thumbnail useEffect for new docs)
     setData((prev: any) => ({ ...prev, [column]: valueToStore }));
+    // Clear cached thumb so the new one is regenerated
+    if (valueToStore.startsWith("documents:")) setDocThumbs(prev => ({ ...prev, [column]: "" }));
     // 5. If avatar, refresh global AuthContext so sidebar updates
     if (column === "avatar_url") await refreshProfile();
     setSuccess("✅ Uploaded successfully!");
@@ -378,8 +401,8 @@ export default function EmployeeProfile() {
                   {/* Thumbnail or placeholder */}
                   <div style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", background: "rgba(255,255,255,0.05)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--glass-border)" }}>
                     {url ? (
-                      url.startsWith("http") && url.match(/\.(jpg|jpeg|png|webp|gif)(\?|$)/i)
-                        ? <img src={url} alt={label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      (docThumbs[col] || url).match(/\.(jpg|jpeg|png|webp|gif)(\?|$)/i) && (docThumbs[col] || url).startsWith("http")
+                        ? <img src={docThumbs[col] || url} alt={label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         : <span style={{ fontSize: "1.8rem" }}>📄</span>
                     ) : <span style={{ fontSize: "1.8rem", opacity: 0.3 }}>🪪</span>}
                   </div>
