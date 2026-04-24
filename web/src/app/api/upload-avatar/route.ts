@@ -16,15 +16,15 @@ export async function POST(req: NextRequest) {
     const clean  = image_base64.includes(",") ? image_base64.split(",")[1] : image_base64;
     const bytes  = Uint8Array.from(atob(clean), c => c.charCodeAt(0));
     const blob   = new Blob([bytes], { type: "image/jpeg" });
-    const fileName = `avatars/${user_id}_${Date.now()}.jpg`;
+    const fileName = `${user_id}/avatar_${Date.now()}.jpg`;  // folder matches RLS: avatars/{user_id}/...
 
     const { error } = await supabaseAdmin.storage
-      .from("attendance-photos")
+      .from("avatars")   // ← correct bucket
       .upload(fileName, blob, { contentType: "image/jpeg", upsert: true });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const { data } = supabaseAdmin.storage.from("attendance-photos").getPublicUrl(fileName);
+    const { data } = supabaseAdmin.storage.from("avatars").getPublicUrl(fileName);
     const avatar_url = data.publicUrl;
 
     // Persist to profile

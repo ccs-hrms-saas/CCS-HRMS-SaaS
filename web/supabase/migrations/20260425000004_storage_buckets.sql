@@ -128,6 +128,18 @@ CREATE POLICY "Authenticated read avatars"
 -- Employees can read documents in their own folder: documents/{user_id}/...
 CREATE POLICY "Employees can read their own documents"
   ON storage.objects FOR SELECT
+-- Employees can upload documents to their own folder: documents/{user_id}/...
+CREATE POLICY "Employees can upload their own documents"
+  ON storage.objects FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    bucket_id = 'documents'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Employees can replace/update their own documents
+CREATE POLICY "Employees can update their own documents"
+  ON storage.objects FOR UPDATE
   TO authenticated
   USING (
     bucket_id = 'documents'
@@ -140,6 +152,15 @@ CREATE POLICY "Service role can manage all documents"
   TO service_role
   USING (bucket_id = 'documents')
   WITH CHECK (bucket_id = 'documents');
+
+-- Employees can read documents in their own folder: documents/{user_id}/...
+CREATE POLICY "Employees can read their own documents"
+  ON storage.objects FOR SELECT
+  TO authenticated
+  USING (
+    bucket_id = 'documents'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
 
 -- Admins can read all documents for their company
 -- (relies on profiles.company_id matching the folder structure: documents/{user_id}/...)

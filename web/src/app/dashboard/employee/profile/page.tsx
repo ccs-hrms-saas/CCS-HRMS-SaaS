@@ -143,7 +143,7 @@ export default function EmployeeProfile() {
             <h2 style={{ fontSize: "1.4rem", marginBottom: 4 }}>{data.full_name}</h2>
             <div style={{ color: "var(--text-secondary)", marginBottom: 16 }}>{data.designation || "Employee"}</div>
             
-            <input type="file" ref={avatarRef} accept="image/*" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "profile-pictures", "avatar", "avatar_url"); }} />
+            <input type="file" ref={avatarRef} accept="image/*" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "avatars", "avatar", "avatar_url"); }} />
             <button onClick={() => avatarRef.current?.click()} className={styles.secondaryBtn} style={{ padding: "8px 16px", fontSize: "0.85rem" }}>Upload Picture</button>
           </div>
 
@@ -311,9 +311,9 @@ export default function EmployeeProfile() {
               <div style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", color: "var(--success)", padding: "10px 14px", borderRadius: 10, marginBottom: 16, fontSize: "0.88rem" }}>{success}</div>
             )}
 
-            <input type="file" ref={aadharFrontRef} accept="image/*,.pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "employee-documents", "aadhar_front", "aadhar_front_url"); }} />
-            <input type="file" ref={aadharBackRef}  accept="image/*,.pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "employee-documents", "aadhar_back",  "aadhar_back_url"); }} />
-            <input type="file" ref={panRef}          accept="image/*,.pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "employee-documents", "pan_card",    "pan_url"); }} />
+            <input type="file" ref={aadharFrontRef} accept="image/*,.pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "documents", "aadhar_front", "aadhar_front_url"); }} />
+            <input type="file" ref={aadharBackRef}  accept="image/*,.pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "documents", "aadhar_back",  "aadhar_back_url"); }} />
+            <input type="file" ref={panRef}          accept="image/*,.pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "documents", "pan_card",    "pan_url"); }} />
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {[
