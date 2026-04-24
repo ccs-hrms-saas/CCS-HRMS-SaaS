@@ -283,6 +283,11 @@ export default function LeaveConfigPanel({ props, onChange, onSave, saving }: Pr
           <Toggle label="Per-Employee Working Hours Override (Shift Mode)" locked={!isAdv}
             hint="Advanced only. Shift-based orgs can set different daily hours per employee (e.g. 6h for part-time, 12h for night shift). Overrides the org default."
             field="per_employee_hours" value={!!props.per_employee_hours} onChange={set} />
+
+          <Toggle label="Per-Employee Shift Timing — Prescribed In/Out per Employee" locked={!isAdv}
+            hint="Advanced only. Each employee has their own prescribed check-in time and check-out deadline. System auto-computes their daily hours from the window, flags late arrivals and early departures, and shows prescribed timing in attendance records and reports."
+            field="per_employee_shift" value={!!props.per_employee_shift} onChange={set} />
+
         </div>
       </div>
 

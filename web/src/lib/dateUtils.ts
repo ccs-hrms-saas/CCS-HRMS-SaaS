@@ -177,3 +177,83 @@ export function resolveHoursPerDay(
   if (settingsHours !== null && settingsHours !== undefined && settingsHours > 0) return settingsHours;
   return 8.5;
 }
+
+// ── Per-Employee Shift Timing Helpers ─────────────────────────────────────────
+
+/**
+ * Computes working hours from two "HH:MM" strings.
+ * Returns null if either value is missing or the result is non-positive.
+ */
+export function computeShiftHours(
+  startTime?: string | null,
+  endTime?: string | null
+): number | null {
+  if (!startTime || !endTime) return null;
+  const [h1, m1] = startTime.split(":").map(Number);
+  const [h2, m2] = endTime.split(":").map(Number);
+  const diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+  return diff > 0 ? Math.round(diff / 60 * 10) / 10 : null;
+}
+
+/**
+ * Formats "HH:MM" to "10:00 AM" display format.
+ */
+export function formatShiftTime(time?: string | null): string {
+  if (!time) return "—";
+  const [h, m] = time.split(":").map(Number);
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12  = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
+/**
+ * Returns true if the employee checked in late.
+ * Late = actual check-in time > prescribed shift_start + grace_minutes.
+ *
+ * @param checkInISO    ISO datetime string from attendance_records.check_in
+ * @param shiftStart    "HH:MM" prescribed start from profiles.shift_start_time
+ * @param graceMinutes  Grace period in minutes (from app_settings.grace_minutes)
+ */
+export function isLateArrival(
+  checkInISO?: string | null,
+  shiftStart?: string | null,
+  graceMinutes: number = 0
+): boolean {
+  if (!checkInISO || !shiftStart) return false;
+  const ci   = new Date(checkInISO);
+  const ciMins = ci.getHours() * 60 + ci.getMinutes();
+  const [h, m] = shiftStart.split(":").map(Number);
+  const allowedMins = h * 60 + m + graceMinutes;
+  return ciMins > allowedMins;
+}
+
+/**
+ * Returns true if the employee checked out before completing required hours.
+ * Early departure = actual checkout time < prescribed shift_end_time
+ * AND actual hours worked < required hours_per_day.
+ *
+ * @param checkOutISO   ISO datetime string from attendance_records.check_out
+ * @param checkInISO    ISO datetime string from attendance_records.check_in
+ * @param shiftEnd      "HH:MM" prescribed end from profiles.shift_end_time
+ * @param requiredHours hours_per_day from profiles (resolved)
+ */
+export function isEarlyDeparture(
+  checkOutISO?: string | null,
+  checkInISO?: string | null,
+  shiftEnd?: string | null,
+  requiredHours?: number | null
+): boolean {
+  if (!checkOutISO || !checkInISO || !shiftEnd) return false;
+  const co   = new Date(checkOutISO);
+  const coMins = co.getHours() * 60 + co.getMinutes();
+  const [h, m] = shiftEnd.split(":").map(Number);
+  const shiftEndMins = h * 60 + m;
+  // Left before shift end
+  if (coMins >= shiftEndMins) return false;
+  // AND didn't complete required hours
+  if (requiredHours && requiredHours > 0) {
+    const workedHours = (new Date(checkOutISO).getTime() - new Date(checkInISO).getTime()) / 3600000;
+    return workedHours < requiredHours;
+  }
+  return true;
+}

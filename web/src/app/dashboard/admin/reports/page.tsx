@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import * as XLSX from "xlsx";
 import styles from "../../dashboard.module.css";
-import { getLeaveDaysCount, isWorkingDay } from "@/lib/dateUtils";
+import { getLeaveDaysCount, isWorkingDay, isLateArrival, formatShiftTime } from "@/lib/dateUtils";
 
 
 type Tab = "attendance" | "leaves" | "employee" | "balances";
@@ -92,7 +92,7 @@ export default function AdminReports() {
     if (!companyId) return;
     supabase
       .from("profiles")
-      .select("id, full_name")
+      .select("id, full_name, shift_start_time, shift_end_time, hours_per_day")
       .eq("company_id", companyId)
       .is("system_role", null)
       .eq("is_active", true)
@@ -199,9 +199,14 @@ export default function AdminReports() {
       const avgHrs = daysPresent ? totalHrs / daysPresent : 0;
       const attendance = workingDaysInRange > 0 ? (daysPresent / workingDaysInRange) * 100 : 0;
 
-      // Late arrivals: check-in after 09:31
+      // Late arrivals — use per-employee shift_start_time when available, else 09:31 fallback
       const lateArrivals = rows.filter(r => {
         if (!r.check_in) return false;
+        const emp = employees.find(e => e.id === id);
+        if (emp?.shift_start_time) {
+          return isLateArrival(r.check_in, emp.shift_start_time, 0);
+        }
+        // Fallback: flag if check-in after 09:31
         const d = new Date(r.check_in);
         return d.getHours() > 9 || (d.getHours() === 9 && d.getMinutes() > 30);
       }).length;
@@ -591,6 +596,10 @@ export default function AdminReports() {
                                 return (
                                   <div key={day.id} style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", borderRadius: 8, padding: "10px 14px" }}>
                                     <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: 4 }}>{fmtDate(day.date)}</div>
+                                    {/* Prescribed shift (if per_employee_shift enabled and set) */}
+                                    {(() => { const emp = employees.find(e => e.id === r.id); return emp?.shift_start_time ? (
+                                      <div style={{ fontSize: "0.72rem", color: "#818cf8", marginBottom: 3 }}>⏰ {formatShiftTime(emp.shift_start_time)} → {emp.shift_end_time ? formatShiftTime(emp.shift_end_time) : '—'}</div>
+                                    ) : null; })()}
                                     <div style={{ fontSize: "0.76rem", color: "var(--text-secondary)" }}>
                                       In: {fmtTime(day.check_in)} · Out: {fmtTime(day.check_out)}
                                     </div>

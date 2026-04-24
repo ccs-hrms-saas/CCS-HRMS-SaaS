@@ -73,6 +73,8 @@ export const LEAVE_TIER_DEFAULTS: Record<TierKey, TierFeatureMap> = {
     org_hours_configurable:        false,
     // Tier 1: all employees share the same hours_per_day. No per-employee override.
     per_employee_hours:            false,
+    // Tier 1: no individual shift windows.
+    per_employee_shift:            false,
     approval_chain_depth: null,
   },
   standard: {
@@ -89,6 +91,8 @@ export const LEAVE_TIER_DEFAULTS: Record<TierKey, TierFeatureMap> = {
     org_hours_configurable:        true,
     // Tier 2: still no per-employee override.
     per_employee_hours:            false,
+    // Tier 2: no individual shift windows.
+    per_employee_shift:            false,
     approval_chain_depth: null,
   },
   advanced: {
@@ -104,6 +108,8 @@ export const LEAVE_TIER_DEFAULTS: Record<TierKey, TierFeatureMap> = {
     // Tier 3: freely changeable org hours + per-employee individual override.
     org_hours_configurable:        true,
     per_employee_hours:            true,
+    // Tier 3: per-employee prescribed shift windows (check-in / check-out time per employee).
+    per_employee_shift:            true,
     approval_chain_depth: null,
   },
 };
@@ -261,6 +267,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   deficit_adjustment_enabled:       'Deficit Adjustment Pool',
   org_hours_configurable:           'Org-Wide Working Hours (Anytime Change)',
   per_employee_hours:               'Per-Employee Working Hours Override (Shift Mode)',
+  per_employee_shift:               'Per-Employee Shift Timing (Prescribed In/Out per employee)',
   // Reimbursements
   admin_can_approve:           'Admin Can Approve',
   allow_optional_receipt:      'Optional Receipt per Category',

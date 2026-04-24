@@ -9,7 +9,7 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    const { full_name, email, password, role, manager_id, phone_number, gender, designation, joining_date, remuneration, joining_letter_url, company_id, weekly_off_day, hours_per_day } = await req.json()
+    const { full_name, email, password, role, manager_id, phone_number, gender, designation, joining_date, remuneration, joining_letter_url, company_id, weekly_off_day, hours_per_day, shift_start_time, shift_end_time } = await req.json()
 
     if (!full_name || !email || !password || !role || !gender || !designation || !joining_date || !remuneration || !company_id) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -28,6 +28,17 @@ export async function POST(req: NextRequest) {
 
     const userId = authData.user.id
 
+    // Auto-compute hours_per_day from shift window if both times are provided
+    const resolvedHours = (() => {
+      if (shift_start_time && shift_end_time) {
+        const [h1,m1] = shift_start_time.split(':').map(Number);
+        const [h2,m2] = shift_end_time.split(':').map(Number);
+        const diff = (h2*60+m2) - (h1*60+m1);
+        if (diff > 0) return Math.round(diff/60*10)/10;
+      }
+      return hours_per_day !== null && hours_per_day !== undefined ? Number(hours_per_day) : null;
+    })();
+
     // Step 2: Create their profile record
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
@@ -44,7 +55,9 @@ export async function POST(req: NextRequest) {
         remuneration: Number(remuneration),
         joining_letter_url: joining_letter_url || null,
         weekly_off_day: weekly_off_day !== null && weekly_off_day !== undefined ? Number(weekly_off_day) : null,
-        hours_per_day: hours_per_day !== null && hours_per_day !== undefined ? Number(hours_per_day) : null,
+        hours_per_day: resolvedHours,
+        shift_start_time: shift_start_time || null,
+        shift_end_time:   shift_end_time   || null,
       })
 
     if (profileError) {

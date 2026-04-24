@@ -26,6 +26,8 @@ export default function EmployeeDashboard() {
   const displayName = (whiteLabel.tier >= 2 && whiteLabel.name) ? whiteLabel.name : (companyName || "");
   const [stats, setStats]         = useState({ presentDays: 0, totalHours: 0, targetHours: 0, approvedLeaves: 0, pendingLeaves: 0 });
   const [deficit, setDeficit]     = useState<DeficitState>({ deficit: 0, evalMonthLabel: "", daysLeft: 0, alertLevel: "none", isSalaryPeriod: false });
+  const [shiftInfo, setShiftInfo] = useState<{ start?: string; end?: string; hours?: number } | null>(null);
+  const [hpd, setHpd]             = useState<number>(8.5); // hours per day (resolved)
   const [pendingTeamLeaves, setPendingTeamLeaves] = useState(0);
   const [showAdjustment, setShowAdjustment] = useState(false);
   const [adjustType, setAdjustType]         = useState("LWP");
@@ -91,10 +93,16 @@ export default function EmployeeDashboard() {
       (holsRes.data ?? []).forEach(h => hols.add(h.date));
 
       // Resolve daily working hours: per-employee override → org setting → 8.5 fallback
-      const { resolveHoursPerDay } = await import("@/lib/dateUtils");
+      const { resolveHoursPerDay, formatShiftTime } = await import("@/lib/dateUtils");
       const orgHours  = settingsRes.data?.hours_per_day ?? null;
       const empHours  = (profile as any).hours_per_day ?? null;
       const HPD       = resolveHoursPerDay(empHours, orgHours); // hours per day
+      setHpd(HPD);
+
+      // Populate shift info for display in header
+      const st = (profile as any).shift_start_time;
+      const et = (profile as any).shift_end_time;
+      if (st) setShiftInfo({ start: formatShiftTime(st), end: et ? formatShiftTime(et) : undefined, hours: HPD });
 
       const leaveApproved = leaveApprovedRes.data ?? [];
 
@@ -286,7 +294,15 @@ export default function EmployeeDashboard() {
     <div className="animate-fade-in">
       <div className={styles.pageHeader}>
         <h1>Welcome, {profile?.full_name?.split(" ")[0]} 👋</h1>
-        <p>{displayName ? <><span style={{ color: "var(--accent-primary)", fontWeight: 600 }}>{displayName}</span> &nbsp;·&nbsp; </> : null}{todayLabel}</p>
+        <p>
+          {displayName ? <><span style={{ color: "var(--accent-primary)", fontWeight: 600 }}>{displayName}</span> &nbsp;·&nbsp; </> : null}
+          {todayLabel}
+          {shiftInfo?.start && (
+            <span style={{ marginLeft: 12, fontSize: "0.82rem", color: "#818cf8", background: "rgba(129,140,248,0.1)", border: "1px solid rgba(129,140,248,0.25)", borderRadius: 8, padding: "2px 10px", whiteSpace: "nowrap" }}>
+              ⏰ {shiftInfo.start}{shiftInfo.end ? ` – ${shiftInfo.end}` : ""}{shiftInfo.hours ? ` · ${shiftInfo.hours}h/day` : ""}
+            </span>
+          )}
+        </p>
       </div>
 
       {/* ── Manager: Pending Team Leave Alert ──────────────────────────────── */}
@@ -350,7 +366,7 @@ export default function EmployeeDashboard() {
               <button onClick={() => setShowAdjustment(false)} className="closeBtn">✕</button>
             </div>
             <p style={{ color: "var(--text-secondary)", marginBottom: 20 }}>
-              You are surrendering <strong>1 day (8.5h)</strong> to clear your deficit.
+              You are surrendering <strong>1 day ({hpd}h)</strong> to clear your deficit.
               Sick Leave and Menstrual Leave cannot be used for deficits.
             </p>
             <form onSubmit={handleAdjust}>

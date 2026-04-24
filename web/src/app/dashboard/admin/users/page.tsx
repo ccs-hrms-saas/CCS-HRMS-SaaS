@@ -22,7 +22,7 @@ const DAYS_LONG = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","
 const emptyForm = { 
   full_name: "", email: "", password: "", role: "employee", manager_id: "",
   phone_number: "", gender: "Male", designation: "", joining_date: "", remuneration: "",
-  weekly_off_day: "", hours_per_day: "",
+  weekly_off_day: "", hours_per_day: "", shift_start_time: "", shift_end_time: "",
 };
 
 export default function AdminUsers() {
@@ -31,6 +31,8 @@ export default function AdminUsers() {
   const leaveProps                 = getProps("leave_settings");
   // Tier 3 Advanced only: per-employee hours override
   const canSetPerEmployeeHours     = !!(leaveProps.per_employee_hours);
+  // Tier 3 Advanced only: per-employee shift timing (prescribed in/out times)
+  const canUseShiftTiming          = !!(leaveProps.per_employee_shift);
   const [users, setUsers]       = useState<Profile[]>([]);
   const [loading, setLoading]   = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -114,9 +116,15 @@ export default function AdminUsers() {
        joining_letter_url = urlData.publicUrl;
     }
 
+    const shiftHours = canUseShiftTiming && form.shift_start_time && form.shift_end_time
+      ? (() => { const [h1,m1]=form.shift_start_time.split(":").map(Number); const [h2,m2]=form.shift_end_time.split(":").map(Number); const d=(h2*60+m2)-(h1*60+m1); return d>0?Math.round(d/60*10)/10:null; })()
+      : null;
     const payload = { ...form, joining_letter_url,
       weekly_off_day: weekOffMode === "rotating" && form.weekly_off_day !== "" ? Number(form.weekly_off_day) : null,
-      hours_per_day: canSetPerEmployeeHours && form.hours_per_day !== "" ? Number(form.hours_per_day) : null,
+      hours_per_day: canUseShiftTiming && shiftHours ? shiftHours
+        : canSetPerEmployeeHours && form.hours_per_day !== "" ? Number(form.hours_per_day) : null,
+      shift_start_time: canUseShiftTiming && form.shift_start_time ? form.shift_start_time : null,
+      shift_end_time:   canUseShiftTiming && form.shift_end_time   ? form.shift_end_time   : null,
       company_id: profile?.company_id,
     };
 
@@ -143,6 +151,8 @@ export default function AdminUsers() {
       remuneration: u.remuneration || "", new_email: "", new_password: "",
       weekly_off_day: u.weekly_off_day !== null && u.weekly_off_day !== undefined ? String(u.weekly_off_day) : "",
       hours_per_day: u.hours_per_day !== null && u.hours_per_day !== undefined ? String(u.hours_per_day) : "",
+      shift_start_time: u.shift_start_time || "",
+      shift_end_time:   u.shift_end_time   || "",
     });
     // Load existing appraisals
     const { data: existing } = await supabase.from("employee_appraisals").select("*").eq("user_id", u.id).order("appraisal_date", { ascending: false });
@@ -164,6 +174,9 @@ export default function AdminUsers() {
     }
 
     // --- Update profile table fields ---
+    const editShiftHours = canUseShiftTiming && editForm.shift_start_time && editForm.shift_end_time
+      ? (() => { const [h1,m1]=editForm.shift_start_time.split(":").map(Number); const [h2,m2]=editForm.shift_end_time.split(":").map(Number); const d=(h2*60+m2)-(h1*60+m1); return d>0?Math.round(d/60*10)/10:null; })()
+      : null;
     await supabase.from("profiles").update({
       full_name:     editForm.full_name,
       phone_number:  editForm.phone_number,
@@ -174,8 +187,10 @@ export default function AdminUsers() {
       joining_letter_url,
       weekly_off_day: weekOffMode === "rotating" && editForm.weekly_off_day !== ""
         ? Number(editForm.weekly_off_day) : null,
-      hours_per_day: canSetPerEmployeeHours && editForm.hours_per_day !== ""
-        ? Number(editForm.hours_per_day) : null,
+      hours_per_day: canUseShiftTiming && editShiftHours ? editShiftHours
+        : canSetPerEmployeeHours && editForm.hours_per_day !== "" ? Number(editForm.hours_per_day) : null,
+      shift_start_time: canUseShiftTiming ? (editForm.shift_start_time || null) : null,
+      shift_end_time:   canUseShiftTiming ? (editForm.shift_end_time   || null) : null,
     }).eq("id", editUser.id);
 
     // --- Update auth account if email/password supplied ---
@@ -365,6 +380,17 @@ export default function AdminUsers() {
           {(u as any).designation && (
             <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: 1 }}>{(u as any).designation}</div>
           )}
+          {/* Shift Timing Badge — Tier 3 per_employee_shift */}
+          {canUseShiftTiming && (u as any).shift_start_time && (() => {
+            const fmt = (s: string) => { const [h,m]=s.split(':').map(Number); const ap=h>=12?'PM':'AM'; const h12=h%12||12; return `${h12}:${String(m).padStart(2,'0')} ${ap}`; };
+            return (
+              <div style={{ fontSize:"0.72rem", color:"#818cf8", marginTop:3, display:"flex", alignItems:"center", gap:4 }}>
+                <span>⏰</span>
+                <span>{fmt((u as any).shift_start_time)} → {(u as any).shift_end_time ? fmt((u as any).shift_end_time) : '—'}</span>
+                {(u as any).hours_per_day && <span style={{ color:"var(--text-secondary)", marginLeft:2 }}>({(u as any).hours_per_day}h)</span>}
+              </div>
+            );
+          })()}
           {inactive
             ? <span style={{ fontSize: "0.72rem", color: "#ef4444", display: "block", marginTop: 2 }}>Left: {u.left_on ? new Date(u.left_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Unknown"}</span>
             : <span className={`${styles.statBadge} ${roleStyle(u.role)}`} style={{ marginTop: 4, display: "inline-block" }}>{u.role}</span>}
@@ -570,13 +596,32 @@ export default function AdminUsers() {
                     <label>Remuneration (Monthly) *</label>
                     <input type="number" className="premium-input" placeholder="0.00" value={form.remuneration} onChange={e => setForm({...form, remuneration: e.target.value})} required />
                  </div>
-                 {canSetPerEmployeeHours && (
+                 {canUseShiftTiming ? (
+                   <>
+                     <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                       <label>⏰ Shift Start Time <span style={{ fontSize: '0.72rem', color: '#818cf8', fontWeight: 400 }}>(prescribed check-in)</span></label>
+                       <input type="time" className="premium-input" value={form.shift_start_time}
+                         onChange={e => setForm({...form, shift_start_time: e.target.value})} />
+                     </div>
+                     <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                       <label>⏰ Shift End Time <span style={{ fontSize: '0.72rem', color: '#818cf8', fontWeight: 400 }}>(max check-out)</span></label>
+                       <input type="time" className="premium-input" value={form.shift_end_time}
+                         onChange={e => setForm({...form, shift_end_time: e.target.value})} />
+                     </div>
+                     {form.shift_start_time && form.shift_end_time && (() => {
+                       const [h1,m1]=form.shift_start_time.split(':').map(Number);
+                       const [h2,m2]=form.shift_end_time.split(':').map(Number);
+                       const d=(h2*60+m2)-(h1*60+m1);
+                       return d>0 ? <div style={{ fontSize:'0.78rem', color:'#818cf8', alignSelf:'flex-end', paddingBottom:10, whiteSpace:'nowrap' }}>⟶ {Math.round(d/60*10)/10}h/day</div> : null;
+                     })()}
+                   </>
+                 ) : canSetPerEmployeeHours ? (
                    <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
                      <label>Daily Working Hours <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 400 }}>(optional — overrides org default)</span></label>
                      <input type="number" step="0.5" min="1" max="16" className="premium-input" placeholder="Leave blank to use org default"
                        value={form.hours_per_day} onChange={e => setForm({...form, hours_per_day: e.target.value})} />
                    </div>
-                 )}
+                 ) : null}
                  <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
                     <label>Joining Letter (PDF/Doc)</label>
                     <input type="file" className="premium-input" style={{padding: 10}} accept=".pdf,.doc,.docx" onChange={e => setLetterFile(e.target.files?.[0] ?? null)} />
@@ -688,13 +733,32 @@ export default function AdminUsers() {
                     <label>Monthly Remuneration (₹)</label>
                     <input type="number" className="premium-input" placeholder="0.00" value={editForm.remuneration} onChange={e => setEditForm({...editForm, remuneration: e.target.value})} />
                   </div>
-                  {canSetPerEmployeeHours && (
+                  {canUseShiftTiming ? (
+                    <>
+                      <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                        <label>⏰ Shift Start <span style={{ fontSize: "0.72rem", color: "#818cf8", fontWeight: 400 }}>(prescribed check-in)</span></label>
+                        <input type="time" className="premium-input" value={editForm.shift_start_time}
+                          onChange={e => setEditForm({...editForm, shift_start_time: e.target.value})} />
+                      </div>
+                      <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                        <label>⏰ Shift End <span style={{ fontSize: "0.72rem", color: "#818cf8", fontWeight: 400 }}>(max check-out)</span></label>
+                        <input type="time" className="premium-input" value={editForm.shift_end_time}
+                          onChange={e => setEditForm({...editForm, shift_end_time: e.target.value})} />
+                      </div>
+                      {editForm.shift_start_time && editForm.shift_end_time && (() => {
+                        const [h1,m1]=editForm.shift_start_time.split(':').map(Number);
+                        const [h2,m2]=editForm.shift_end_time.split(':').map(Number);
+                        const d=(h2*60+m2)-(h1*60+m1);
+                        return d>0 ? <div style={{ fontSize:'0.78rem', color:'#818cf8', alignSelf:'flex-end', paddingBottom:10, whiteSpace:'nowrap' }}>⟶ {Math.round(d/60*10)/10}h/day</div> : null;
+                      })()}
+                    </>
+                  ) : canSetPerEmployeeHours ? (
                     <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
                       <label>Daily Working Hours <span style={{ fontSize: "0.72rem", color: "var(--text-secondary)", fontWeight: 400 }}>(optional)</span></label>
                       <input type="number" step="0.5" min="1" max="16" className="premium-input" placeholder="Org default"
                         value={editForm.hours_per_day} onChange={e => setEditForm({...editForm, hours_per_day: e.target.value})} />
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
                 {/* Week Off Day — only in rotating mode */}
