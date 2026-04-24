@@ -184,12 +184,23 @@ export default function KioskPage() {
         video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
-      // 3-second countdown then auto-capture
+      const video = videoRef.current;
+      if (!video) throw new Error("no video element");
+
+      video.srcObject = stream;
+
+      // Wait until video is actually ready to render frames
+      await new Promise<void>((resolve, reject) => {
+        video.oncanplay  = () => resolve();
+        video.onerror    = () => reject(new Error("video error"));
+        video.play().catch(reject);
+        // Safety timeout — if canplay doesn't fire in 5s, proceed anyway
+        setTimeout(resolve, 5000);
+      });
+
+      // Now start the 3-second countdown
       let count = 3;
+      setCountdown(count);
       const timer = setInterval(() => {
         count--;
         setCountdown(count);
@@ -199,7 +210,7 @@ export default function KioskPage() {
         }
       }, 1000);
     } catch {
-      // Camera not available — punch without photo
+      // Camera not available / permission denied — punch without photo
       setScreen("processing");
       await submitPunch(enteredPin, null);
     }
@@ -215,13 +226,14 @@ export default function KioskPage() {
     try {
       const video  = videoRef.current;
       const canvas = canvasRef.current;
-      if (video && canvas) {
-        canvas.width  = video.videoWidth  || 640;
-        canvas.height = video.videoHeight || 480;
+      // Only capture if video has real frame data
+      if (video && canvas && video.readyState >= 2 && video.videoWidth > 0) {
+        canvas.width  = video.videoWidth;
+        canvas.height = video.videoHeight;
         canvas.getContext("2d")?.drawImage(video, 0, 0);
         photo64 = canvas.toDataURL("image/jpeg", 0.82).split(",")[1];
       }
-    } catch { /* ignore */ }
+    } catch { /* ignore capture errors */ }
     stopCamera();
     setScreen("processing");
     await submitPunch(enteredPin, photo64);
