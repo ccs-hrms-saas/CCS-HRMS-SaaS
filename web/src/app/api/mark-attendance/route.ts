@@ -94,7 +94,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Incorrect PIN. Please check the Employee App and try again.' }, { status: 401 })
     }
 
-    // 3. Check if already checked in today
+    // 3. Fetch employee profile to get company_id
+    // (service role bypasses RLS so auth.uid() is NULL — the auto-trigger can't fire)
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('company_id')
+      .eq('id', user_id)
+      .single()
+
+    const company_id = profile?.company_id ?? null
+
+    // 4. Check if already checked in today
     const today = new Date().toISOString().split('T')[0]
     const { data: existingRecord } = await supabaseAdmin
       .from('attendance_records')
@@ -103,23 +113,23 @@ export async function POST(req: NextRequest) {
       .eq('date', today)
       .single()
 
-    // 4. Upload photo server-side using service role key (bypasses RLS)
+    // 5. Upload photo server-side using service role key (bypasses RLS)
     const photo_url: string | null = photo_base64
       ? await uploadPhotoServerSide(user_id, photo_base64, 'checkin')
       : null
 
-    // 5. Check in or Check out
+    // 6. Check in or Check out — always include company_id explicitly
     if (!existingRecord || !existingRecord.check_in) {
       // First tap = Check In
       if (existingRecord) {
         await supabaseAdmin
           .from('attendance_records')
-          .update({ check_in: new Date().toISOString(), photo_url })
+          .update({ check_in: new Date().toISOString(), photo_url, company_id })
           .eq('id', existingRecord.id)
       } else {
         await supabaseAdmin
           .from('attendance_records')
-          .insert({ user_id, date: today, check_in: new Date().toISOString(), photo_url })
+          .insert({ user_id, company_id, date: today, check_in: new Date().toISOString(), photo_url })
       }
       return NextResponse.json({ success: true, action: 'check_in', message: 'Checked In Successfully!' })
     } else if (!existingRecord.check_out) {
@@ -129,7 +139,7 @@ export async function POST(req: NextRequest) {
         : null
       await supabaseAdmin
         .from('attendance_records')
-        .update({ check_out: new Date().toISOString(), checkout_photo_url })
+        .update({ check_out: new Date().toISOString(), checkout_photo_url, company_id })
         .eq('id', existingRecord.id)
       return NextResponse.json({ success: true, action: 'check_out', message: 'Checked Out Successfully!' })
     } else {
