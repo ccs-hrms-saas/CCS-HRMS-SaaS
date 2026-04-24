@@ -655,8 +655,8 @@ export default function AdminUsers() {
               {weekOffMode === "rotating" && (
                 <div className={styles.formGroup} style={{ marginBottom: 0, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 10, padding: "12px 14px" }}>
                   <label style={{ color: "var(--accent-primary)" }}>🔄 Weekly Off Day *</label>
-                  <select className="premium-input" value={form.weekly_off_day} onChange={e => setForm({...form, weekly_off_day: e.target.value})} required>
-                    <option value="">-- Select off day --</option>
+                  <select className="premium-input" value={form.weekly_off_day} onChange={e => setForm({...form, weekly_off_day: e.target.value})}>
+                    <option value="">🚫 No Weekly Off (Works 7 Days)</option>
                     {DAYS_LONG.map((d, i) => <option key={i} value={i}>{d}</option>)}
                   </select>
                   <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 4 }}>This employee's rotating week off day. Can be changed from their profile card.</div>
@@ -766,7 +766,7 @@ export default function AdminUsers() {
                   <div className={styles.formGroup} style={{ marginBottom: 0, marginTop: 14, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 10, padding: "10px 12px" }}>
                     <label style={{ color: "var(--accent-primary)" }}>🔄 Weekly Off Day</label>
                     <select className="premium-input" value={editForm.weekly_off_day} onChange={e => setEditForm({...editForm, weekly_off_day: e.target.value})}>
-                      <option value="">-- Select off day --</option>
+                      <option value="">🚫 No Weekly Off (Works 7 Days)</option>
                       {DAYS_LONG.map((d, i) => <option key={i} value={i}>{d}</option>)}
                     </select>
                   </div>
