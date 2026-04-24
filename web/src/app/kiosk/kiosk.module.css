@@ -1,196 +1,95 @@
-/* ── Kiosk App — Fullscreen Tablet UI ───────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════
+   CCS HRMS Kiosk — Mobile-First CSS
+   Primary target: Android phones (360-420px wide) held in portrait.
+   Also works on tablets and desktop in landscape.
+   ══════════════════════════════════════════════════════════════════════ */
 
-:global(*) {
-  -webkit-tap-highlight-color: transparent;
-  -webkit-touch-callout: none;
-  user-select: none;
-}
+/* ── Base reset ───────────────────────────────────────────────────────── */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-:global(body) {
-  margin: 0;
-  background: #060810;
-  font-family: 'Outfit', -apple-system, sans-serif;
-  overflow: hidden;
-}
-
-/* ── Root layout ─────────────────────────────────────────────────────────── */
+/* ── Root kiosk container ─────────────────────────────────────────────── */
 .kiosk {
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
+  width:  100vw;
+  height: 100dvh;          /* dynamic viewport height respects mobile bars */
   background: #060810;
-  overflow: hidden;
-}
-
-/* ── Setup screen ─────────────────────────────────────────────────────────── */
-.setupScreen {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-}
-
-.setupCard {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 28px;
-  padding: 48px 56px;
-  width: 100%;
-  max-width: 520px;
-  text-align: center;
-}
-
-.setupLogo {
-  font-size: 2.2rem;
-  font-weight: 900;
-  color: #6366f1;
-  letter-spacing: -1px;
-  margin-bottom: 6px;
-}
-
-.setupTagline {
-  font-size: 0.9rem;
-  color: #475569;
-  margin-bottom: 36px;
-}
-
-.setupTitle {
-  font-size: 1.4rem;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 28px;
-}
-
-.setupField {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 18px;
-  text-align: left;
+  font-family: 'Inter', 'Outfit', -apple-system, sans-serif;
+  color: #e2e8f0;
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
 }
 
-.setupLabel {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #475569;
-  letter-spacing: 0.3px;
-}
-
-.setupInput {
-  background: rgba(0,0,0,0.4);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 14px;
-  padding: 16px 18px;
-  font-size: 1.1rem;
-  color: #fff;
-  font-family: inherit;
-  width: 100%;
-  box-sizing: border-box;
-  transition: border-color 0.2s;
-  text-align: center;
-  letter-spacing: 0.1em;
-}
-
-.setupInput:focus {
-  outline: none;
-  border-color: #6366f1;
-}
-
-.setupInput::placeholder { color: #334155; }
-
-.setupBtn {
-  width: 100%;
-  padding: 16px;
-  border-radius: 14px;
-  border: none;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  color: #fff;
-  font-size: 1.05rem;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  margin-top: 8px;
-  box-shadow: 0 6px 24px rgba(99,102,241,0.4);
-  transition: all 0.2s;
-}
-
-.setupBtn:hover { filter: brightness(1.1); }
-.setupBtn:disabled { opacity: 0.5; cursor: default; }
-
-.setupErr {
-  color: #f87171;
-  font-size: 0.88rem;
-  margin-top: 14px;
-  font-weight: 500;
-}
-
-/* ── Main kiosk UI header ─────────────────────────────────────────────────── */
+/* ── Header ───────────────────────────────────────────────────────────── */
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 32px;
+  padding: 14px 20px;
   background: rgba(255,255,255,0.02);
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.07);
   flex-shrink: 0;
+  min-height: 64px;
 }
 
 .headerLeft {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
+  min-width: 0;
 }
 
 .companyLogo {
-  height: 46px;
-  max-width: 180px;
+  height: 36px;
+  max-width: 130px;
   object-fit: contain;
 }
 
 .companyName {
-  font-size: 1.5rem;
+  font-size: 1.05rem;
   font-weight: 800;
   color: #fff;
-  letter-spacing: -0.4px;
+  letter-spacing: -0.3px;
+  line-height: 1.2;
+  max-width: 160px;
 }
 
 .headerTime {
   text-align: right;
+  flex-shrink: 0;
 }
 
 .clockTime {
-  font-size: 2.4rem;
+  font-size: 1.5rem;
   font-weight: 800;
   color: #fff;
-  letter-spacing: -1px;
+  letter-spacing: -0.5px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
 .clockDate {
-  font-size: 0.85rem;
+  font-size: 0.7rem;
   color: #475569;
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
-/* ── Main body ───────────────────────────────────────────────────────────── */
+/* ── Body — stack vertically on mobile ────────────────────────────────── */
 .body {
   flex: 1;
-  display: grid;
-  grid-template-columns: 1fr 420px;
-  gap: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-/* ── Employee search panel ───────────────────────────────────────────────── */
+/* ── Employee search panel ────────────────────────────────────────────── */
 .searchPanel {
-  padding: 28px 32px;
+  flex: 1;
+  padding: 14px 16px 8px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  border-right: 1px solid rgba(255,255,255,0.05);
+  gap: 12px;
   overflow: hidden;
 }
 
@@ -201,7 +100,7 @@
 
 .searchIcon {
   position: absolute;
-  left: 18px;
+  left: 14px;
   top: 50%;
   transform: translateY(-50%);
   color: #475569;
@@ -210,107 +109,134 @@
 
 .searchInput {
   width: 100%;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 16px;
-  padding: 16px 18px 16px 50px;
-  font-size: 1.1rem;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  padding: 14px 16px 14px 44px;
+  font-size: 1rem;
   color: #fff;
   font-family: inherit;
-  box-sizing: border-box;
   transition: border-color 0.2s;
+  -webkit-appearance: none;
 }
 
 .searchInput:focus {
   outline: none;
   border-color: #6366f1;
-  background: rgba(99,102,241,0.04);
+  background: rgba(99,102,241,0.06);
 }
 
 .searchInput::placeholder { color: #334155; }
 
+/* ── Employee grid — 2 columns on phone, more on wider screens ────────── */
 .employeeGrid {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
   align-content: start;
-  padding-right: 4px;
+  padding-bottom: 12px;
 }
 
-.employeeGrid::-webkit-scrollbar { width: 4px; }
+@media (min-width: 480px) {
+  .employeeGrid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 700px) {
+  .employeeGrid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+}
+
+.employeeGrid::-webkit-scrollbar { width: 3px; }
 .employeeGrid::-webkit-scrollbar-track { background: transparent; }
 .employeeGrid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
 
+/* ── Employee card ────────────────────────────────────────────────────── */
 .employeeCard {
   background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.07);
+  border: 1.5px solid rgba(255,255,255,0.07);
   border-radius: 14px;
-  padding: 18px 16px;
+  padding: 14px 10px 12px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  user-select: none;
+  -webkit-user-select: none;
+  /* large tap target */
+  min-height: 100px;
 }
 
-.employeeCard:hover {
-  background: rgba(99,102,241,0.1);
-  border-color: rgba(99,102,241,0.3);
-  transform: translateY(-2px);
+.employeeCard:active {
+  background: rgba(99,102,241,0.18);
+  border-color: rgba(99,102,241,0.5);
+  transform: scale(0.97);
 }
 
 .employeeCard.selected {
   background: rgba(99,102,241,0.15);
-  border-color: rgba(99,102,241,0.5);
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99,102,241,0.3);
 }
 
+/* ── Avatar ───────────────────────────────────────────────────────────── */
 .employeeAvatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
   object-fit: cover;
 }
 
 .employeeAvatarInitials {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
   background: linear-gradient(135deg, #1e1b4b, #312e81);
-  border: 1px solid rgba(99,102,241,0.3);
+  border: 1px solid rgba(99,102,241,0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   font-weight: 800;
   color: #a5b4fc;
+  flex-shrink: 0;
 }
 
 .employeeName {
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: #e2e8f0;
   text-align: center;
   line-height: 1.3;
+  word-break: break-word;
 }
 
 .employeeRole {
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   color: #475569;
   text-transform: capitalize;
 }
 
-/* ── Action panel ─────────────────────────────────────────────────────────── */
+/* ── Action panel — slides up as bottom sheet on mobile ───────────────── */
 .actionPanel {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 32px;
-  gap: 24px;
-  background: rgba(0,0,0,0.2);
+  padding: 20px 20px 28px;
+  gap: 16px;
+  background: rgba(6,8,16,0.97);
+  border-top: 1px solid rgba(255,255,255,0.07);
+  /* bottom sheet feel */
+  border-radius: 20px 20px 0 0;
+}
+
+/* When no employee is selected, show a compact prompt bar */
+.actionPanel.empty {
+  padding: 12px 20px 20px;
 }
 
 .actionPrompt {
@@ -319,132 +245,145 @@
 }
 
 .actionPromptIcon {
-  font-size: 3rem;
-  margin-bottom: 12px;
-  opacity: 0.4;
+  font-size: 2rem;
+  margin-bottom: 6px;
+  opacity: 0.5;
 }
 
 .actionPromptText {
-  font-size: 1.1rem;
+  font-size: 0.88rem;
   font-weight: 600;
   color: #334155;
 }
 
-/* Selected employee */
+/* Selected employee info strip */
 .selectedProfile {
-  text-align: center;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  width: 100%;
+  padding: 0 4px;
 }
 
 .selectedAvatarLarge {
-  width: 90px;
-  height: 90px;
-  border-radius: 22px;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
   background: linear-gradient(135deg, #1e1b4b, #312e81);
-  border: 2px solid rgba(99,102,241,0.4);
+  border: 2px solid rgba(99,102,241,0.5);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2.4rem;
+  font-size: 1.4rem;
   font-weight: 800;
   color: #a5b4fc;
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .selectedName {
-  font-size: 1.4rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: #fff;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .selectedRole {
-  font-size: 0.88rem;
+  font-size: 0.78rem;
   color: #475569;
   text-transform: capitalize;
 }
 
-/* Clock in/out buttons */
+/* ── Punch buttons ────────────────────────────────────────────────────── */
 .punchBtns {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
   width: 100%;
+}
+
+.cancelBtnRow {
+  grid-column: 1 / -1;
 }
 
 .punchInBtn {
-  width: 100%;
-  padding: 20px;
-  border-radius: 16px;
+  padding: 16px;
+  border-radius: 14px;
   border: none;
   background: linear-gradient(135deg, #10b981, #059669);
   color: #fff;
-  font-size: 1.15rem;
+  font-size: 1rem;
   font-weight: 800;
   cursor: pointer;
   font-family: inherit;
-  box-shadow: 0 6px 24px rgba(16,185,129,0.35);
-  transition: all 0.2s;
+  box-shadow: 0 4px 18px rgba(16,185,129,0.35);
+  transition: all 0.15s;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  letter-spacing: -0.2px;
+  gap: 8px;
+  min-height: 54px;
+  -webkit-appearance: none;
 }
 
-.punchInBtn:hover  { filter: brightness(1.08); transform: translateY(-2px); }
-.punchInBtn:active { transform: translateY(0); }
+.punchInBtn:active  { filter: brightness(0.92); transform: scale(0.97); }
+.punchInBtn:disabled { opacity: 0.6; }
 
 .punchOutBtn {
-  width: 100%;
-  padding: 20px;
-  border-radius: 16px;
-  border: 1px solid rgba(239,68,68,0.3);
-  background: rgba(239,68,68,0.08);
+  padding: 16px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(239,68,68,0.35);
+  background: rgba(239,68,68,0.1);
   color: #f87171;
-  font-size: 1.15rem;
+  font-size: 1rem;
   font-weight: 800;
   cursor: pointer;
   font-family: inherit;
-  transition: all 0.2s;
+  transition: all 0.15s;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  letter-spacing: -0.2px;
+  gap: 8px;
+  min-height: 54px;
+  -webkit-appearance: none;
 }
 
-.punchOutBtn:hover { background: rgba(239,68,68,0.16); }
+.punchOutBtn:active  { background: rgba(239,68,68,0.2); transform: scale(0.97); }
+.punchOutBtn:disabled { opacity: 0.6; }
 
 .cancelBtn {
   width: 100%;
-  padding: 12px;
-  border-radius: 12px;
+  padding: 10px;
+  border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.06);
   background: transparent;
   color: #475569;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
-  transition: all 0.2s;
+  transition: all 0.15s;
 }
 
-.cancelBtn:hover { color: #94a3b8; }
+.cancelBtn:active { color: #94a3b8; }
 
-/* ── Success animation overlay ────────────────────────────────────────────── */
+/* ── Success overlay ──────────────────────────────────────────────────── */
 .successOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(6,8,16,0.85);
+  background: rgba(6,8,16,0.92);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  z-index: 100;
+  gap: 14px;
+  z-index: 200;
   animation: fadeIn 0.2s ease-out;
+  backdrop-filter: blur(10px);
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -460,22 +399,128 @@
 }
 
 .successName {
-  font-size: 2rem;
+  font-size: 1.8rem;
   font-weight: 800;
   color: #fff;
+  text-align: center;
+  padding: 0 24px;
 }
 
 .successAction {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   font-weight: 600;
 }
 
 .successTime {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   color: #475569;
 }
 
-/* Loading */
+/* ── Setup / Pairing screen ───────────────────────────────────────────── */
+.setupScreen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.setupCard {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 20px;
+  padding: 32px 24px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.setupLogo {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #6366f1;
+  letter-spacing: -0.5px;
+  margin-bottom: 4px;
+}
+
+.setupTagline {
+  font-size: 0.8rem;
+  color: #475569;
+  margin-bottom: 28px;
+}
+
+.setupTitle {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin-bottom: 24px;
+}
+
+.setupField {
+  margin-bottom: 18px;
+}
+
+.setupLabel {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.setupInput {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 1rem;
+  color: #fff;
+  font-family: inherit;
+  -webkit-appearance: none;
+  transition: border-color 0.2s;
+}
+
+.setupInput:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.setupInput::placeholder { color: #334155; }
+
+.setupBtn {
+  width: 100%;
+  padding: 16px;
+  border-radius: 14px;
+  border: none;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+  margin-top: 8px;
+  box-shadow: 0 4px 20px rgba(99,102,241,0.4);
+  transition: all 0.15s;
+  -webkit-appearance: none;
+  min-height: 52px;
+}
+
+.setupBtn:active { filter: brightness(0.92); transform: scale(0.98); }
+.setupBtn:disabled { opacity: 0.5; }
+
+.setupErr {
+  color: #f87171;
+  font-size: 0.85rem;
+  margin-top: 14px;
+  font-weight: 500;
+  text-align: center;
+}
+
+/* ── Loading screen ───────────────────────────────────────────────────── */
 .loadingScreen {
   flex: 1;
   display: flex;
@@ -488,8 +533,8 @@
 }
 
 .spinner {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border: 3px solid rgba(99,102,241,0.15);
   border-top-color: #6366f1;
   border-radius: 50%;
@@ -497,3 +542,70 @@
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Tablet / Desktop: restore side-by-side layout ───────────────────── */
+@media (min-width: 768px) and (orientation: landscape), (min-width: 1024px) {
+  .body {
+    flex-direction: row;
+  }
+
+  .searchPanel {
+    flex: 1;
+    padding: 24px 28px;
+    border-right: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .actionPanel {
+    width: 380px;
+    flex-shrink: 0;
+    border-top: none;
+    border-left: 1px solid rgba(255,255,255,0.05);
+    border-radius: 0;
+    padding: 40px 32px;
+    justify-content: center;
+  }
+
+  .actionPanel.empty {
+    padding: 40px 32px;
+  }
+
+  .selectedProfile {
+    flex-direction: column;
+    text-align: center;
+    gap: 12px;
+  }
+
+  .selectedAvatarLarge {
+    width: 88px;
+    height: 88px;
+    font-size: 2rem;
+  }
+
+  .selectedName {
+    font-size: 1.4rem;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .punchBtns {
+    grid-template-columns: 1fr;
+  }
+
+  .clockTime {
+    font-size: 2.2rem;
+  }
+
+  .companyName {
+    font-size: 1.5rem;
+    max-width: none;
+  }
+
+  .header {
+    padding: 18px 32px;
+  }
+
+  .employeeGrid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+  }
+}

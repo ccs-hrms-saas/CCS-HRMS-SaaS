@@ -10,6 +10,8 @@
 export const metadata = {
   title: "CCS HRMS Kiosk",
   description: "Attendance kiosk for CCS HRMS",
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+  themeColor: "#060810",
 };
 
 export default function KioskLayout({ children }: { children: React.ReactNode }) {

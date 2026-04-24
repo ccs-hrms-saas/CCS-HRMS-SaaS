@@ -298,8 +298,8 @@ export default function KioskPage() {
           </div>
         </div>
 
-        {/* Right — Action Panel */}
-        <div className={s.actionPanel}>
+        {/* Right/Bottom — Action Panel */}
+        <div className={`${s.actionPanel} ${!selected ? s.empty : ""}`}>
           {!selected ? (
             <div className={s.actionPrompt}>
               <div className={s.actionPromptIcon}>👆</div>
@@ -313,22 +313,26 @@ export default function KioskPage() {
                     ? <img src={selected.avatar_url} alt={selected.full_name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }} />
                     : initials(selected.full_name)}
                 </div>
-                <div className={s.selectedName}>{selected.full_name}</div>
-                <div className={s.selectedRole}>{selected.role}</div>
+                <div>
+                  <div className={s.selectedName}>{selected.full_name}</div>
+                  <div className={s.selectedRole}>{selected.role}</div>
+                </div>
               </div>
 
               <div className={s.punchBtns}>
                 <button className={s.punchInBtn} onClick={() => punch("in")} disabled={punching}>
-                  <LogIn size={22} />
-                  {punching ? "Recording…" : "Clock In"}
+                  <LogIn size={20} />
+                  {punching ? "…" : "Clock In"}
                 </button>
                 <button className={s.punchOutBtn} onClick={() => punch("out")} disabled={punching}>
-                  <LogOut size={22} />
-                  {punching ? "Recording…" : "Clock Out"}
+                  <LogOut size={20} />
+                  {punching ? "…" : "Clock Out"}
                 </button>
-                <button className={s.cancelBtn} onClick={() => { setSelected(null); setSearch(""); }}>
-                  Cancel
-                </button>
+                <div className={s.cancelBtnRow}>
+                  <button className={s.cancelBtn} onClick={() => { setSelected(null); setSearch(""); }}>
+                    Cancel
+                  </button>
+                </div>
               </div>
             </>
           )}
