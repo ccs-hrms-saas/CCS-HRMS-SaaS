@@ -125,10 +125,8 @@ CREATE POLICY "Authenticated read avatars"
 -- Private bucket: employees read only their own docs; admins read all in tenant.
 -- ══════════════════════════════════════════════════════════════════════════════
 
--- Employees can read documents in their own folder: documents/{user_id}/...
-CREATE POLICY "Employees can read their own documents"
-  ON storage.objects FOR SELECT
 -- Employees can upload documents to their own folder: documents/{user_id}/...
+DROP POLICY IF EXISTS "Employees can upload their own documents" ON storage.objects;
 CREATE POLICY "Employees can upload their own documents"
   ON storage.objects FOR INSERT
   TO authenticated
@@ -138,6 +136,7 @@ CREATE POLICY "Employees can upload their own documents"
   );
 
 -- Employees can replace/update their own documents
+DROP POLICY IF EXISTS "Employees can update their own documents" ON storage.objects;
 CREATE POLICY "Employees can update their own documents"
   ON storage.objects FOR UPDATE
   TO authenticated
@@ -146,14 +145,8 @@ CREATE POLICY "Employees can update their own documents"
     AND (storage.foldername(name))[1] = auth.uid()::text
   );
 
--- Service role (admin API) can manage all documents
-CREATE POLICY "Service role can manage all documents"
-  ON storage.objects FOR ALL
-  TO service_role
-  USING (bucket_id = 'documents')
-  WITH CHECK (bucket_id = 'documents');
-
 -- Employees can read documents in their own folder: documents/{user_id}/...
+DROP POLICY IF EXISTS "Employees can read their own documents" ON storage.objects;
 CREATE POLICY "Employees can read their own documents"
   ON storage.objects FOR SELECT
   TO authenticated
@@ -162,8 +155,16 @@ CREATE POLICY "Employees can read their own documents"
     AND (storage.foldername(name))[1] = auth.uid()::text
   );
 
+-- Service role (admin API) can manage all documents
+DROP POLICY IF EXISTS "Service role can manage all documents" ON storage.objects;
+CREATE POLICY "Service role can manage all documents"
+  ON storage.objects FOR ALL
+  TO service_role
+  USING (bucket_id = 'documents')
+  WITH CHECK (bucket_id = 'documents');
+
 -- Admins can read all documents for their company
--- (relies on profiles.company_id matching the folder structure: documents/{user_id}/...)
+DROP POLICY IF EXISTS "Admins can read all documents" ON storage.objects;
 CREATE POLICY "Admins can read all documents"
   ON storage.objects FOR SELECT
   TO authenticated
