@@ -38,9 +38,25 @@ export default function EmployeePayslips() {
   const [password, setPassword] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [visibleAfterDay, setVisibleAfterDay] = useState<number>(20); // from platform setting
+  const [dateGateChecked, setDateGateChecked] = useState(false);
 
   const [slips, setSlips]     = useState<MonthSlip[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Fetch the payroll_visible_after_day setting
+  useEffect(() => {
+    if (!profile?.company_id) return;
+    supabase
+      .from("app_settings")
+      .select("payroll_visible_after_day")
+      .eq("company_id", profile.company_id)
+      .single()
+      .then(({ data }) => {
+        setVisibleAfterDay(data?.payroll_visible_after_day ?? 20);
+        setDateGateChecked(true);
+      });
+  }, [profile]);
 
   // ── Unlock & load ─────────────────────────────────────────────────────────
   const unlock = async (e: React.FormEvent) => {
@@ -169,6 +185,34 @@ export default function EmployeePayslips() {
 
     setSlips(result.reverse());
   };
+
+  // ── Date gate — check before even showing the password lock ─────────────────
+  const todayDate = new Date().getDate();
+  const isDateGateBlocked = dateGateChecked && todayDate < visibleAfterDay;
+
+  if (isDateGateBlocked) {
+    const nextAvailable = new Date();
+    nextAvailable.setDate(visibleAfterDay);
+    return (
+      <div className="animate-fade-in" style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
+        <div className="glass-panel" style={{ padding: 48, width: "100%", maxWidth: 440, textAlign: "center" }}>
+          <div style={{ fontSize: "3.5rem", marginBottom: 16 }}>📅</div>
+          <h2 style={{ marginBottom: 12 }}>Payslip Not Available Yet</h2>
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", lineHeight: 1.6 }}>
+            Your monthly payslip is available from the{" "}
+            <strong style={{ color: "var(--accent-primary)" }}>{visibleAfterDay}th of each month</strong>{" "}
+            onwards. This gives HR time to finalise your attendance and process salary.
+          </p>
+          <div style={{ marginTop: 24, padding: "12px 20px", borderRadius: 12, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)" }}>
+            <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>Available from</div>
+            <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "var(--accent-primary)", marginTop: 4 }}>
+              {nextAvailable.toLocaleDateString("en-IN", { day: "numeric", month: "long" })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Lock screen ───────────────────────────────────────────────────────────
   if (locked) {

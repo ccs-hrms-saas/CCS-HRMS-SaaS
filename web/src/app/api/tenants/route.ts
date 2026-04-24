@@ -293,16 +293,32 @@ export async function POST(req: Request) {
       },
     ]);
 
-    // 5. Seed Default App Settings
+    // 5. Seed Default App Settings — pull payroll/attendance defaults from platform_default_settings
+    const { data: platformDefaults } = await supabaseAdmin
+      .from('platform_default_settings')
+      .select('key, value');
+
+    // Build a quick lookup: key → parsed value
+    const pd: Record<string, any> = {};
+    (platformDefaults ?? []).forEach((r: any) => {
+      try { pd[r.key] = typeof r.value === 'string' ? JSON.parse(r.value) : r.value; }
+      catch { pd[r.key] = r.value; }
+    });
+
     await supabaseAdmin.from('app_settings').insert({
-      company_id:       companyId,
-      theme:            'dark_indigo',
-      font_family:      'Outfit',
-      font_size:        'md',
+      company_id:                  companyId,
+      theme:                       'dark_indigo',
+      font_family:                 'Outfit',
+      font_size:                   'md',
       // Work schedule defaults — superadmin configures via Setup Wizard
-      week_off_type:    'fixed',     // 'fixed' | 'rotating'
-      week_off_days:    [0],         // [0] = Sunday
-      overtime_tracking: false,      // true = compute & store, hidden from employees
+      week_off_type:               'fixed',
+      week_off_days:               [0],           // [0] = Sunday
+      overtime_tracking:           pd['attendance_overtime_tracking'] ?? false,
+      // Payroll settings — inherited from platform defaults
+      lwp_deduction_mode:          pd['lwp_deduction_mode']           ?? 'attendance_based',
+      payroll_prorate_mid_joiners: pd['payroll_prorate_mid_joiners']  ?? true,
+      payroll_visible_after_day:   pd['payroll_visible_after_day']    ?? 20,
+      attendance_grace_days:       pd['attendance_grace_days']        ?? 0,
     });
 
     // 6. Seed company_modules (all 18 modules with sensible defaults)
