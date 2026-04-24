@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import * as XLSX from "xlsx";
 import styles from "../../dashboard.module.css";
-import { getLeaveDaysCount, isWorkingDay, isLateArrival, formatShiftTime } from "@/lib/dateUtils";
+import { getLeaveDaysCount, isWorkingDay, isLateArrival, formatShiftTime, resolveHoursPerDay } from "@/lib/dateUtils";
 
 
 type Tab = "attendance" | "leaves" | "employee" | "balances";
@@ -86,6 +86,7 @@ export default function AdminReports() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [search, setSearch] = useState("");
   const [expandedEmp, setExpandedEmp] = useState<string | null>(null);
+  const [orgHoursPerDay, setOrgHoursPerDay] = useState<number>(8.5); // from app_settings
 
   useEffect(() => {
     const companyId = profile?.company_id;
@@ -99,6 +100,9 @@ export default function AdminReports() {
       .order("full_name")
       .then(({ data }) => setEmployees(data ?? []));
     supabase.from("leave_types").select("*").then(({ data }) => setLeaveTypes(data ?? []));
+    // Fetch org-level working hours for target calculation
+    supabase.from("app_settings").select("hours_per_day").eq("company_id", companyId).single()
+      .then(({ data }) => { if (data?.hours_per_day) setOrgHoursPerDay(Number(data.hours_per_day)); });
 
     // ── Auto absence deduction: silently run for the previous completed month ──
     const now = new Date();
@@ -211,11 +215,13 @@ export default function AdminReports() {
         return d.getHours() > 9 || (d.getHours() === 9 && d.getMinutes() > 30);
       }).length;
 
-      // Overtime: days with >9h (0.5h buffer above 8.5h std)
-      const overtimeDays = rows.filter(r => diffHrs(r.check_in, r.check_out) > 9).length;
+      // Overtime: days where worked hours exceed employee's required hours
+      const empProfile2 = employees.find(e => e.id === id);
+      const empHPD2 = resolveHoursPerDay(empProfile2?.hours_per_day ?? null, orgHoursPerDay);
+      const overtimeDays = rows.filter(r => diffHrs(r.check_in, r.check_out) > empHPD2 + 0.5).length;
       const overtimeHrs = rows.reduce((s, r) => {
         const h = diffHrs(r.check_in, r.check_out);
-        return s + (h > 8.5 ? h - 8.5 : 0);
+        return s + (h > empHPD2 ? h - empHPD2 : 0);
       }, 0);
 
       // Approved leaves for this period
@@ -235,13 +241,16 @@ export default function AdminReports() {
       });
 
       const finalTotalHrs = totalHrs - mlPenalty;
-      const adjustedTarget = Math.max(0, workingDaysInRange - leaveDaysTaken) * 8.5;
+      // Resolve per-employee hours: profile override → org default → 8.5
+      const empProfile = employees.find(e => e.id === id);
+      const empHPD = resolveHoursPerDay(empProfile?.hours_per_day ?? null, orgHoursPerDay);
+      const adjustedTarget = Math.max(0, workingDaysInRange - leaveDaysTaken) * empHPD;
       const deficit = finalTotalHrs - adjustedTarget;
-      const monthTarget = workingDaysInFullMonth * 8.5;
+      const monthTarget = workingDaysInFullMonth * empHPD;
 
       return { id, name, daysPresent, totalHrs: finalTotalHrs, avgHrs, attendance, lateArrivals, overtimeDays, overtimeHrs, leaveDaysTaken, workingDaysInRange, workingDaysInFullMonth, monthTarget, deficit, rows };
     });
-  }, [rawRecords, leaveRecords, tab, workingDaysInRange, workingDaysInFullMonth, selectedIds, employees]);
+  }, [rawRecords, leaveRecords, tab, workingDaysInRange, workingDaysInFullMonth, selectedIds, employees, orgHoursPerDay]);
 
   /* ── Sorted + filtered summary ── */
   const displayData = useMemo(() => {
@@ -267,7 +276,7 @@ export default function AdminReports() {
     const total = displayData.length;
     const avgAtt = displayData.reduce((s, r) => s + r.attendance, 0) / total;
     const totalActualHrs = displayData.reduce((s, r) => s + r.totalHrs, 0);
-    const totalTargetHrs = total * workingDaysInRange * 8.5;
+    const totalTargetHrs = displayData.reduce((s, r) => s + r.monthTarget, 0) / (workingDaysInFullMonth || 1) * workingDaysInRange;
     const perfect = displayData.filter(r => r.daysPresent >= r.workingDaysInRange).length;
     const lateCount = displayData.reduce((s, r) => s + r.lateArrivals, 0);
     return { total, avgAtt, totalActualHrs, totalTargetHrs, perfect, lateCount };
@@ -500,7 +509,7 @@ export default function AdminReports() {
               <div className="glass-panel" style={{ padding: "16px 18px", borderLeft: "3px solid #64748b" }}>
                 <div style={{ fontSize: "1.3rem", marginBottom: 6 }}>📅</div>
                 <div style={{ fontSize: "1.15rem", fontWeight: 700, color: "#64748b" }}>{workingDaysInFullMonth} days</div>
-                <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)", marginTop: 2 }}>Full Month Working Days<br/>({(workingDaysInFullMonth * 8.5).toFixed(0)}h / employee)</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)", marginTop: 2 }}>Full Month Working Days<br/>({(workingDaysInFullMonth * orgHoursPerDay).toFixed(0)}h / emp @ {orgHoursPerDay}h/day)</div>
               </div>
             </div>
           )}
@@ -603,7 +612,7 @@ export default function AdminReports() {
                                     <div style={{ fontSize: "0.76rem", color: "var(--text-secondary)" }}>
                                       In: {fmtTime(day.check_in)} · Out: {fmtTime(day.check_out)}
                                     </div>
-                                    <div style={{ fontSize: "0.82rem", fontWeight: 700, color: h >= 8.5 ? "var(--success)" : "var(--warning)", marginTop: 4 }}>
+                                    <div style={{ fontSize: "0.82rem", fontWeight: 700, color: h >= orgHoursPerDay ? "var(--success)" : "var(--warning)", marginTop: 4 }}>
                                       {h > 0 ? `${h.toFixed(2)}h` : "In Office"}
                                     </div>
                                   </div>
@@ -701,18 +710,20 @@ export default function AdminReports() {
               const totalHrsWithoutPenalty = atRows.reduce((s, r) => s + diffHrs(r.check_in, r.check_out), 0);
               
               let mlPenalty = 0;
+              const empP = employees.find(e => e.id === id);
+              const empHPDLocal = resolveHoursPerDay(empP?.hours_per_day ?? null, orgHoursPerDay);
               const lvDeduction = lvRows.reduce((s, l) => {
                 const t = leaveTypes.find(x => x.name === l.type);
                 const count = getLeaveDaysCount(l.start_date, l.end_date, t?.count_holidays ?? false);
                 if (t?.name === "Menstruation Leave") {
                   mlPenalty += count * Number(t.deduction_hours || 0);
-                  return s + count * 8.5; // ML waives full 8.5h target
+                  return s + count * empHPDLocal; // ML waives full day target
                 }
-                return s + count * (t ? Number(t.deduction_hours) : 8.5);
+                return s + count * (t ? Number(t.deduction_hours) : empHPDLocal);
               }, 0);
               
               const totalHrs = totalHrsWithoutPenalty - mlPenalty;
-              const target = Math.max(0, workingDaysInRange * 8.5 - lvDeduction);
+              const target = Math.max(0, workingDaysInRange * empHPDLocal - lvDeduction);
               const deficit = totalHrs - target;
 
               return (
@@ -720,7 +731,7 @@ export default function AdminReports() {
                   <h3 style={{ marginBottom: 12, fontSize: "1.1rem", borderBottom: "1px solid var(--glass-border)", paddingBottom: 8 }}>{name}</h3>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: "0.88rem" }}>
                     <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-secondary)" }}>Days Present</span><span style={{ fontWeight: 600 }}>{atRows.length} / {workingDaysInRange}</span></div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-secondary)" }}>Base Target</span><span>{(workingDaysInRange * 8.5).toFixed(2)}h</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-secondary)" }}>Base Target</span><span>{(workingDaysInRange * empHPDLocal).toFixed(2)}h</span></div>
                     {lvDeduction > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: "var(--warning)" }}><span>Leave Deduction</span><span>-{lvDeduction.toFixed(2)}h</span></div>}
                     <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600 }}><span>Adjusted Target</span><span>{target.toFixed(2)}h</span></div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: "var(--accent-primary)" }}><span>Actual Clocked</span><span>{totalHrs.toFixed(2)}h</span></div>
