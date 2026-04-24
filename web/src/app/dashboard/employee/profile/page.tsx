@@ -370,15 +370,15 @@ export default function EmployeeProfile() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {[
-                { label: "Aadhar Card (Front)", url: data.aadhar_front_url, ref: aadharFrontRef },
-                { label: "Aadhar Card (Back)",  url: data.aadhar_back_url,  ref: aadharBackRef },
-                { label: "PAN Card",            url: data.pan_url,          ref: panRef },
-              ].map(({ label, url, ref }) => (
+                { label: "Aadhar Card (Front)", url: data.aadhar_front_url, ref: aadharFrontRef, col: "aadhar_front_url" },
+                { label: "Aadhar Card (Back)",  url: data.aadhar_back_url,  ref: aadharBackRef,  col: "aadhar_back_url" },
+                { label: "PAN Card",            url: data.pan_url,          ref: panRef,         col: "pan_url" },
+              ].map(({ label, url, ref, col }) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 16px", background: "rgba(255,255,255,0.03)", borderRadius: 12, border: `1px solid ${url ? "rgba(16,185,129,0.3)" : "var(--glass-border)"}` }}>
                   {/* Thumbnail or placeholder */}
                   <div style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", background: "rgba(255,255,255,0.05)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--glass-border)" }}>
                     {url ? (
-                      url.match(/\.(jpg|jpeg|png|webp|gif)(\?|$)/i)
+                      url.startsWith("http") && url.match(/\.(jpg|jpeg|png|webp|gif)(\?|$)/i)
                         ? <img src={url} alt={label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         : <span style={{ fontSize: "1.8rem" }}>📄</span>
                     ) : <span style={{ fontSize: "1.8rem", opacity: 0.3 }}>🪪</span>}
@@ -404,6 +404,17 @@ export default function EmployeeProfile() {
                       style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${url ? "rgba(100,116,139,0.4)" : "rgba(99,102,241,0.5)"}`, background: url ? "rgba(100,116,139,0.1)" : "rgba(99,102,241,0.15)", color: url ? "var(--text-secondary)" : "var(--accent-primary)", cursor: saving ? "not-allowed" : "pointer", fontWeight: 600, fontSize: "0.82rem", fontFamily: "Outfit, sans-serif" }}>
                       {saving ? "Uploading…" : url ? "Replace" : "Upload"}
                     </button>
+                    {url && (
+                      <button onClick={async () => {
+                        if (!profile || !window.confirm("Remove this document?")) return;
+                        await fetch("/api/update-doc-url", { method: "POST", headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ user_id: profile.id, column: col, value: "" }) });
+                        setData((prev: any) => ({ ...prev, [col]: null }));
+                      }} disabled={saving}
+                        style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.07)", color: "#ef4444", cursor: "pointer", fontWeight: 600, fontSize: "0.82rem", fontFamily: "Outfit, sans-serif" }}>
+                        Remove
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
