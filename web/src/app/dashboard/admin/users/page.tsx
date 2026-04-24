@@ -65,26 +65,28 @@ export default function AdminUsers() {
   const load = async () => {
     const companyId = profile?.company_id;
     if (!companyId) { setLoading(false); return; }
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("company_id", companyId)
-      .is("system_role", null)
-      .order("full_name");
+
+    // Fetch employees AND work schedule settings together — guaranteed same tick
+    const [{ data }, { data: sett }] = await Promise.all([
+      supabase.from("profiles")
+        .select("*")
+        .eq("company_id", companyId)
+        .is("system_role", null)
+        .order("full_name"),
+      supabase.from("app_settings")
+        .select("week_off_type, hours_per_day")
+        .eq("company_id", companyId)
+        .single(),
+    ]);
+
     setUsers(data ?? []);
+    // This is what controls the "Weekly Off Day" field visibility in Add/Edit forms
+    if (sett?.week_off_type) setWeekOffMode(sett.week_off_type);
     setLoading(false);
   };
 
   useEffect(() => {
-    load();
-    // Load app settings to detect week off mode — MUST filter by company_id
-    if (profile?.company_id) {
-      supabase.from("app_settings")
-        .select("week_off_type, hours_per_day")
-        .eq("company_id", profile.company_id)
-        .single()
-        .then(({ data }) => { if (data?.week_off_type) setWeekOffMode(data.week_off_type); });
-    }
+    if (profile?.company_id) load();
   }, [profile?.company_id]);
 
   const isSuperAdmin = profile?.role === "superadmin";
