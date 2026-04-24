@@ -12,6 +12,12 @@ export const metadata = {
   description: "Attendance kiosk for CCS HRMS",
   viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
   themeColor: "#060810",
+  other: {
+    // Force WebView/browser to always revalidate — prevents stale CSS on Android
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+  },
 };
 
 export default function KioskLayout({ children }: { children: React.ReactNode }) {
