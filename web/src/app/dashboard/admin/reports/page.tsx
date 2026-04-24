@@ -153,18 +153,43 @@ export default function AdminReports() {
     const ids = selectedIds;
 
     if (tab === "attendance" || tab === "employee") {
-      const [atRes, lvRes] = await Promise.all([
-        supabase.from("attendance_records").select("*, profiles(full_name, id)").gte("date", fromDate).lte("date", toDate).in("user_id", ids).order("date", { ascending: false }),
-        supabase.from("leave_requests").select("*").eq("status", "approved").in("user_id", ids).gte("start_date", fromDate).lte("end_date", toDate),
-      ]);
-      setRawRecords(atRes.data ?? []);
-      setLeaveRecords(lvRes.data ?? []);
+      // Use server-side API to bypass RLS — admin reads all company records
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setLoading(false); return; }
+
+      const res = await fetch(
+        `/api/admin/attendance-data?from=${fromDate}&to=${toDate}`,
+        { headers: { Authorization: `Bearer ${session.access_token}` } }
+      );
+      const json = await res.json();
+
+      // Reconstruct profiles(full_name, id) shape that the rest of the page expects
+      const empMap = Object.fromEntries((json.employees ?? []).map((e: any) => [e.id, e]));
+      const atRecords = (json.attendance ?? [])
+        .filter((r: any) => ids.includes(r.user_id))
+        .map((r: any) => ({ ...r, profiles: empMap[r.user_id] ? { full_name: empMap[r.user_id].full_name, id: r.user_id } : null }));
+      const lvRecords = (json.leaveApproved ?? []).filter((l: any) => ids.includes(l.user_id));
+
+      setRawRecords(atRecords);
+      setLeaveRecords(lvRecords);
 
     } else if (tab === "leaves") {
-      let q = supabase.from("leave_requests").select("*, profiles!leave_requests_user_id_fkey(full_name)").gte("start_date", fromDate).lte("start_date", toDate).in("user_id", ids).order("created_at", { ascending: false });
-      if (statusFilter !== "all") q = q.eq("status", statusFilter);
-      const { data } = await q;
-      setRawRecords(data ?? []);
+      // Leave applications tab — also needs server bypass for cross-employee reads
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setLoading(false); return; }
+
+      const res = await fetch(
+        `/api/admin/attendance-data?from=${fromDate}&to=${toDate}`,
+        { headers: { Authorization: `Bearer ${session.access_token}` } }
+      );
+      const json = await res.json();
+      const empMap = Object.fromEntries((json.employees ?? []).map((e: any) => [e.id, e]));
+      let lvAll = [...(json.leaveApproved ?? []), ...(json.leavePending ?? [])]
+        .filter((l: any) => ids.includes(l.user_id))
+        .map((l: any) => ({ ...l, profiles: empMap[l.user_id] ? { full_name: empMap[l.user_id].full_name } : null }));
+      if (statusFilter !== "all") lvAll = lvAll.filter(l => l.status === statusFilter);
+      lvAll.sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime());
+      setRawRecords(lvAll);
 
     } else if (tab === "balances") {
       const { data } = await supabase.from("leave_balances")

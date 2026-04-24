@@ -78,36 +78,33 @@ export default function AdminAttendance() {
   const load = async () => {
     setLoading(true);
 
-    const [attRes, lvApproved, lvPending] = await Promise.all([
-      supabase.from("attendance_records")
-        .select("id, user_id, date, check_in, check_out, photo_url, checkout_photo_url, profiles(full_name, id)")
-        .eq("date", selectedDate),
-      supabase.from("leave_requests")
-        .select("user_id, type, status, profiles(full_name)")
-        .eq("status", "approved")
-        .lte("start_date", selectedDate)
-        .gte("end_date", selectedDate),
-      supabase.from("leave_requests")
-        .select("user_id, type, status, profiles(full_name)")
-        .eq("status", "pending")
-        .lte("start_date", selectedDate)
-        .gte("end_date", selectedDate),
-    ]);
+    // Use server-side API to bypass RLS — fetches for all company employees
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setLoading(false); return; }
+
+    const res = await fetch(
+      `/api/admin/attendance-data?date=${selectedDate}`,
+      { headers: { Authorization: `Bearer ${session.access_token}` } }
+    );
+    const json = await res.json();
+
+    // Update employees with shift data from API (keeps in sync)
+    if (json.employees?.length) setEmployees(json.employees);
 
     const attMap: Record<string, any> = {};
-    (attRes.data ?? []).forEach(r => { attMap[r.user_id] = r; });
+    (json.attendance ?? []).forEach((r: any) => { attMap[r.user_id] = r; });
 
     const approvedLeaveMap: Record<string, string> = {};
-    (lvApproved.data ?? []).forEach((l: any) => { approvedLeaveMap[l.user_id] = l.type; });
+    (json.leaveApproved ?? []).forEach((l: any) => { approvedLeaveMap[l.user_id] = l.type; });
 
     const pendingLeaveMap: Record<string, string> = {};
-    (lvPending.data ?? []).forEach((l: any) => { pendingLeaveMap[l.user_id] = l.type; });
+    (json.leavePending ?? []).forEach((l: any) => { pendingLeaveMap[l.user_id] = l.type; });
 
     const empList = selectedUser
-      ? employees.filter(e => e.id === selectedUser)
-      : employees;
+      ? (json.employees ?? employees).filter((e: any) => e.id === selectedUser)
+      : (json.employees ?? employees);
 
-    const built: DayRow[] = empList.map(emp => {
+    const built: DayRow[] = empList.map((emp: any) => {
       const att = attMap[emp.id];
 
       let status: EmpStatus = "absent";
@@ -138,6 +135,7 @@ export default function AdminAttendance() {
     built.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
     setRows(built);
     setLoading(false);
+
   };
 
   const openLightbox = (url: string, label: string, name: string) => setLightbox({ url, label, name });
