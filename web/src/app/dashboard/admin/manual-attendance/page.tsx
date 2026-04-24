@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import styles from "../../dashboard.module.css";
 import { useAuth } from "@/context/AuthContext";
-import { getLeaveDaysCount, getCurrentFinancialYear } from "@/lib/dateUtils";
 
 export default function ManualAttendance() {
   const { profile } = useAuth();
@@ -13,7 +12,7 @@ export default function ManualAttendance() {
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [checkIn, setCheckIn] = useState("09:30");
   const [checkOut, setCheckOut] = useState("18:00");
-  
+
   const [leaveType, setLeaveType] = useState("");
   const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
   const [mode, setMode] = useState<"present" | "leave">("present");
@@ -23,11 +22,24 @@ export default function ManualAttendance() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!profile?.company_id) return;
     const load = async () => {
       const [empRes, ltRes] = await Promise.all([
-        supabase.from("profiles").select("id, full_name, role").eq("is_active", true).not("role", "eq", "superadmin").order("full_name"),
-
-        supabase.from("leave_types").select("name").order("name")
+        // Only fetch employees from THIS company (tenant isolation)
+        supabase
+          .from("profiles")
+          .select("id, full_name, role")
+          .eq("company_id", profile.company_id)
+          .eq("is_active", true)
+          .is("system_role", null)
+          .not("role", "eq", "superadmin")
+          .order("full_name"),
+        // Only fetch leave types for THIS company
+        supabase
+          .from("leave_types")
+          .select("name")
+          .eq("company_id", profile.company_id)
+          .order("name"),
       ]);
       setEmployees(empRes.data ?? []);
       setLeaveTypes(ltRes.data ?? []);
@@ -35,78 +47,50 @@ export default function ManualAttendance() {
       if ((ltRes.data ?? []).length > 0) setLeaveType(ltRes.data![0].name);
     };
     load();
-  }, []);
+  }, [profile?.company_id]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true); setError(""); setSuccess("");
-    
-    if (mode === "present") {
-       const inISO = new Date(`${date}T${checkIn}:00`).toISOString();
-       let outISO = null;
-       if (checkOut) {
-          outISO = new Date(`${date}T${checkOut}:00`).toISOString();
-       }
 
-       // Check if exists
-       const { data: existing } = await supabase.from("attendance_records").select("id").eq("user_id", userId).eq("date", date).maybeSingle();
-
-       let attErr;
-       if (existing) {
-          const res = await supabase.from("attendance_records").update({
-             check_in: inISO,
-             check_out: outISO,
-             photo_url: "manual_override_admin"
-          }).eq("id", existing.id);
-          attErr = res.error;
-       } else {
-          const res = await supabase.from("attendance_records").insert({
-             user_id: userId,
-             date: date,
-             check_in: inISO,
-             check_out: outISO,
-             photo_url: "manual_override_admin"
-          });
-          attErr = res.error;
-       }
-
-       if (attErr) setError(attErr.message);
-       else setSuccess("✅ Attendance successfully overridden & recorded for " + date);
-       
-    } else {
-       // Manual Leave injection
-       if (!profile) return;
-       const { error: lvErr } = await supabase.from("leave_requests").insert({
-           user_id: userId,
-           type: leaveType,
-           start_date: date,
-           end_date: date,
-           reason: "Admin Manual Override",
-           status: "approved"
-       });
-
-       if (!lvErr && leaveType !== "Leave Without Pay (LWP)") {
-           const { data: hRes } = await supabase.from("company_holidays").select("date");
-           const hols = new Set<string>();
-           (hRes ?? []).forEach(h => hols.add(h.date));
-
-           const { data: typeRes } = await supabase.from("leave_types").select("*").eq("name", leaveType).single();
-           if (typeRes) {
-               const days = getLeaveDaysCount(date, date, typeRes.count_holidays, hols);
-               const fy = getCurrentFinancialYear();
-               const { data: bal } = await supabase.from("leave_balances").select("*").eq("user_id", userId).eq("leave_type_id", typeRes.id).eq("financial_year", fy).single();
-               if (bal) {
-                   await supabase.from("leave_balances").update({ used: Number(bal.used) + days }).eq("id", bal.id);
-               }
-           }
-       }
-
-       if (lvErr) setError(lvErr.message);
-       else setSuccess("✅ Leave successfully injected & ledger updated for " + date);
+    // Get current session JWT to send with the API request
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setError("Session expired — please log in again.");
+      setSaving(false);
+      return;
     }
-    
+
+    try {
+      const res = await fetch("/api/admin/manual-override", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Send the JWT so the server can verify who is calling
+          "Authorization": `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          mode,
+          user_id:    userId,
+          date,
+          check_in:   mode === "present" ? checkIn  : undefined,
+          check_out:  mode === "present" ? checkOut : undefined,
+          leave_type: mode === "leave"   ? leaveType : undefined,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setError(json.error ?? "Something went wrong.");
+      } else {
+        setSuccess(json.message);
+        setTimeout(() => setSuccess(""), 6000);
+      }
+    } catch (err: any) {
+      setError(err.message ?? "Network error.");
+    }
+
     setSaving(false);
-    setTimeout(() => setSuccess(""), 5000);
   };
 
   return (
@@ -117,54 +101,66 @@ export default function ManualAttendance() {
       </div>
 
       <div className="glass-panel" style={{ padding: 40, maxWidth: 600 }}>
-         {success && <div style={{ background: "rgba(16,185,129,0.1)", color: "var(--success)", padding: 16, borderRadius: 12, marginBottom: 20 }}>{success}</div>}
-         {error && <div style={{ background: "rgba(239,68,68,0.1)", color: "var(--danger)", padding: 16, borderRadius: 12, marginBottom: 20 }}>{error}</div>}
+        {success && (
+          <div style={{ background: "rgba(16,185,129,0.1)", color: "var(--success)", padding: 16, borderRadius: 12, marginBottom: 20 }}>
+            {success}
+          </div>
+        )}
+        {error && (
+          <div style={{ background: "rgba(239,68,68,0.1)", color: "var(--danger)", padding: 16, borderRadius: 12, marginBottom: 20 }}>
+            {error}
+          </div>
+        )}
 
-         <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
-           <button onClick={() => setMode("present")} className={mode === "present" ? styles.primaryBtn : styles.secondaryBtn} style={{width:'auto'}}>Mark Present</button>
-           <button onClick={() => setMode("leave")} className={mode === "leave" ? styles.primaryBtn : styles.secondaryBtn} style={{width:'auto'}}>Mark on Leave</button>
-         </div>
+        {/* Security notice */}
+        <div style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+          🔒 This action is logged. All overrides are recorded with your admin ID and timestamp.
+        </div>
 
-         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-           <div className={styles.formGroup} style={{marginBottom: 0}}>
-             <label>Select Employee</label>
-             <select className="premium-input" value={userId} onChange={e => setUserId(e.target.value)}>
-                {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
-             </select>
-           </div>
-           
-           <div className={styles.formGroup} style={{marginBottom: 0}}>
-             <label>Target Date</label>
-             <input type="date" className="premium-input" value={date} onChange={e => setDate(e.target.value)} required />
-           </div>
+        <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+          <button onClick={() => setMode("present")} className={mode === "present" ? styles.primaryBtn : styles.secondaryBtn} style={{ width: "auto" }}>Mark Present</button>
+          <button onClick={() => setMode("leave")} className={mode === "leave" ? styles.primaryBtn : styles.secondaryBtn} style={{ width: "auto" }}>Mark on Leave</button>
+        </div>
 
-           {mode === "present" && (
-              <div style={{ display: "flex", gap: 16 }}>
-                <div className={styles.formGroup} style={{ flex: 1, marginBottom: 0 }}>
-                  <label>Check-In Time</label>
-                  <input type="time" className="premium-input" value={checkIn} onChange={e => setCheckIn(e.target.value)} required />
-                </div>
-                <div className={styles.formGroup} style={{ flex: 1, marginBottom: 0 }}>
-                  <label>Check-Out Time</label>
-                  <input type="time" className="premium-input" value={checkOut} onChange={e => setCheckOut(e.target.value)} />
-                </div>
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+            <label>Select Employee</label>
+            <select className="premium-input" value={userId} onChange={e => setUserId(e.target.value)}>
+              {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+            </select>
+          </div>
+
+          <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+            <label>Target Date</label>
+            <input type="date" className="premium-input" value={date} onChange={e => setDate(e.target.value)} required />
+          </div>
+
+          {mode === "present" && (
+            <div style={{ display: "flex", gap: 16 }}>
+              <div className={styles.formGroup} style={{ flex: 1, marginBottom: 0 }}>
+                <label>Check-In Time</label>
+                <input type="time" className="premium-input" value={checkIn} onChange={e => setCheckIn(e.target.value)} required />
               </div>
-           )}
-
-           {mode === "leave" && (
-              <div className={styles.formGroup} style={{marginBottom: 0}}>
-                 <label>Force Leave Type</label>
-                 <select className="premium-input" value={leaveType} onChange={e => setLeaveType(e.target.value)}>
-                    {leaveTypes.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
-                 </select>
+              <div className={styles.formGroup} style={{ flex: 1, marginBottom: 0 }}>
+                <label>Check-Out Time <span style={{ fontWeight: 400, fontSize: "0.78rem", color: "var(--text-secondary)" }}>(optional)</span></label>
+                <input type="time" className="premium-input" value={checkOut} onChange={e => setCheckOut(e.target.value)} />
               </div>
-           )}
+            </div>
+          )}
 
-           <button type="submit" className={styles.primaryBtn} disabled={saving} style={{ marginTop: 8 }}>
-              {saving ? "Processing..." : `Force Log ${mode === "present" ? "Attendance" : "Leave"}`}
-           </button>
-         </form>
+          {mode === "leave" && (
+            <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+              <label>Force Leave Type</label>
+              <select className="premium-input" value={leaveType} onChange={e => setLeaveType(e.target.value)}>
+                {leaveTypes.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
+              </select>
+            </div>
+          )}
 
+          <button type="submit" className={styles.primaryBtn} disabled={saving || !userId} style={{ marginTop: 8 }}>
+            {saving ? "Processing..." : `Force Log ${mode === "present" ? "Attendance" : "Leave"}`}
+          </button>
+        </form>
       </div>
     </div>
   );
