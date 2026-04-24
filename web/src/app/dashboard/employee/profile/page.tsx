@@ -64,15 +64,22 @@ export default function EmployeeProfile() {
       return;
     }
 
-    // 2. Get the public URL
-    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(storagePath);
-    const publicUrl = urlData.publicUrl;
+    // 2. For private buckets (documents), store the storage PATH so we can
+    //    generate signed URLs on demand. For public buckets (avatars), store full URL.
+    let valueToStore: string;
+    if (bucket === "documents") {
+      // Store as  bucket:path  so we can always create a signed URL later
+      valueToStore = `documents:${storagePath}`;
+    } else {
+      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+      valueToStore = urlData.publicUrl;
+    }
 
-    // 3. Save URL to profiles table via secure admin API (bypasses RLS)
+    // 3. Save to profiles table via secure admin API (bypasses RLS)
     const res = await fetch("/api/update-doc-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: profile.id, column, value: publicUrl })
+      body: JSON.stringify({ user_id: profile.id, column, value: valueToStore })
     });
     const json = await res.json();
 
@@ -82,12 +89,48 @@ export default function EmployeeProfile() {
       return;
     }
 
-    // 4. Immediately update local state so UI reflects change without full reload
-    setData((prev: any) => ({ ...prev, [column]: publicUrl }));
-    // 5. If avatar, refresh the global AuthContext profile so sidebar updates
+    // 4. Immediately update local state
+    setData((prev: any) => ({ ...prev, [column]: valueToStore }));
+    // 5. If avatar, refresh global AuthContext so sidebar updates
     if (column === "avatar_url") await refreshProfile();
-    setSuccess("✅ Document uploaded and saved successfully!");
+    setSuccess("✅ Uploaded successfully!");
     setTimeout(() => setSuccess(""), 4000);
+    setSaving(false);
+  };
+
+  // Opens a private document via a 1-hour signed URL
+  const viewDocument = async (stored: string) => {
+    try {
+      let bucket = "documents";
+      let path = stored;
+      // Stored as "documents:path" for new uploads
+      if (stored.startsWith("documents:")) {
+        path = stored.replace("documents:", "");
+      } else if (stored.includes("/storage/v1/object/public/documents/")) {
+        // Legacy full URL — extract path
+        path = stored.split("/storage/v1/object/public/documents/")[1];
+      } else if (stored.startsWith("http")) {
+        // Fallback: just open directly
+        window.open(stored, "_blank");
+        return;
+      }
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
+      if (error || !data?.signedUrl) { alert("Could not open document. Please try again."); return; }
+      window.open(data.signedUrl, "_blank");
+    } catch { alert("Could not open document."); }
+  };
+
+  // Clear avatar
+  const removeAvatar = async () => {
+    if (!profile || !window.confirm("Remove profile picture?")) return;
+    setSaving(true);
+    await fetch("/api/update-doc-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: profile.id, column: "avatar_url", value: "" })
+    });
+    setData((prev: any) => ({ ...prev, avatar_url: null }));
+    await refreshProfile();
     setSaving(false);
   };
 
@@ -144,7 +187,17 @@ export default function EmployeeProfile() {
             <div style={{ color: "var(--text-secondary)", marginBottom: 16 }}>{data.designation || "Employee"}</div>
             
             <input type="file" ref={avatarRef} accept="image/*" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0], "avatars", "avatar", "avatar_url"); }} />
-            <button onClick={() => avatarRef.current?.click()} className={styles.secondaryBtn} style={{ padding: "8px 16px", fontSize: "0.85rem" }}>Upload Picture</button>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+              <button onClick={() => avatarRef.current?.click()} className={styles.secondaryBtn} style={{ padding: "8px 16px", fontSize: "0.85rem" }}>
+                {data.avatar_url ? "Change Photo" : "Upload Picture"}
+              </button>
+              {data.avatar_url && (
+                <button onClick={removeAvatar} disabled={saving}
+                  style={{ padding: "8px 16px", fontSize: "0.85rem", borderRadius: 8, border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.08)", color: "#ef4444", cursor: "pointer", fontFamily: "Outfit, sans-serif", fontWeight: 600 }}>
+                  Remove
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="glass-panel" style={{ padding: 24 }}>
@@ -342,10 +395,10 @@ export default function EmployeeProfile() {
                   {/* Actions */}
                   <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                     {url && (
-                      <a href={url} target="_blank" rel="noopener noreferrer"
-                        style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(99,102,241,0.4)", background: "rgba(99,102,241,0.1)", color: "var(--accent-primary)", fontWeight: 600, textDecoration: "none", fontSize: "0.82rem" }}>
+                      <button onClick={() => viewDocument(url)}
+                        style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(99,102,241,0.4)", background: "rgba(99,102,241,0.1)", color: "var(--accent-primary)", fontWeight: 600, fontSize: "0.82rem", cursor: "pointer", fontFamily: "Outfit, sans-serif" }}>
                         View
-                      </a>
+                      </button>
                     )}
                     <button onClick={() => ref.current?.click()} disabled={saving}
                       style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${url ? "rgba(100,116,139,0.4)" : "rgba(99,102,241,0.5)"}`, background: url ? "rgba(100,116,139,0.1)" : "rgba(99,102,241,0.15)", color: url ? "var(--text-secondary)" : "var(--accent-primary)", cursor: saving ? "not-allowed" : "pointer", fontWeight: 600, fontSize: "0.82rem", fontFamily: "Outfit, sans-serif" }}>

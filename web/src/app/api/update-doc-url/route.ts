@@ -10,8 +10,12 @@ export async function POST(req: Request) {
   try {
     const { user_id, column, value } = await req.json()
 
-    if (!user_id || !column || !value) {
+    if (!user_id || !column) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+    }
+    // value can be empty string (to clear a field) — only reject if truly undefined
+    if (value === undefined || value === null && column !== 'avatar_url') {
+      return NextResponse.json({ error: 'Missing value' }, { status: 400 })
     }
 
     // Only allow safe document URL columns — prevent injection
@@ -22,7 +26,7 @@ export async function POST(req: Request) {
 
     const { error } = await admin
       .from('profiles')
-      .update({ [column]: value })
+      .update({ [column]: value === "" ? null : value })
       .eq('id', user_id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
