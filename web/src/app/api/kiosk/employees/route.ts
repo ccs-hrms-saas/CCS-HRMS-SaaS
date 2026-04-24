@@ -43,7 +43,8 @@ export async function GET(req: Request) {
       .from('profiles')
       .select('id, full_name, designation, avatar_url')
       .eq('company_id', device.company_id)
-      .eq('status', 'active')
+      .eq('is_active', true)          // ← correct column name (boolean)
+      .is('system_role', null)         // exclude developer accounts
       .in('role', ['employee', 'admin', 'superadmin'])
       .order('full_name');
 
