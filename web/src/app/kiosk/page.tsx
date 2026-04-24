@@ -19,6 +19,7 @@ interface Employee {
 }
 
 type Screen = "setup" | "loading" | "main" | "pin" | "camera" | "processing" | "success";
+type CameraMode = "webrtc" | "native" | null;
 
 interface SuccessInfo {
   name:   string;
@@ -44,21 +45,24 @@ function fmtDate(d: Date) {
 
 // ── Main Component ──────────────────────────────────────────────────────────
 export default function KioskPage() {
-  const [screen,    setScreen]    = useState<Screen>("loading");
-  const [config,    setConfig]    = useState<KioskConfig | null>(null);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [search,    setSearch]    = useState("");
-  const [selected,  setSelected]  = useState<Employee | null>(null);
-  const [success,   setSuccess]   = useState<SuccessInfo | null>(null);
-  const [now,       setNow]       = useState(new Date());
+  const [screen,     setScreen]     = useState<Screen>("loading");
+  const [cameraMode, setCameraMode] = useState<CameraMode>(null);
+  const [config,     setConfig]     = useState<KioskConfig | null>(null);
+  const [employees,  setEmployees]  = useState<Employee[]>([]);
+  const [search,     setSearch]     = useState("");
+  const [selected,   setSelected]   = useState<Employee | null>(null);
+  const [success,    setSuccess]    = useState<SuccessInfo | null>(null);
+  const [now,        setNow]        = useState(new Date());
 
   // PIN entry
-  const [pin, setPin]         = useState("");
-  const [pinError, setPinError] = useState("");
+  const [pin,       setPin]       = useState("");
+  const [pinError,  setPinError]  = useState("");
+  const [pendingPin, setPendingPin] = useState(""); // pin saved when moving to camera
 
   // Camera
   const videoRef    = useRef<HTMLVideoElement>(null);
   const canvasRef   = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);   // native camera fallback
   const streamRef   = useRef<MediaStream | null>(null);
   const [countdown, setCountdown] = useState(3);
 
@@ -155,6 +159,8 @@ export default function KioskPage() {
     setSelected(emp);
     setPin("");
     setPinError("");
+    setPendingPin("");
+    setCameraMode(null);
     setScreen("pin");
   }
 
@@ -165,7 +171,7 @@ export default function KioskPage() {
     setPin(next);
     setPinError("");
     if (next.length === 4) {
-      // Small delay so user sees the 4th dot fill in
+      setPendingPin(next);
       setTimeout(() => openCamera(next), 150);
     }
   }
@@ -175,45 +181,57 @@ export default function KioskPage() {
     setPinError("");
   }
 
-  // ── Camera ───────────────────────────────────────────────────────────────
+  // ── Camera — try WebRTC first, fall back to native Android camera ────────
   async function openCamera(enteredPin: string) {
     setScreen("camera");
     setCountdown(3);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
-      streamRef.current = stream;
-      const video = videoRef.current;
-      if (!video) throw new Error("no video element");
+    setCameraMode(null);
 
-      video.srcObject = stream;
+    // Try WebRTC (browser camera API)
+    const hasWebRTC = typeof navigator !== "undefined" &&
+      !!navigator.mediaDevices?.getUserMedia;
 
-      // Wait until video is actually ready to render frames
-      await new Promise<void>((resolve, reject) => {
-        video.oncanplay  = () => resolve();
-        video.onerror    = () => reject(new Error("video error"));
-        video.play().catch(reject);
-        // Safety timeout — if canplay doesn't fire in 5s, proceed anyway
-        setTimeout(resolve, 5000);
-      });
+    if (hasWebRTC) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        streamRef.current = stream;
+        const video = videoRef.current;
+        if (!video) throw new Error("no video element");
 
-      // Now start the 3-second countdown
-      let count = 3;
-      setCountdown(count);
-      const timer = setInterval(() => {
-        count--;
+        video.srcObject = stream;
+        setCameraMode("webrtc");
+
+        // Wait until video is actually rendering frames
+        await new Promise<void>((resolve) => {
+          video.oncanplay = () => resolve();
+          video.play().catch(() => {});
+          setTimeout(resolve, 5000); // safety timeout
+        });
+
+        // 3-second countdown then auto-capture
+        let count = 3;
         setCountdown(count);
-        if (count <= 0) {
-          clearInterval(timer);
-          captureAndPunch(enteredPin);
-        }
-      }, 1000);
-    } catch {
-      // Camera not available / permission denied — punch without photo
-      setScreen("processing");
-      await submitPunch(enteredPin, null);
+        const timer = setInterval(() => {
+          count--;
+          setCountdown(count);
+          if (count <= 0) {
+            clearInterval(timer);
+            captureAndPunch(enteredPin);
+          }
+        }, 1000);
+        return; // WebRTC succeeded — exit here
+      } catch {
+        // WebRTC failed (permissions denied, not supported) — fall through to native
+        stopCamera();
+      }
     }
+
+    // ── Native camera fallback (works in Capacitor WebView via captureInput) ──
+    setCameraMode("native");
+    // The camera screen JSX will show a "Take Selfie" button
+    // which triggers fileInputRef.current.click()
   }
 
   function stopCamera() {
@@ -221,22 +239,45 @@ export default function KioskPage() {
     streamRef.current = null;
   }
 
+  // Called when WebRTC countdown finishes
   async function captureAndPunch(enteredPin: string) {
     let photo64: string | null = null;
     try {
       const video  = videoRef.current;
       const canvas = canvasRef.current;
-      // Only capture if video has real frame data
       if (video && canvas && video.readyState >= 2 && video.videoWidth > 0) {
         canvas.width  = video.videoWidth;
         canvas.height = video.videoHeight;
         canvas.getContext("2d")?.drawImage(video, 0, 0);
         photo64 = canvas.toDataURL("image/jpeg", 0.82).split(",")[1];
       }
-    } catch { /* ignore capture errors */ }
+    } catch { /* ignore */ }
     stopCamera();
     setScreen("processing");
     await submitPunch(enteredPin, photo64);
+  }
+
+  // Called when native file input returns a photo
+  async function handleNativeCapture(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return; // user cancelled — allow retry
+    setScreen("processing");
+    try {
+      const reader = new FileReader();
+      const photo64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = ev => {
+          const result = ev.target?.result as string;
+          resolve(result.split(",")[1]); // strip data URI prefix
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      await submitPunch(pendingPin, photo64);
+    } catch {
+      await submitPunch(pendingPin, null);
+    }
+    // Reset file input so same photo can be retaken
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   // ── Submit to /api/mark-attendance ────────────────────────────────────────
@@ -379,8 +420,48 @@ export default function KioskPage() {
     );
   }
 
-  // ── RENDER: Camera countdown ──────────────────────────────────────────────
+  // ── RENDER: Camera countdown / native camera ──────────────────────────────
   if (screen === "camera") {
+    // Native camera fallback (Capacitor WebView - captureInput:true)
+    if (cameraMode === "native") {
+      return (
+        <div className={s.kiosk}>
+          {/* Hidden file input — triggers native Android camera */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="user"
+            style={{ display: "none" }}
+            onChange={handleNativeCapture}
+          />
+          <div className={s.nativeCameraScreen}>
+            <div className={s.pinAvatar} style={{ width: 80, height: 80, fontSize: "2rem" }}>
+              {config?.show_employee_photo && selected?.avatar_url
+                ? <img src={selected.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }} />
+                : initials(selected?.full_name ?? "")}
+            </div>
+            <div className={s.pinName}>{selected?.full_name}</div>
+            <div className={s.nativeCameraIcon}>📸</div>
+            <div className={s.nativeCameraLabel}>Take a selfie to complete</div>
+            <button
+              className={s.nativeCameraBtn}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Open Camera
+            </button>
+            <button
+              className={s.nativeCameraSkip}
+              onClick={() => { setScreen("processing"); submitPunch(pendingPin, null); }}
+            >
+              Skip Photo &amp; Punch
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // WebRTC auto-capture (or loading while determining mode)
     return (
       <div className={s.kiosk}>
         <div className={s.cameraScreen}>
@@ -388,8 +469,10 @@ export default function KioskPage() {
           <canvas ref={canvasRef} style={{ display: "none" }} />
           <div className={s.cameraOverlay}>
             <div className={s.cameraName}>{selected?.full_name}</div>
-            <div className={s.cameraCountdown}>{countdown}</div>
-            <div className={s.cameraHint}>Hold still…</div>
+            {cameraMode === "webrtc"
+              ? <div className={s.cameraCountdown}>{countdown}</div>
+              : <div className={s.spinner} style={{ width: 40, height: 40, margin: "8px 0" }} />}
+            <div className={s.cameraHint}>{cameraMode === "webrtc" ? "Hold still…" : "Starting camera…"}</div>
           </div>
         </div>
       </div>
