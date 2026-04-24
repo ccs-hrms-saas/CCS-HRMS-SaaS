@@ -69,6 +69,10 @@ export const LEAVE_TIER_DEFAULTS: Record<TierKey, TierFeatureMap> = {
     week_off_customization:        false,
     lwp_payroll_link:              false,
     deficit_adjustment_enabled:    false,
+    // Tier 1: hours set once in wizard → locked 90 days. No free editing.
+    org_hours_configurable:        false,
+    // Tier 1: all employees share the same hours_per_day. No per-employee override.
+    per_employee_hours:            false,
     approval_chain_depth: null,
   },
   standard: {
@@ -81,6 +85,10 @@ export const LEAVE_TIER_DEFAULTS: Record<TierKey, TierFeatureMap> = {
     week_off_customization:        false,
     lwp_payroll_link:              false,
     deficit_adjustment_enabled:    false,
+    // Tier 2: org can change daily working hours any time via Leave Settings.
+    org_hours_configurable:        true,
+    // Tier 2: still no per-employee override.
+    per_employee_hours:            false,
     approval_chain_depth: null,
   },
   advanced: {
@@ -93,6 +101,9 @@ export const LEAVE_TIER_DEFAULTS: Record<TierKey, TierFeatureMap> = {
     week_off_customization:        true,
     lwp_payroll_link:              true,
     deficit_adjustment_enabled:    true,
+    // Tier 3: freely changeable org hours + per-employee individual override.
+    org_hours_configurable:        true,
+    per_employee_hours:            true,
     approval_chain_depth: null,
   },
 };
@@ -248,6 +259,8 @@ export const FEATURE_LABELS: Record<string, string> = {
   week_off_customization:           'Week-Off Customisation',
   lwp_payroll_link:                 'LWP → Payroll Linkage',
   deficit_adjustment_enabled:       'Deficit Adjustment Pool',
+  org_hours_configurable:           'Org-Wide Working Hours (Anytime Change)',
+  per_employee_hours:               'Per-Employee Working Hours Override (Shift Mode)',
   // Reimbursements
   admin_can_approve:           'Admin Can Approve',
   allow_optional_receipt:      'Optional Receipt per Category',

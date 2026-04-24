@@ -42,6 +42,14 @@ export default function SetupWizard() {
   const [weekOffType,    setWeekOffType]    = useState<"fixed"|"rotating">("fixed");
   const [fixedOffDays,   setFixedOffDays]   = useState<number[]>([0]); // 0=Sun
   const [overtimeTrack,  setOvertimeTrack]  = useState(false);
+  // Derived daily working hours — auto-computed when times change, manually overrideable
+  const derivedHours = (t1: string, t2: string) => {
+    const [h1, m1] = t1.split(":").map(Number);
+    const [h2, m2] = t2.split(":").map(Number);
+    const diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+    return diff > 0 ? Math.round(diff / 60 * 10) / 10 : 8.5;
+  };
+  const [hoursPerDay, setHoursPerDay] = useState<number>(9.0);
 
   // ── Step 3 state — Departments ────────────────────────────────────────────
   const [departments, setDepartments] = useState([
@@ -96,14 +104,16 @@ export default function SetupWizard() {
   async function saveSchedule() {
     if (!company) return;
     await supabase.from("app_settings").upsert({
-      company_id:       company.id,
-      work_days:        workDays,
-      work_start:       startTime,
-      work_end:         endTime,
-      grace_minutes:    parseInt(graceMinutes) || 15,
-      week_off_type:    weekOffType,
-      week_off_days:    weekOffType === "fixed" ? fixedOffDays : [],
-      overtime_tracking: overtimeTrack,
+      company_id:            company.id,
+      work_days:             workDays,
+      work_start:            startTime,
+      work_end:              endTime,
+      grace_minutes:         parseInt(graceMinutes) || 15,
+      week_off_type:         weekOffType,
+      week_off_days:         weekOffType === "fixed" ? fixedOffDays : [],
+      overtime_tracking:     overtimeTrack,
+      hours_per_day:         hoursPerDay,
+      hours_per_day_set_at:  new Date().toISOString(),
     }, { onConflict: "company_id" });
   }
 
@@ -130,7 +140,7 @@ export default function SetupWizard() {
       max_days_per_year:      cl.days,
       frequency:              "yearly",
       is_paid:                true,
-      deduction_hours:        8.5,
+      deduction_hours:        hoursPerDay,
       allow_carry_forward:    cl.carry,
       carry_forward_percent:  cl.carry_pct,
       max_carry_forward:      cl.carry_max,
@@ -150,7 +160,7 @@ export default function SetupWizard() {
       max_days_per_year:      el.days,
       frequency:              "yearly",
       is_paid:                true,
-      deduction_hours:        8.5,
+      deduction_hours:        hoursPerDay,
       allow_carry_forward:    el.carry,
       carry_forward_percent:  el.carry_pct,
       max_carry_forward:      el.carry_max,
@@ -171,7 +181,7 @@ export default function SetupWizard() {
       max_days_per_year:             sl.days,
       frequency:                     "yearly",
       is_paid:                       true,
-      deduction_hours:               8.5,
+      deduction_hours:               hoursPerDay,
       requires_attachment:           sl.proof_after > 0,
       requires_attachment_after_days: sl.proof_after,
       eligible_for_deficit_adj:      false,
@@ -197,7 +207,7 @@ export default function SetupWizard() {
       max_days_per_year:    0,
       frequency:            "yearly",
       is_paid:              true,
-      deduction_hours:      8.5,
+      deduction_hours:      hoursPerDay,
       expires_in_days:      co.expiry,
       co_employee_can_split: co.employee_split,
       half_day_allowed:     co.employee_split,
@@ -214,7 +224,7 @@ export default function SetupWizard() {
       max_days_per_year:         365,
       frequency:                 "yearly",
       is_paid:                   false,
-      deduction_hours:           8.5,
+      deduction_hours:           hoursPerDay,
       counts_as_lwp_for_payroll: true,
       eligible_for_deficit_adj:  false,
       is_ml_type:                false,
@@ -373,15 +383,37 @@ export default function SetupWizard() {
             <div className={s.formRow} style={{ marginTop: 16 }}>
               <div className={s.fieldGroup}>
                 <label className={s.label}>Office Start Time</label>
-                <input type="time" className={s.input} value={startTime} onChange={e => setStartTime(e.target.value)} />
+                <input type="time" className={s.input} value={startTime} onChange={e => {
+                  setStartTime(e.target.value);
+                  setHoursPerDay(derivedHours(e.target.value, endTime));
+                }} />
               </div>
               <div className={s.fieldGroup}>
                 <label className={s.label}>Office End Time</label>
-                <input type="time" className={s.input} value={endTime} onChange={e => setEndTime(e.target.value)} />
+                <input type="time" className={s.input} value={endTime} onChange={e => {
+                  setEndTime(e.target.value);
+                  setHoursPerDay(derivedHours(startTime, e.target.value));
+                }} />
               </div>
               <div className={s.fieldGroup}>
                 <label className={s.label}>Grace Period (minutes)</label>
                 <input type="number" className={s.input} value={graceMinutes} min={0} max={60} onChange={e => setGraceMinutes(e.target.value)} />
+              </div>
+            </div>
+
+            {/* Daily Working Hours — derived + confirmable */}
+            <div style={{ marginTop: 12, padding: "12px 16px", borderRadius: 12, background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.2)" }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#818cf8", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.7 }}>Daily Working Hours Target</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div className={s.fieldGroup} style={{ marginBottom: 0, flex: "0 0 140px" }}>
+                  <input type="number" className={s.input} value={hoursPerDay} min={1} max={16} step={0.5}
+                    onChange={e => setHoursPerDay(Number(e.target.value) || 8.5)} />
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "#64748b", lineHeight: 1.5 }}>
+                  Auto-computed from <strong style={{ color: "#94a3b8" }}>{startTime}–{endTime}</strong> as <strong style={{ color: "#818cf8" }}>{derivedHours(startTime, endTime)}h</strong>.<br />
+                  Adjust if employees have a lunch break not counted as work time.<br />
+                  <span style={{ color: "#f59e0b" }}>⚠ This value locks for 90 days on Basic plans after setup.</span>
+                </div>
               </div>
             </div>
 

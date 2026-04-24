@@ -270,6 +270,23 @@ export default function LeaveConfigPanel({ props, onChange, onSave, saving }: Pr
         </div>
       </div>
 
+      {/* ── Work Schedule Capabilities ─────────────────────────────── */}
+      <div className={s.section}>
+        <div className={s.sectionHead}>
+          <span className={s.sectionTitle}>🕐 Work Schedule Capabilities</span>
+        </div>
+        <div className={s.fieldGrid1}>
+          <Toggle label="Org-Wide Working Hours — Anytime Change" locked={!isStd}
+            hint="Tier 1 (Basic): org sets hours once in onboarding wizard — locked for 90 days. Tier 2+: freely editable anytime from Leave Settings."
+            field="org_hours_configurable" value={!!props.org_hours_configurable} onChange={set} />
+
+          <Toggle label="Per-Employee Working Hours Override (Shift Mode)" locked={!isAdv}
+            hint="Advanced only. Shift-based orgs can set different daily hours per employee (e.g. 6h for part-time, 12h for night shift). Overrides the org default."
+            field="per_employee_hours" value={!!props.per_employee_hours} onChange={set} />
+        </div>
+      </div>
+
+
       {/* ── Custom Extensions ─────────────────────────────────────────── */}
       <div className={s.customSection}>
         <div className={s.customTitle}>⚡ Custom Properties</div>

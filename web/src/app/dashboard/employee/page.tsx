@@ -64,7 +64,7 @@ export default function EmployeeDashboard() {
       const currTo   = todayStr;
 
       // ── Fetch everything ────────────────────────────────────────────────────
-      const [attnAll, leavePending, leaveApprovedRes, announcementsData, holsRes, adjsRes, waiversRes, leaveTypesRes] = await Promise.all([
+      const [attnAll, leavePending, leaveApprovedRes, announcementsData, holsRes, adjsRes, waiversRes, leaveTypesRes, settingsRes] = await Promise.all([
         // Attendance: fetch both current and eval month
         supabase.from("attendance_records").select("*").eq("user_id", profile.id)
           .gte("date", evalFrom).lte("date", currTo),
@@ -83,10 +83,18 @@ export default function EmployeeDashboard() {
         supabase.from("deficit_waivers").select("hours_waived, month")
           .eq("user_id", profile.id),
         supabase.from("leave_types").select("name, deduction_hours, count_holidays"),
+        // Fetch org working hours setting (company-scoped)
+        supabase.from("app_settings").select("hours_per_day").eq("company_id", profile.company_id).single(),
       ]);
 
       const hols = new Set<string>();
       (holsRes.data ?? []).forEach(h => hols.add(h.date));
+
+      // Resolve daily working hours: per-employee override → org setting → 8.5 fallback
+      const { resolveHoursPerDay } = await import("@/lib/dateUtils");
+      const orgHours  = settingsRes.data?.hours_per_day ?? null;
+      const empHours  = (profile as any).hours_per_day ?? null;
+      const HPD       = resolveHoursPerDay(empHours, orgHours); // hours per day
 
       const leaveApproved = leaveApprovedRes.data ?? [];
 
@@ -116,7 +124,7 @@ export default function EmployeeDashboard() {
         }
         d.setDate(d.getDate() + 1);
       }
-      const evalTargetHours = evalTargetDays * 8.5;
+      const evalTargetHours = evalTargetDays * HPD;
 
       // ── Hours clocked in the eval month ─────────────────────────────────────
       const evalRecords = (attnAll.data ?? []).filter(r => r.date >= evalFrom && r.date <= evalTo);
@@ -164,8 +172,8 @@ export default function EmployeeDashboard() {
 
       // ── Determine alert level ────────────────────────────────────────────────
       let alertLevel: AlertLevel = "none";
-      if (isSalaryPeriod && finalDeficit >= 8.5) {
-        alertLevel = "red";   // Previous month deficit ≥ 8.5h during processing window
+      if (isSalaryPeriod && finalDeficit >= HPD) {
+        alertLevel = "red";   // Previous month deficit ≥ 1 full day during processing window
       } else if (!isSalaryPeriod && dayOfMonth >= 20 && finalDeficit > 0) {
         alertLevel = "amber"; // After 20th of current month with any deficit
       }
@@ -226,7 +234,7 @@ export default function EmployeeDashboard() {
       setStats({
         presentDays:    currRecords.filter(r => r.check_in).length,
         totalHours:     Math.round(currClocked * 10) / 10,
-        targetHours:    Math.round(fullMonthTargetDays * 8.5 * 10) / 10,
+        targetHours:    Math.round(fullMonthTargetDays * HPD * 10) / 10,
         approvedLeaves: currLeavesThisMonth,
         pendingLeaves:  leavePending.count ?? 0,
       });

@@ -157,3 +157,23 @@ export function buildWorkSchedule(
     employee_off_day: profile?.weekly_off_day ?? null,
   };
 }
+
+/**
+ * Resolves the effective daily working hours for a given employee.
+ *
+ * Resolution order (first non-null wins):
+ *   1. profileHours  — per-employee override (Tier 3 only, profiles.hours_per_day)
+ *   2. settingsHours — org-wide default (app_settings.hours_per_day)
+ *   3. 8.5           — absolute fallback (legacy behaviour)
+ *
+ * @param profileHours  profiles.hours_per_day — null/undefined = not set
+ * @param settingsHours app_settings.hours_per_day — null/undefined = not set
+ */
+export function resolveHoursPerDay(
+  profileHours?: number | null,
+  settingsHours?: number | null
+): number {
+  if (profileHours !== null && profileHours !== undefined && profileHours > 0) return profileHours;
+  if (settingsHours !== null && settingsHours !== undefined && settingsHours > 0) return settingsHours;
+  return 8.5;
+}

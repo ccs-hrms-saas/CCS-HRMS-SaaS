@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import { useModules } from "@/context/ModulesContext";
 import styles from "../../dashboard.module.css";
 import userStyles from "./users.module.css";
 
@@ -21,11 +22,15 @@ const DAYS_LONG = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","
 const emptyForm = { 
   full_name: "", email: "", password: "", role: "employee", manager_id: "",
   phone_number: "", gender: "Male", designation: "", joining_date: "", remuneration: "",
-  weekly_off_day: "",
+  weekly_off_day: "", hours_per_day: "",
 };
 
 export default function AdminUsers() {
   const { profile }               = useAuth();
+  const { getProps }               = useModules();
+  const leaveProps                 = getProps("leave_settings");
+  // Tier 3 Advanced only: per-employee hours override
+  const canSetPerEmployeeHours     = !!(leaveProps.per_employee_hours);
   const [users, setUsers]       = useState<Profile[]>([]);
   const [loading, setLoading]   = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -72,10 +77,15 @@ export default function AdminUsers() {
 
   useEffect(() => {
     load();
-    // Load app settings to detect week off mode
-    supabase.from("app_settings").select("week_off_type").single()
-      .then(({ data }) => { if (data?.week_off_type) setWeekOffMode(data.week_off_type); });
-  }, []);
+    // Load app settings to detect week off mode — MUST filter by company_id
+    if (profile?.company_id) {
+      supabase.from("app_settings")
+        .select("week_off_type, hours_per_day")
+        .eq("company_id", profile.company_id)
+        .single()
+        .then(({ data }) => { if (data?.week_off_type) setWeekOffMode(data.week_off_type); });
+    }
+  }, [profile?.company_id]);
 
   const isSuperAdmin = profile?.role === "superadmin";
 
@@ -104,6 +114,7 @@ export default function AdminUsers() {
 
     const payload = { ...form, joining_letter_url,
       weekly_off_day: weekOffMode === "rotating" && form.weekly_off_day !== "" ? Number(form.weekly_off_day) : null,
+      hours_per_day: canSetPerEmployeeHours && form.hours_per_day !== "" ? Number(form.hours_per_day) : null,
       company_id: profile?.company_id,
     };
 
@@ -129,6 +140,7 @@ export default function AdminUsers() {
       designation: u.designation || "", joining_date: u.joining_date ? u.joining_date.split("T")[0] : "",
       remuneration: u.remuneration || "", new_email: "", new_password: "",
       weekly_off_day: u.weekly_off_day !== null && u.weekly_off_day !== undefined ? String(u.weekly_off_day) : "",
+      hours_per_day: u.hours_per_day !== null && u.hours_per_day !== undefined ? String(u.hours_per_day) : "",
     });
     // Load existing appraisals
     const { data: existing } = await supabase.from("employee_appraisals").select("*").eq("user_id", u.id).order("appraisal_date", { ascending: false });
@@ -160,6 +172,8 @@ export default function AdminUsers() {
       joining_letter_url,
       weekly_off_day: weekOffMode === "rotating" && editForm.weekly_off_day !== ""
         ? Number(editForm.weekly_off_day) : null,
+      hours_per_day: canSetPerEmployeeHours && editForm.hours_per_day !== ""
+        ? Number(editForm.hours_per_day) : null,
     }).eq("id", editUser.id);
 
     // --- Update auth account if email/password supplied ---
@@ -554,6 +568,13 @@ export default function AdminUsers() {
                     <label>Remuneration (Monthly) *</label>
                     <input type="number" className="premium-input" placeholder="0.00" value={form.remuneration} onChange={e => setForm({...form, remuneration: e.target.value})} required />
                  </div>
+                 {canSetPerEmployeeHours && (
+                   <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                     <label>Daily Working Hours <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 400 }}>(optional — overrides org default)</span></label>
+                     <input type="number" step="0.5" min="1" max="16" className="premium-input" placeholder="Leave blank to use org default"
+                       value={form.hours_per_day} onChange={e => setForm({...form, hours_per_day: e.target.value})} />
+                   </div>
+                 )}
                  <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
                     <label>Joining Letter (PDF/Doc)</label>
                     <input type="file" className="premium-input" style={{padding: 10}} accept=".pdf,.doc,.docx" onChange={e => setLetterFile(e.target.files?.[0] ?? null)} />
@@ -665,6 +686,13 @@ export default function AdminUsers() {
                     <label>Monthly Remuneration (₹)</label>
                     <input type="number" className="premium-input" placeholder="0.00" value={editForm.remuneration} onChange={e => setEditForm({...editForm, remuneration: e.target.value})} />
                   </div>
+                  {canSetPerEmployeeHours && (
+                    <div className={styles.formGroup} style={{ marginBottom: 0, flex: 1 }}>
+                      <label>Daily Working Hours <span style={{ fontSize: "0.72rem", color: "var(--text-secondary)", fontWeight: 400 }}>(optional)</span></label>
+                      <input type="number" step="0.5" min="1" max="16" className="premium-input" placeholder="Org default"
+                        value={editForm.hours_per_day} onChange={e => setEditForm({...editForm, hours_per_day: e.target.value})} />
+                    </div>
+                  )}
                 </div>
 
                 {/* Week Off Day — only in rotating mode */}

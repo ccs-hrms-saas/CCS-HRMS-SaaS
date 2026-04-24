@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
 import { useModules } from "@/context/ModulesContext";
 import styles from "../../dashboard.module.css";
 
@@ -59,9 +60,16 @@ const Toggle = ({ label, checked, onChange, disabled, note }: any) => (
 );
 
 export default function LeaveSettings() {
+  const { profile } = useAuth();
   const { getProps } = useModules();
   const modProps     = getProps("leave_settings");
   const isAdvanced   = modProps.tier === "advanced";
+  // Tier 2+ (Standard+): org can change hours anytime
+  const canEditHours = !!(modProps.org_hours_configurable);
+  // Working hours state
+  const [hoursPerDay, setHoursPerDay]   = useState<number>(8.5);
+  const [hoursSetAt, setHoursSetAt]     = useState<string | null>(null);
+  const [savingHours, setSavingHours]   = useState(false);
 
   // ── App settings / work schedule ──────────────────────────────────────────
   const [settings, setSettings]         = useState<any>(null);
@@ -79,9 +87,10 @@ export default function LeaveSettings() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    const companyId = profile?.company_id;
     const [{ data: types }, { data: sett }] = await Promise.all([
-      supabase.from("leave_types").select("*").order("name"),
-      supabase.from("app_settings").select("*").single(),
+      supabase.from("leave_types").select("*").eq("company_id", companyId).order("name"),
+      supabase.from("app_settings").select("*").eq("company_id", companyId).single(),
     ]);
     setTypes(types ?? []);
     if (sett) {
@@ -91,11 +100,13 @@ export default function LeaveSettings() {
         week_off_days:    sett.week_off_days ?? [0],
         overtime_tracking: sett.overtime_tracking ?? false,
       });
+      setHoursPerDay(sett.hours_per_day ?? 8.5);
+      setHoursSetAt(sett.hours_per_day_set_at ?? null);
     }
     setLoading(false);
-  }, []);
+  }, [profile]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (profile?.company_id) load(); }, [load, profile]);
 
   // ── Work Schedule save ─────────────────────────────────────────────────────
   const saveSchedule = async () => {
@@ -106,6 +117,20 @@ export default function LeaveSettings() {
       overtime_tracking: scheduleForm.overtime_tracking,
     }).eq("company_id", settings?.company_id);
     setSavingSchedule(false);
+    load();
+  };
+
+  // 90-day lock: if canEditHours is false (Tier 1) AND < 90 days since last set
+  const hoursLockDate = hoursSetAt ? new Date(new Date(hoursSetAt).getTime() + 90 * 24 * 3600000) : null;
+  const hoursLocked   = !canEditHours && !!hoursLockDate && hoursLockDate > new Date();
+
+  const saveHours = async () => {
+    setSavingHours(true);
+    await supabase.from("app_settings").update({
+      hours_per_day:        hoursPerDay,
+      hours_per_day_set_at: new Date().toISOString(),
+    }).eq("company_id", settings?.company_id);
+    setSavingHours(false);
     load();
   };
 
@@ -270,6 +295,39 @@ export default function LeaveSettings() {
                 </button>
               </div>
             )}
+
+            {/* ── Daily Working Hours ──────────────────────────────────*/}
+            <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 16 }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-secondary)", marginBottom: 10 }}>Daily Working Hours Target</div>
+              {hoursLocked ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.25)" }}>
+                  <span style={{ fontSize: "1.2rem" }}>🔒</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "0.88rem", color: "#f59e0b" }}>{hoursPerDay}h / day</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: 2 }}>
+                      Locked until <strong>{hoursLockDate?.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</strong>.
+                      Upgrade to Standard plan to change anytime.
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <input type="number" step="0.5" min="1" max="16" className="premium-input"
+                    style={{ maxWidth: 120 }}
+                    value={hoursPerDay}
+                    disabled={hoursLocked}
+                    onChange={e => setHoursPerDay(Number(e.target.value) || 8.5)} />
+                  <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>hours / day</span>
+                  <button onClick={saveHours} disabled={savingHours || hoursLocked}
+                    className={styles.primaryBtn} style={{ width: "auto", padding: "8px 18px", fontSize: "0.82rem" }}>
+                    {savingHours ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              )}
+              <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 6 }}>
+                Used for payroll deficit calculation. Applies to all employees unless individually overridden (Advanced plan).
+              </div>
+            </div>
           </div>
         )}
       </div>
