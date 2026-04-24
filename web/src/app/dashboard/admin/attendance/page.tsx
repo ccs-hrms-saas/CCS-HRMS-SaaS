@@ -73,7 +73,8 @@ export default function AdminAttendance() {
       .then(({ data }) => setOrgHours(data?.hours_per_day ?? null));
   }, [profile]);
 
-  useEffect(() => { load(); }, [selectedDate, selectedUser, employees]);
+  // Trigger load when date or employee filter changes — NOT on employees state change
+  useEffect(() => { load(); }, [selectedDate, selectedUser]);
 
   const load = async () => {
     setLoading(true);
@@ -88,8 +89,8 @@ export default function AdminAttendance() {
     );
     const json = await res.json();
 
-    // Update employees with shift data from API (keeps in sync)
-    if (json.employees?.length) setEmployees(json.employees);
+    // Use API employee list for rows (do NOT call setEmployees here — causes infinite loop)
+    // The dropdown employees state is populated by the separate useEffect above
 
     const attMap: Record<string, any> = {};
     (json.attendance ?? []).forEach((r: any) => { attMap[r.user_id] = r; });
