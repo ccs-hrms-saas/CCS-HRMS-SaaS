@@ -391,6 +391,26 @@ export default function AdminUsers() {
               </div>
             );
           })()}
+          {/* Weekly Off Day pill */}
+          {weekOffMode === "rotating" ? (
+            // Rotating mode: show this employee's individual off day
+            <div style={{ fontSize: "0.72rem", marginTop: 3, display: "inline-flex", alignItems: "center", gap: 4,
+              background: "rgba(20,184,166,0.1)", border: "1px solid rgba(20,184,166,0.25)",
+              color: "#2dd4bf", borderRadius: 20, padding: "2px 8px" }}>
+              {(u as any).weekly_off_day !== null && (u as any).weekly_off_day !== undefined
+                ? <><span>🔄</span><span>Off: {DAYS_LONG[(u as any).weekly_off_day]}</span></>
+                : <><span>🚫</span><span>No Day Off</span></>}
+            </div>
+          ) : (
+            // Fixed mode: org-wide off day — show compact pill from app_settings
+            weekOffMode === "fixed" && (
+              <div style={{ fontSize: "0.72rem", marginTop: 3, display: "inline-flex", alignItems: "center", gap: 4,
+                background: "rgba(100,116,139,0.1)", border: "1px solid rgba(100,116,139,0.25)",
+                color: "#94a3b8", borderRadius: 20, padding: "2px 8px" }}>
+                <span>📅</span><span>Fixed Off Day</span>
+              </div>
+            )
+          )}
           {inactive
             ? <span style={{ fontSize: "0.72rem", color: "#ef4444", display: "block", marginTop: 2 }}>Left: {u.left_on ? new Date(u.left_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Unknown"}</span>
             : <span className={`${styles.statBadge} ${roleStyle(u.role)}`} style={{ marginTop: 4, display: "inline-block" }}>{u.role}</span>}
