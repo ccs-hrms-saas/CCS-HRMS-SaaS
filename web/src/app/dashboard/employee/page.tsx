@@ -27,7 +27,7 @@ export default function EmployeeDashboard() {
   const [stats, setStats]         = useState({ presentDays: 0, totalHours: 0, targetHours: 0, approvedLeaves: 0, pendingLeaves: 0 });
   const [deficit, setDeficit]     = useState<DeficitState>({ deficit: 0, evalMonthLabel: "", daysLeft: 0, alertLevel: "none", isSalaryPeriod: false });
   const [shiftInfo, setShiftInfo] = useState<{ start?: string; end?: string; hours?: number } | null>(null);
-  const [hpd, setHpd]             = useState<number>(8.5); // hours per day (resolved)
+  const [hpd, setHpd]             = useState<number>(8.5);
   const [pendingTeamLeaves, setPendingTeamLeaves] = useState(0);
   const [showAdjustment, setShowAdjustment] = useState(false);
   const [adjustType, setAdjustType]         = useState("LWP");
@@ -35,9 +35,30 @@ export default function EmployeeDashboard() {
   const [announcements, setAnnouncements]   = useState<any[]>([]);
   const [attendance, setAttendance]         = useState<any[]>([]);
   const [loading, setLoading]               = useState(true);
+  // Kiosk PIN
+  const [kioskPin, setKioskPin]           = useState<string | null>(null);
+  const [pinSecondsLeft, setPinSecondsLeft] = useState(60);
 
   useEffect(() => {
     if (!profile) return;
+    // Fetch kiosk PIN on mount and every 60 seconds
+    const fetchPin = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch('/api/employee/my-pin', {
+        headers: { Authorization: `Bearer ${session.access_token}` }
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setKioskPin(d.pin);
+        setPinSecondsLeft(d.secondsLeft);
+      }
+    };
+    fetchPin();
+    const pinInterval = setInterval(fetchPin, 60000);
+    // Countdown timer
+    const countdownInterval = setInterval(() => setPinSecondsLeft(s => s > 0 ? s - 1 : 60), 1000);
+
     const load = async () => {
       const { isWorkingDay } = await import("@/lib/dateUtils");
 
@@ -270,6 +291,10 @@ export default function EmployeeDashboard() {
       setLoading(false);
     };
     load();
+    return () => {
+      clearInterval(pinInterval);
+      clearInterval(countdownInterval);
+    };
   }, [profile, adjusting]);
 
   const handleAdjust = async (e: React.FormEvent) => {
@@ -383,6 +408,43 @@ export default function EmployeeDashboard() {
                 {adjusting ? "Processing..." : "Confirm Adjustment"}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Kiosk Attendance PIN Card ──────────────────────────────────────── */}
+      {kioskPin && (
+        <div style={{
+          background: "linear-gradient(135deg, rgba(99,102,241,0.12), rgba(139,92,246,0.08))",
+          border: "1px solid rgba(99,102,241,0.3)", borderRadius: 16,
+          padding: "20px 28px", marginBottom: 24,
+          display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap",
+        }}>
+          <div style={{ fontSize: "2.6rem", letterSpacing: 10, fontWeight: 900,
+            fontVariantNumeric: "tabular-nums", color: "#a5b4fc", fontFamily: "monospace" }}>
+            {kioskPin}
+          </div>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={{ fontWeight: 700, color: "#c7d2fe", fontSize: "0.95rem", marginBottom: 2 }}>
+              🔐 Kiosk Attendance PIN
+            </div>
+            <div style={{ color: "#64748b", fontSize: "0.78rem" }}>
+              Enter this at the kiosk to clock in/out. Refreshes every 60 seconds.
+            </div>
+          </div>
+          <div style={{ textAlign: "center", flexShrink: 0 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: "50%",
+              background: `conic-gradient(#6366f1 ${(pinSecondsLeft/60)*360}deg, rgba(99,102,241,0.1) 0deg)`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <div style={{
+                width: 34, height: 34, borderRadius: "50%",
+                background: "#0f111a",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "0.7rem", fontWeight: 700, color: "#6366f1",
+              }}>{pinSecondsLeft}s</div>
+            </div>
           </div>
         </div>
       )}

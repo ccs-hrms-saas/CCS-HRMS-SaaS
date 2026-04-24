@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Search, LogIn, LogOut, Clock } from "lucide-react";
+import { Search } from "lucide-react";
 import s from "./kiosk.module.css";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -18,26 +18,28 @@ interface Employee {
   avatar_url: string | null;
 }
 
-type Screen = "setup" | "loading" | "main";
+type Screen = "setup" | "loading" | "main" | "pin" | "camera" | "processing" | "success";
 
-const BASE = ""; // same-origin API calls
+interface SuccessInfo {
+  name:   string;
+  action: "check_in" | "check_out";
+  time:   string;
+}
 
-// ── Kiosk Storage keys ─────────────────────────────────────────────────────
+const BASE = "";
+
 const LS_TOKEN = "kiosk_device_token";
-const LS_NAME  = "kiosk_company_name";
-const LS_LOGO  = "kiosk_company_logo";
 
-// ── Helpers ────────────────────────────────────────────────────────────────
 function initials(name: string) {
   return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
 function fmtTime(d: Date) {
-  return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
 }
 
 function fmtDate(d: Date) {
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 }
 
 // ── Main Component ──────────────────────────────────────────────────────────
@@ -47,36 +49,41 @@ export default function KioskPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search,    setSearch]    = useState("");
   const [selected,  setSelected]  = useState<Employee | null>(null);
-  const [success,   setSuccess]   = useState<{ name: string; action: string; time: string } | null>(null);
-  const [punching,  setPunching]  = useState(false);
+  const [success,   setSuccess]   = useState<SuccessInfo | null>(null);
   const [now,       setNow]       = useState(new Date());
 
-  // Setup form
+  // PIN entry
+  const [pin, setPin]         = useState("");
+  const [pinError, setPinError] = useState("");
+
+  // Camera
+  const videoRef    = useRef<HTMLVideoElement>(null);
+  const canvasRef   = useRef<HTMLCanvasElement>(null);
+  const streamRef   = useRef<MediaStream | null>(null);
+  const [countdown, setCountdown] = useState(3);
+
+  // Setup
   const [companyCode, setCompanyCode] = useState("");
   const [setupPin,    setSetupPin]    = useState("");
-  const [deviceName,  setDeviceName]  = useState("Kiosk Tablet 1");
+  const [deviceName,  setDeviceName]  = useState("Kiosk Phone 1");
   const [setupErr,    setSetupErr]    = useState("");
   const [pairing,     setPairing]     = useState(false);
 
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // ── Clock ticker ──────────────────────────────────────────────────────────
+  // ── Clock ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // ── On mount: check for stored device token ───────────────────────────────
+  // ── On mount: check stored token ─────────────────────────────────────────
   useEffect(() => {
     const token = localStorage.getItem(LS_TOKEN);
-    if (token) {
-      validateToken(token);
-    } else {
-      setScreen("setup");
-    }
+    if (token) validateToken(token);
+    else setScreen("setup");
   }, []);
 
-  // ── Validate stored token with /api/kiosk/config ──────────────────────────
   async function validateToken(token: string) {
     setScreen("loading");
     try {
@@ -100,7 +107,6 @@ export default function KioskPage() {
     }
   }
 
-  // ── Load employee list ────────────────────────────────────────────────────
   const loadEmployees = useCallback(async (token?: string) => {
     const t = token ?? localStorage.getItem(LS_TOKEN);
     if (!t) return;
@@ -109,19 +115,17 @@ export default function KioskPage() {
     setEmployees(data.employees ?? []);
   }, []);
 
-  // ── Re-fetch employee list every 5 minutes ────────────────────────────────
   useEffect(() => {
     if (screen !== "main") return;
     const t = setInterval(() => loadEmployees(), 5 * 60 * 1000);
     return () => clearInterval(t);
   }, [screen, loadEmployees]);
 
-  // ── Auto-focus search when screen = main ─────────────────────────────────
   useEffect(() => {
     if (screen === "main") searchRef.current?.focus();
   }, [screen]);
 
-  // ── Pair device (setup form submit) ──────────────────────────────────────
+  // ── Pairing ───────────────────────────────────────────────────────────────
   async function pairDevice() {
     setSetupErr("");
     if (!companyCode.trim() || !setupPin.trim()) {
@@ -146,35 +150,133 @@ export default function KioskPage() {
     }
   }
 
-  // ── Punch in/out ──────────────────────────────────────────────────────────
-  async function punch(action: "in" | "out") {
-    if (!selected || punching) return;
-    setPunching(true);
-    try {
-      const token = localStorage.getItem(LS_TOKEN) ?? "";
-      const res = await fetch(`${BASE}/api/kiosk/punch`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json", "x-device-token": token },
-        body:    JSON.stringify({ employee_id: selected.id, action }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Punch failed");
-      setSuccess({
-        name:   selected.full_name,
-        action: action === "in" ? "Clocked In" : "Clocked Out",
-        time:   fmtTime(new Date()),
-      });
-      setSelected(null);
-      setSearch("");
-      setTimeout(() => { setSuccess(null); searchRef.current?.focus(); }, 3500);
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setPunching(false);
+  // ── Select employee → go to PIN screen ───────────────────────────────────
+  function selectEmployee(emp: Employee) {
+    setSelected(emp);
+    setPin("");
+    setPinError("");
+    setScreen("pin");
+  }
+
+  // ── PIN keypad input ──────────────────────────────────────────────────────
+  function pressDigit(d: string) {
+    if (pin.length >= 4) return;
+    const next = pin + d;
+    setPin(next);
+    setPinError("");
+    if (next.length === 4) {
+      // Small delay so user sees the 4th dot fill in
+      setTimeout(() => openCamera(next), 150);
     }
   }
 
-  // ── Filtered employees ────────────────────────────────────────────────────
+  function deleteDigit() {
+    setPin(p => p.slice(0, -1));
+    setPinError("");
+  }
+
+  // ── Camera ───────────────────────────────────────────────────────────────
+  async function openCamera(enteredPin: string) {
+    setScreen("camera");
+    setCountdown(3);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      // 3-second countdown then auto-capture
+      let count = 3;
+      const timer = setInterval(() => {
+        count--;
+        setCountdown(count);
+        if (count <= 0) {
+          clearInterval(timer);
+          captureAndPunch(enteredPin);
+        }
+      }, 1000);
+    } catch {
+      // Camera not available — punch without photo
+      setScreen("processing");
+      await submitPunch(enteredPin, null);
+    }
+  }
+
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+  }
+
+  async function captureAndPunch(enteredPin: string) {
+    let photo64: string | null = null;
+    try {
+      const video  = videoRef.current;
+      const canvas = canvasRef.current;
+      if (video && canvas) {
+        canvas.width  = video.videoWidth  || 640;
+        canvas.height = video.videoHeight || 480;
+        canvas.getContext("2d")?.drawImage(video, 0, 0);
+        photo64 = canvas.toDataURL("image/jpeg", 0.82).split(",")[1];
+      }
+    } catch { /* ignore */ }
+    stopCamera();
+    setScreen("processing");
+    await submitPunch(enteredPin, photo64);
+  }
+
+  // ── Submit to /api/mark-attendance ────────────────────────────────────────
+  async function submitPunch(enteredPin: string, photo64: string | null) {
+    if (!selected) { goMain(); return; }
+    try {
+      const body: any = { user_id: selected.id, pin: enteredPin };
+      if (photo64) body.photo_base64 = photo64;
+
+      const res  = await fetch(`${BASE}/api/mark-attendance`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        // Wrong PIN or other error — go back to PIN screen
+        setPin("");
+        setPinError(data.error ?? "Invalid PIN. Try again.");
+        stopCamera();
+        setScreen("pin");
+        return;
+      }
+
+      setSuccess({
+        name:   selected.full_name,
+        action: data.action,
+        time:   fmtTime(new Date()),
+      });
+      setScreen("success");
+      setTimeout(() => {
+        setSuccess(null);
+        goMain();
+      }, 3500);
+    } catch {
+      setPin("");
+      setPinError("Network error. Please try again.");
+      stopCamera();
+      setScreen("pin");
+    }
+  }
+
+  function goMain() {
+    stopCamera();
+    setSelected(null);
+    setPin("");
+    setPinError("");
+    setSearch("");
+    setScreen("main");
+  }
+
   const filtered = employees.filter(e =>
     e.full_name.toLowerCase().includes(search.toLowerCase())
   );
@@ -191,7 +293,7 @@ export default function KioskPage() {
     );
   }
 
-  // ── RENDER: Setup / Pairing ───────────────────────────────────────────────
+  // ── RENDER: Setup ─────────────────────────────────────────────────────────
   if (screen === "setup") {
     return (
       <div className={s.kiosk}>
@@ -200,30 +302,22 @@ export default function KioskPage() {
             <div className={s.setupLogo}>CCS HRMS</div>
             <div className={s.setupTagline}>Kiosk Attendance System</div>
             <div className={s.setupTitle}>Pair this device to your workspace</div>
-
             <div className={s.setupField}>
               <label className={s.setupLabel}>Company Code (subdomain)</label>
               <input className={s.setupInput} value={companyCode}
                 onChange={e => setCompanyCode(e.target.value)}
-                placeholder="e.g. acmecorp"
-                autoCapitalize="none"
-              />
+                placeholder="e.g. acmecorp" autoCapitalize="none" />
             </div>
             <div className={s.setupField}>
               <label className={s.setupLabel}>Setup PIN (from admin panel)</label>
               <input className={s.setupInput} value={setupPin} type="password"
-                onChange={e => setSetupPin(e.target.value)}
-                placeholder="• • • • • •"
-              />
+                onChange={e => setSetupPin(e.target.value)} placeholder="• • • • • •" />
             </div>
             <div className={s.setupField}>
               <label className={s.setupLabel}>Device Name</label>
               <input className={s.setupInput} value={deviceName}
-                onChange={e => setDeviceName(e.target.value)}
-                placeholder="Kiosk Tablet 1"
-              />
+                onChange={e => setDeviceName(e.target.value)} placeholder="Kiosk Phone 1" />
             </div>
-
             <button className={s.setupBtn} onClick={pairDevice}
               disabled={pairing || !companyCode || !setupPin}>
               {pairing ? "Pairing…" : "Pair Device"}
@@ -235,16 +329,83 @@ export default function KioskPage() {
     );
   }
 
-  // ── RENDER: Main kiosk UI ─────────────────────────────────────────────────
+  // ── RENDER: PIN entry ─────────────────────────────────────────────────────
+  if (screen === "pin" && selected) {
+    return (
+      <div className={s.kiosk}>
+        <div className={s.pinScreen}>
+          {/* Employee avatar */}
+          <div className={s.pinAvatar}>
+            {config?.show_employee_photo && selected.avatar_url
+              ? <img src={selected.avatar_url} alt={selected.full_name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }} />
+              : initials(selected.full_name)}
+          </div>
+          <div className={s.pinName}>{selected.full_name}</div>
+          <div className={s.pinLabel}>Enter your 4-digit attendance PIN</div>
+          <div className={s.pinHint}>Open your Employee Portal to see your PIN</div>
+
+          {/* PIN dots */}
+          <div className={s.pinDots}>
+            {[0,1,2,3].map(i => (
+              <div key={i} className={`${s.pinDot} ${pin.length > i ? s.pinDotFilled : ""}`} />
+            ))}
+          </div>
+
+          {pinError && <div className={s.pinError}>{pinError}</div>}
+
+          {/* Numpad */}
+          <div className={s.numpad}>
+            {["1","2","3","4","5","6","7","8","9"].map(d => (
+              <button key={d} className={s.numKey} onClick={() => pressDigit(d)}>{d}</button>
+            ))}
+            <button className={s.numKey} onClick={goMain} style={{ color: "#475569", fontSize: "0.75rem" }}>Cancel</button>
+            <button className={s.numKey} onClick={() => pressDigit("0")}>0</button>
+            <button className={s.numKey} onClick={deleteDigit} style={{ fontSize: "1.3rem" }}>⌫</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── RENDER: Camera countdown ──────────────────────────────────────────────
+  if (screen === "camera") {
+    return (
+      <div className={s.kiosk}>
+        <div className={s.cameraScreen}>
+          <video ref={videoRef} className={s.cameraVideo} autoPlay playsInline muted />
+          <canvas ref={canvasRef} style={{ display: "none" }} />
+          <div className={s.cameraOverlay}>
+            <div className={s.cameraName}>{selected?.full_name}</div>
+            <div className={s.cameraCountdown}>{countdown}</div>
+            <div className={s.cameraHint}>Hold still…</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── RENDER: Processing ────────────────────────────────────────────────────
+  if (screen === "processing") {
+    return (
+      <div className={s.kiosk}>
+        <div className={s.loadingScreen}>
+          <div className={s.spinner} />
+          <div>Recording attendance…</div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── RENDER: Main employee grid ────────────────────────────────────────────
   return (
     <div className={s.kiosk}>
       {/* Success overlay */}
       {success && (
         <div className={s.successOverlay}>
-          <div className={s.successIcon}>{success.action === "Clocked In" ? "✅" : "👋"}</div>
+          <div className={s.successIcon}>{success.action === "check_in" ? "✅" : "👋"}</div>
           <div className={s.successName}>{success.name}</div>
-          <div className={s.successAction} style={{ color: success.action === "Clocked In" ? "#34d399" : "#f87171" }}>
-            {success.action} Successfully
+          <div className={s.successAction} style={{ color: success.action === "check_in" ? "#34d399" : "#f87171" }}>
+            {success.action === "check_in" ? "Clocked In" : "Clocked Out"} Successfully
           </div>
           <div className={s.successTime}>at {success.time}</div>
         </div>
@@ -253,11 +414,9 @@ export default function KioskPage() {
       {/* Header */}
       <div className={s.header}>
         <div className={s.headerLeft}>
-          {config?.company_logo ? (
-            <img src={config.company_logo} alt="Logo" className={s.companyLogo} />
-          ) : (
-            <div className={s.companyName}>{config?.company_name ?? "CCS HRMS"}</div>
-          )}
+          {config?.company_logo
+            ? <img src={config.company_logo} alt="Logo" className={s.companyLogo} />
+            : <div className={s.companyName}>{config?.company_name ?? "CCS HRMS"}</div>}
         </div>
         <div className={s.headerTime}>
           <div className={s.clockTime}>{fmtTime(now)}</div>
@@ -267,10 +426,9 @@ export default function KioskPage() {
 
       {/* Body */}
       <div className={s.body}>
-        {/* Left — Employee Search */}
         <div className={s.searchPanel}>
           <div className={s.searchWrap}>
-            <Search className={s.searchIcon} size={20} />
+            <Search className={s.searchIcon} size={18} />
             <input
               ref={searchRef}
               className={s.searchInput}
@@ -280,62 +438,20 @@ export default function KioskPage() {
             />
           </div>
           <div className={s.employeeGrid}>
+            {filtered.length === 0 && (
+              <div style={{ gridColumn: "1/-1", textAlign: "center", color: "#334155", paddingTop: 40, fontSize: "0.88rem" }}>
+                No employees found
+              </div>
+            )}
             {filtered.map(emp => (
-              <div
-                key={emp.id}
-                className={`${s.employeeCard} ${selected?.id === emp.id ? s.selected : ""}`}
-                onClick={() => setSelected(emp)}
-              >
-                {config?.show_employee_photo && emp.avatar_url ? (
-                  <img src={emp.avatar_url} alt={emp.full_name} className={s.employeeAvatar} />
-                ) : (
-                  <div className={s.employeeAvatarInitials}>{initials(emp.full_name)}</div>
-                )}
+              <div key={emp.id} className={s.employeeCard} onClick={() => selectEmployee(emp)}>
+                {config?.show_employee_photo && emp.avatar_url
+                  ? <img src={emp.avatar_url} alt={emp.full_name} className={s.employeeAvatar} />
+                  : <div className={s.employeeAvatarInitials}>{initials(emp.full_name)}</div>}
                 <div className={s.employeeName}>{emp.full_name}</div>
-                <div className={s.employeeRole}>{emp.role}</div>
               </div>
             ))}
           </div>
-        </div>
-
-        {/* Right/Bottom — Action Panel */}
-        <div className={`${s.actionPanel} ${!selected ? s.empty : ""}`}>
-          {!selected ? (
-            <div className={s.actionPrompt}>
-              <div className={s.actionPromptIcon}>👆</div>
-              <div className={s.actionPromptText}>Select an employee<br />to clock in or out</div>
-            </div>
-          ) : (
-            <>
-              <div className={s.selectedProfile}>
-                <div className={s.selectedAvatarLarge}>
-                  {config?.show_employee_photo && selected.avatar_url
-                    ? <img src={selected.avatar_url} alt={selected.full_name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }} />
-                    : initials(selected.full_name)}
-                </div>
-                <div>
-                  <div className={s.selectedName}>{selected.full_name}</div>
-                  <div className={s.selectedRole}>{selected.role}</div>
-                </div>
-              </div>
-
-              <div className={s.punchBtns}>
-                <button className={s.punchInBtn} onClick={() => punch("in")} disabled={punching}>
-                  <LogIn size={20} />
-                  {punching ? "…" : "Clock In"}
-                </button>
-                <button className={s.punchOutBtn} onClick={() => punch("out")} disabled={punching}>
-                  <LogOut size={20} />
-                  {punching ? "…" : "Clock Out"}
-                </button>
-                <div className={s.cancelBtnRow}>
-                  <button className={s.cancelBtn} onClick={() => { setSelected(null); setSearch(""); }}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
         </div>
       </div>
     </div>
