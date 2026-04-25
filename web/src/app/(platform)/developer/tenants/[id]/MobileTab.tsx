@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Tablet, MonitorSmartphone, RefreshCw, Eye, EyeOff,
-  Calendar, Receipt, Clock, Fingerprint, Check,
+  Calendar, Receipt, Clock, Fingerprint, Check, Monitor,
+  Apple, Download,
 } from "lucide-react";
 import s from "./MobileTab.module.css";
 
@@ -59,16 +60,20 @@ function timeAgo(dateStr: string | null) {
 
 // ── Main Component ──────────────────────────────────────────────────────────
 export default function MobileTab({ companyId }: Props) {
-  const [devices,      setDevices]      = useState<KioskDevice[]>([]);
-  const [kioskMod,     setKioskMod]     = useState<Module | null>(null);
-  const [empMod,       setEmpMod]       = useState<Module | null>(null);
-  const [kioskProps,   setKioskProps]   = useState<Record<string, any>>({});
-  const [empProps,     setEmpProps]     = useState<Record<string, any>>({});
-  const [loading,      setLoading]      = useState(true);
-  const [pinVisible,   setPinVisible]   = useState(false);
-  const [generating,   setGenerating]   = useState(false);
-  const [savingEmp,    setSavingEmp]    = useState(false);
-  const [toast,        setToast]        = useState("");
+  const [devices,        setDevices]        = useState<KioskDevice[]>([]);
+  const [kioskMod,       setKioskMod]       = useState<Module | null>(null);
+  const [empMod,         setEmpMod]         = useState<Module | null>(null);
+  const [kioskProps,     setKioskProps]     = useState<Record<string, any>>({});
+  const [empProps,       setEmpProps]       = useState<Record<string, any>>({});
+  const [loading,        setLoading]        = useState(true);
+  const [pinVisible,     setPinVisible]     = useState(false);
+  const [generating,     setGenerating]     = useState(false);
+  const [savingEmp,      setSavingEmp]      = useState(false);
+  const [toast,          setToast]          = useState("");
+  const [desktopUrls,    setDesktopUrls]    = useState<{ mac: string; win: string; version: string }>({
+    mac: "", win: "", version: "",
+  });
+  const [savingDesktop,  setSavingDesktop]  = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -77,7 +82,7 @@ export default function MobileTab({ companyId }: Props) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: devs }, { data: mods }] = await Promise.all([
+    const [{ data: devs }, { data: mods }, cfgRes] = await Promise.all([
       supabase
         .from("kiosk_devices")
         .select("*")
@@ -88,6 +93,7 @@ export default function MobileTab({ companyId }: Props) {
         .select("*")
         .eq("company_id", companyId)
         .in("module_key", ["kiosk_attendance", "employee_mobile_app"]),
+      fetch("/api/platform-config").then(r => r.json()).catch(() => ({})),
     ]);
 
     setDevices(devs ?? []);
@@ -97,8 +103,13 @@ export default function MobileTab({ companyId }: Props) {
 
     setKioskMod(kMod);
     setEmpMod(eMod);
-    setKioskProps(kMod?.properties ?? { max_devices: 5, require_device_pin: true, pin_rotation_days: 30, show_employee_photo: true });
+    setKioskProps(kMod?.properties ?? { max_devices: 5, require_device_pin: true, pin_rotation_days: 30, show_employee_photo: true, desktop_kiosk_enabled: false });
     setEmpProps(eMod?.properties ?? { allow_leave_requests: true, allow_payslip_view: true, allow_attendance_view: true, require_biometric: false });
+    setDesktopUrls({
+      mac:     cfgRes?.desktop_mac_url     ?? "",
+      win:     cfgRes?.desktop_win_url     ?? "",
+      version: cfgRes?.desktop_kiosk_version ?? "1.0.0",
+    });
     setLoading(false);
   }, [companyId]);
 
@@ -147,6 +158,33 @@ export default function MobileTab({ companyId }: Props) {
       .eq("id", empMod.id);
     setSavingEmp(false);
     showToast("Employee app configuration saved");
+  }
+
+  // ── Toggle desktop kiosk enabled ───────────────────────────────────────
+  async function toggleDesktopKiosk(enabled: boolean) {
+    if (!kioskMod) return;
+    const newProps = { ...kioskProps, desktop_kiosk_enabled: enabled };
+    await supabase.from("company_modules")
+      .update({ properties: newProps, updated_at: new Date().toISOString() })
+      .eq("id", kioskMod.id);
+    setKioskProps(newProps);
+    showToast(`Desktop kiosk ${enabled ? "enabled" : "disabled"}`);
+  }
+
+  // ── Save desktop download URLs ─────────────────────────────────────────
+  async function saveDesktopUrls() {
+    setSavingDesktop(true);
+    await fetch("/api/platform-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify([
+        { key: "desktop_mac_url",          value: desktopUrls.mac },
+        { key: "desktop_win_url",          value: desktopUrls.win },
+        { key: "desktop_kiosk_version",    value: desktopUrls.version },
+      ]),
+    });
+    setSavingDesktop(false);
+    showToast("Desktop download links saved");
   }
 
   // ── Derived data ───────────────────────────────────────────────────────
@@ -347,6 +385,78 @@ export default function MobileTab({ companyId }: Props) {
             {savingEmp ? "Saving…" : <><Check size={15} style={{ display: "inline", marginRight: 6 }} />Save App Configuration</>}
           </button>
         </div>
+      </div>
+
+      {/* ═══ BOTTOM: Desktop Kiosk App ══════════════════════════════════ */}
+      <div className={s.sectionCard} style={{ gridColumn: "1 / -1" }}>
+        <div className={s.sectionHead}>
+          <div className={s.sectionHeadIcon}>
+            <Monitor size={18} color="#6366f1" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div className={s.sectionTitle}>Desktop Kiosk App</div>
+            <div className={s.sectionSub}>Windows &amp; macOS Electron app for offices without Android devices</div>
+          </div>
+          {/* Enable toggle */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: "0.82rem", color: kioskProps.desktop_kiosk_enabled ? "#34d399" : "#f87171", fontWeight: 600 }}>
+              {kioskProps.desktop_kiosk_enabled ? "Enabled" : "Disabled"}
+            </span>
+            <label className={s.switch}>
+              <input
+                type="checkbox"
+                checked={kioskProps.desktop_kiosk_enabled ?? false}
+                onChange={e => toggleDesktopKiosk(e.target.checked)}
+              />
+              <span className={s.switchSlider} />
+            </label>
+          </div>
+        </div>
+
+        {/* PIN note */}
+        <div style={{ padding: "12px 20px", background: "rgba(99,102,241,0.08)", borderRadius: 10, margin: "0 0 20px", fontSize: "0.82rem", color: "#94a3b8", border: "1px solid rgba(99,102,241,0.15)" }}>
+          🔑 <strong style={{ color: "#c7d2fe" }}>Shared Pairing PIN</strong> — Desktop kiosk uses the same Tablet Pairing PIN shown above.
+          Employees enter the company subdomain and that PIN to pair any desktop.
+        </div>
+
+        {/* Download URLs editor */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "flex-end", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, color: "#64748b", marginBottom: 6 }}>🍎 macOS Download URL (.dmg)</div>
+            <input
+              value={desktopUrls.mac}
+              onChange={e => setDesktopUrls(p => ({ ...p, mac: e.target.value }))}
+              placeholder="https://cdn.ccshrms.com/desktop/CCS-HRMS-Kiosk-mac.dmg"
+              style={{ width: "100%", padding: "10px 14px", borderRadius: 10, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.08)", color: "#f1f5f9", fontFamily: "inherit", fontSize: "0.85rem", outline: "none" }}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, color: "#64748b", marginBottom: 6 }}>🪟 Windows Download URL (.exe)</div>
+            <input
+              value={desktopUrls.win}
+              onChange={e => setDesktopUrls(p => ({ ...p, win: e.target.value }))}
+              placeholder="https://cdn.ccshrms.com/desktop/CCS-HRMS-Kiosk-Setup.exe"
+              style={{ width: "100%", padding: "10px 14px", borderRadius: 10, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.08)", color: "#f1f5f9", fontFamily: "inherit", fontSize: "0.85rem", outline: "none" }}
+            />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, color: "#64748b", marginBottom: 6 }}>Version</div>
+            <input
+              value={desktopUrls.version}
+              onChange={e => setDesktopUrls(p => ({ ...p, version: e.target.value }))}
+              placeholder="1.0.0"
+              style={{ width: 100, padding: "10px 14px", borderRadius: 10, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.08)", color: "#f1f5f9", fontFamily: "inherit", fontSize: "0.85rem", outline: "none" }}
+            />
+          </div>
+        </div>
+        <button
+          className={s.saveBtn}
+          onClick={saveDesktopUrls}
+          disabled={savingDesktop}
+          style={{ width: "auto" }}
+        >
+          {savingDesktop ? "Saving…" : <><Check size={15} style={{ display: "inline", marginRight: 6 }} />Save Desktop Download Links</>}
+        </button>
       </div>
 
       {/* Toast notification */}

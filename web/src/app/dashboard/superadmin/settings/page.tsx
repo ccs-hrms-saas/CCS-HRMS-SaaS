@@ -233,6 +233,15 @@ export default function SuperAdminSettings() {
   const [apkConfig, setApkConfig] = useState<Record<string, string>>({});
   const [copied, setCopied]       = useState<string | null>(null);
 
+  // Desktop OS selector
+  const [desktopOs, setDesktopOs] = useState<"mac" | "win">("mac");
+
+  // Kiosk pairing PIN (superadmin self-service)
+  const [kioskModId,    setKioskModId]    = useState<string | null>(null);
+  const [kioskPin,      setKioskPin]      = useState<string | null>(null);
+  const [pinVisible,    setPinVisible]    = useState(false);
+  const [generatingPin, setGeneratingPin] = useState(false);
+
   useEffect(() => {
     setLogoPreview(settings.logo_url ?? null);
   }, [settings.logo_url]);
@@ -240,19 +249,40 @@ export default function SuperAdminSettings() {
   // Load white-label settings from DB
   useEffect(() => {
     if (!profile?.id) return;
-    const fetch = async () => {
+    const loadAll = async () => {
       const { data: prof } = await supabase.from("profiles").select("company_id").eq("id", profile.id).single();
       if (!prof?.company_id) return;
       setCompanyId(prof.company_id);
-      const { data: co } = await supabase.from("companies").select("white_label_tier, white_label_name, white_label_logo_url").eq("id", prof.company_id).single();
+
+      const [{ data: co }, { data: kioskMod }] = await Promise.all([
+        supabase.from("companies").select("white_label_tier, white_label_name, white_label_logo_url").eq("id", prof.company_id).single(),
+        supabase.from("company_modules").select("id, properties").eq("company_id", prof.company_id).eq("module_key", "kiosk_attendance").single(),
+      ]);
+
       if (co) {
         setWlTier(co.white_label_tier ?? 1);
         setWlName(co.white_label_name ?? "");
         setWlLogo(co.white_label_logo_url ?? "");
       }
+      if (kioskMod) {
+        setKioskModId(kioskMod.id);
+        setKioskPin((kioskMod.properties as any)?.setup_pin ?? null);
+      }
     };
-    fetch();
+    loadAll();
   }, [profile?.id]);
+
+  async function generateKioskPin() {
+    if (!kioskModId) return;
+    setGeneratingPin(true);
+    const pin = String(Math.floor(100000 + Math.random() * 900000));
+    const { data: mod } = await supabase.from("company_modules").select("properties").eq("id", kioskModId).single();
+    const newProps = { ...(mod?.properties ?? {}), setup_pin: pin };
+    await supabase.from("company_modules").update({ properties: newProps }).eq("id", kioskModId);
+    setKioskPin(pin);
+    setPinVisible(true);
+    setGeneratingPin(false);
+  }
 
   async function saveWhiteLabel() {
     if (!companyId) return;
@@ -756,13 +786,13 @@ export default function SuperAdminSettings() {
 
       {/* ── TAB: Mobile Apps / Downloads ──────────────────────────────────────── */}
       {tab === "downloads" && (() => {
-        const apps = [
+        const androidApps = [
           {
             key: 'kiosk',
             label: 'Kiosk Attendance App',
-            emoji: '🖥️',
-            desc: 'Install on a shared device at the entrance. Employees use it to clock in and out with a photo.',
-            shareMsg: 'Download the CCS-HRMS Kiosk Attendance App for your entrance device:',
+            emoji: '📟',
+            desc: 'Install on a shared Android tablet at the entrance. Employees clock in/out with PIN + photo.',
+            shareMsg: 'Download the CCS-HRMS Kiosk Attendance App:',
             urlKey: 'kiosk_apk_url',
             verKey: 'kiosk_apk_version',
           },
@@ -770,32 +800,77 @@ export default function SuperAdminSettings() {
             key: 'employee',
             label: 'Employee Mobile App',
             emoji: '📱',
-            desc: 'Share with every team member. Manage your attendance, leaves and HR info on the go.',
+            desc: 'Share with every team member. Manage attendance, leaves and HR info on the go.',
             shareMsg: 'Download the CCS-HRMS Employee App — manage your attendance and leaves:',
             urlKey: 'employee_apk_url',
             verKey: 'employee_apk_version',
           },
         ];
 
+        const desktopMacUrl = apkConfig['desktop_mac_url'] || '';
+        const desktopWinUrl = apkConfig['desktop_win_url'] || '';
+        const desktopVer    = apkConfig['desktop_kiosk_version'] || '1.0.0';
+        const desktopUrl    = desktopOs === 'mac' ? desktopMacUrl : desktopWinUrl;
+        const desktopQr     = desktopUrl
+          ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&color=6366f1&bgcolor=0d0d1a&data=${encodeURIComponent(desktopUrl)}`
+          : null;
+
         return (
-          <div>
-            <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginBottom: 28, maxWidth: 560 }}>
-              Download the Android apps below. Use the QR code or share the link with your team via WhatsApp.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px,1fr))', gap: 24 }}>
-              {apps.map(app => {
-                const url     = apkConfig[app.urlKey];
-                const version = apkConfig[app.verKey] || '—';
-                const qrSrc   = url
-                  ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&color=6366f1&bgcolor=0d0d1a&data=${encodeURIComponent(url)}`
-                  : null;
-                const waLink  = url
-                  ? `https://wa.me/?text=${encodeURIComponent(`${app.shareMsg}\n${url}`)}`
-                  : null;
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+
+            {/* ── Kiosk Pairing PIN (Superadmin Self-Service) ── */}
+            <div className="glass-panel" style={{ padding: 28, maxWidth: 560 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <div style={{ fontSize: '1.6rem' }}>🔑</div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '1rem' }}>Kiosk Device Pairing PIN</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 }}>Used to pair both the Android Kiosk APK and the Desktop Kiosk app</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', background: 'rgba(0,0,0,0.2)', borderRadius: 12, border: '1px solid var(--glass-border)', marginBottom: 14 }}>
+                <div style={{ fontFamily: 'monospace', fontSize: '1.8rem', letterSpacing: 10, fontWeight: 700, color: 'var(--accent-primary)', flex: 1 }}>
+                  {kioskPin ? (pinVisible ? kioskPin : '● ● ● ● ● ●') : '— — — —'}
+                </div>
+                {kioskPin && (
+                  <button onClick={() => setPinVisible(v => !v)}
+                    style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem' }}>
+                    {pinVisible ? '🙈 Hide' : '👁 Reveal'}
+                  </button>
+                )}
+                {kioskPin && pinVisible && (
+                  <button onClick={() => { navigator.clipboard.writeText(kioskPin!); setCopied('pin'); setTimeout(() => setCopied(null), 2000); }}
+                    style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: 'var(--accent-primary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600 }}>
+                    {copied === 'pin' ? '✅ Copied!' : '📋 Copy'}
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 16 }}>
+                {kioskPin
+                  ? 'Share this PIN with the person setting up the kiosk device. They will enter it during first-time pairing.'
+                  : 'No PIN set yet. Generate one to enable kiosk device pairing.'}
+              </div>
+              <button onClick={generateKioskPin} disabled={generatingPin}
+                style={{ padding: '10px 22px', borderRadius: 10, border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: 'var(--accent-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: '0.88rem', opacity: generatingPin ? 0.7 : 1 }}>
+                {generatingPin ? 'Generating…' : kioskPin ? '🔄 Regenerate PIN' : '⚡ Generate Pairing PIN'}
+              </button>
+            </div>
+
+            {/* ── Android Apps Row ── */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 1 }}>📱 Android Apps</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px,1fr))', gap: 20 }}>
+                {androidApps.map(app => {
+                  const url     = apkConfig[app.urlKey];
+                  const version = apkConfig[app.verKey] || '—';
+                  const qrSrc   = url
+                    ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&color=6366f1&bgcolor=0d0d1a&data=${encodeURIComponent(url)}`
+                    : null;
+                  const waLink  = url
+                    ? `https://wa.me/?text=${encodeURIComponent(`${app.shareMsg}\n${url}`)}`
+                    : null;
 
                 return (
                   <div key={app.key} className="glass-panel" style={{ padding: 28 }}>
-                    {/* Header */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
                       <div style={{ fontSize: '2.4rem', lineHeight: 1 }}>{app.emoji}</div>
                       <div>
@@ -855,7 +930,74 @@ export default function SuperAdminSettings() {
                   </div>
                 );
               })}
+              </div>
             </div>
+
+            {/* ── Desktop Kiosk App ── */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 1 }}>🖥️ Desktop Kiosk App (Windows &amp; macOS)</div>
+              <div className="glass-panel" style={{ padding: 28 }}>
+
+                {/* OS selector */}
+                <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+                  {(['mac', 'win'] as const).map(os => (
+                    <button key={os} onClick={() => setDesktopOs(os)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '12px 24px', borderRadius: 12, cursor: 'pointer',
+                        border: desktopOs === os ? '2px solid var(--accent-primary)' : '1px solid var(--glass-border)',
+                        background: desktopOs === os ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)',
+                        color: desktopOs === os ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                        fontFamily: 'inherit', fontWeight: 700, fontSize: '0.92rem',
+                        transition: 'all 0.2s',
+                      }}>
+                      <span style={{ fontSize: '1.4rem' }}>{os === 'mac' ? '🍎' : '🪟'}</span>
+                      {os === 'mac' ? 'macOS (.dmg)' : 'Windows (.exe)'}
+                    </button>
+                  ))}
+                </div>
+
+                {desktopUrl ? (
+                  <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: 600 }}>Scan to Download</div>
+                      <div style={{ width: 132, height: 132, borderRadius: 14, overflow: 'hidden', border: '2px solid rgba(99,102,241,0.4)', background: '#0d0d1a' }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={desktopQr!} alt="QR Code" width={130} height={130} style={{ display: 'block' }} />
+                      </div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                        <span style={{ fontSize: '0.72rem', padding: '2px 10px', borderRadius: 20, background: 'rgba(16,185,129,0.15)', color: '#34d399', fontWeight: 700 }}>v{desktopVer} · LIVE</span>
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', wordBreak: 'break-all', padding: '8px 12px', background: 'rgba(0,0,0,0.25)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)', marginBottom: 12, lineHeight: 1.5 }}>
+                        {desktopUrl}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button onClick={() => { navigator.clipboard.writeText(desktopUrl); setCopied('desktop'); setTimeout(() => setCopied(null), 2000); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: 'var(--accent-primary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.78rem', fontWeight: 600 }}>
+                          {copied === 'desktop' ? '✅ Copied!' : '📋 Copy Link'}
+                        </button>
+                        <a href={desktopUrl} download
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.1)', color: 'var(--success)', textDecoration: 'none', fontSize: '0.78rem', fontWeight: 600 }}>
+                          ⬇️ Download {desktopOs === 'mac' ? 'DMG' : 'EXE'}
+                        </a>
+                      </div>
+                      <div style={{ marginTop: 16, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        After installing, enter your <strong style={{ color: 'var(--text-primary)' }}>company code</strong> and the <strong style={{ color: 'var(--text-primary)' }}>Pairing PIN</strong> above to connect this device.
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '32px 20px', borderRadius: 14, border: '1px dashed var(--glass-border)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                    <div style={{ fontSize: '2.2rem', marginBottom: 10 }}>{desktopOs === 'mac' ? '🍎' : '🪟'}</div>
+                    <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--text-primary)' }}>Link Not Configured</div>
+                    <div>Your platform administrator will upload the {desktopOs === 'mac' ? 'macOS DMG' : 'Windows installer'} shortly.</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
           </div>
         );
       })()}
