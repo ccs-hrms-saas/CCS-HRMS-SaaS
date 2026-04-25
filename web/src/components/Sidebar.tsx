@@ -63,6 +63,7 @@ const adminNav: { href: string; label: string; moduleKey: string | null }[] = [
   { href: "/dashboard/admin/manual-attendance", label: "Overrides",      moduleKey: "overrides"        },
   { href: "/dashboard/admin/leave-settings",    label: "Leave Settings", moduleKey: "leave_settings"   },
   { href: "/dashboard/admin/holidays",          label: "Holidays",       moduleKey: "holidays"         },
+  { href: "/dashboard/admin/groups",            label: "Groups",         moduleKey: "employee_groups"  },
   { href: "/dashboard/admin/payroll",           label: "Payroll",          moduleKey: "payroll"          },
   { href: "/dashboard/admin/reports",           label: "Reports",          moduleKey: "reports"          },
   { href: "/dashboard/admin/reimbursements",    label: "Reimbursements",   moduleKey: "reimbursements"   },

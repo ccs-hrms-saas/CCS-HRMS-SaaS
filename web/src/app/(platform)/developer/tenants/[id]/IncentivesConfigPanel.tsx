@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { TrendingUp, BadgeDollarSign, Gem } from "lucide-react";
+import { TrendingUp, BadgeDollarSign, Gem, Sliders } from "lucide-react";
 import s from "./config-panel.module.css";
 
 interface Props {
@@ -11,32 +11,28 @@ interface Props {
   saving: boolean;
 }
 
-type IncentiveTier = "basic" | "standard" | "advanced";
+type IncentiveTier = "basic" | "standard" | "advanced" | "custom";
 
-const TIER_META: Record<
-  IncentiveTier,
-  { label: string; badge: string; badgeClass: string; desc: string; icon: React.ElementType }
-> = {
+const TIER_META: Record<IncentiveTier, { label: string; badge: string; badgeClass: string; desc: string; icon: React.ElementType }> = {
   basic: {
-    label: "Basic",
-    badge: "Tier 1",
-    badgeClass: s.tierBadgeBasic,
-    desc: "1 active plan. Flat payout only. Fixed-value goals only. Standard tenures (weekly → yearly).",
+    label: "Basic", badge: "Tier 1", badgeClass: s.tierBadgeBasic,
+    desc: "1 active plan. Flat payout only. Fixed-value goals. Standard tenures.",
     icon: TrendingUp,
   },
   standard: {
-    label: "Standard",
-    badge: "Tier 2",
-    badgeClass: s.tierBadgeStandard,
-    desc: "Up to 5 plans. % or flat payout with upper cap. Open-ended values. Minimum target cap. Multi-goal per plan.",
+    label: "Standard", badge: "Tier 2", badgeClass: s.tierBadgeStandard,
+    desc: "Up to 5 plans. % or flat payout with cap. Open-ended values. Multi-goal.",
     icon: BadgeDollarSign,
   },
   advanced: {
-    label: "Advanced",
-    badge: "Tier 3",
-    badgeClass: s.tierBadgeAdvanced,
-    desc: "Unlimited plans & goals. Custom date tenure. Role/dept scoping. Payslip integration. Self-reporting.",
+    label: "Advanced", badge: "Tier 3", badgeClass: s.tierBadgeAdvanced,
+    desc: "Unlimited plans & goals. Custom tenure. Role/dept scoping. Payslip integration.",
     icon: Gem,
+  },
+  custom: {
+    label: "Custom", badge: "Custom", badgeClass: s.tierBadgeCustom,
+    desc: "Hand-pick any incentive features individually.",
+    icon: Sliders,
   },
 };
 
@@ -101,78 +97,43 @@ export default function IncentivesConfigPanel({ props, onChange, onSave, saving 
   const tier = (props.tier ?? "basic") as IncentiveTier;
   const isStd = tier !== "basic";
   const isAdv = tier === "advanced";
-
+  const isCust = tier === "custom";
+  const locked = (rs: boolean, ra: boolean) => isCust ? false : ra ? !isAdv : rs ? !isStd : false;
   const set = (partial: Record<string, any>) => onChange({ ...props, ...partial });
-
   const [customKey, setCustomKey] = useState("");
   const [customVal, setCustomVal] = useState("");
 
   return (
-    <div>
-      {/* ── Tier Selector ──────────────────────────────────────────────── */}
-      <div className={s.tierGrid}>
-        {(["basic", "standard", "advanced"] as IncentiveTier[]).map((t) => {
-          const m = TIER_META[t];
-          const Icon = m.icon;
-          return (
-            <div
-              key={t}
-              className={`${s.tierCard} ${tier === t ? s.active : ""}`}
-              onClick={() => {
-                const base: Record<string, any> = { ...props, tier: t };
-                if (t === "basic") {
-                  base.max_active_plans             = 1;
-                  base.multi_goal_enabled           = false;
-                  base.open_ended_value_enabled     = false;
-                  base.target_cap_enabled           = false;
-                  base.percentage_payout_enabled    = false;
-                  base.payout_upper_cap_enabled     = false;
-                  base.custom_tenure_enabled        = false;
-                  base.role_scoping_enabled         = false;
-                  base.department_scoping_enabled   = false;
-                  base.show_in_payslip              = false;
-                  base.self_reporting_enabled       = false;
-                }
-                if (t === "standard") {
-                  base.max_active_plans             = 5;
-                  base.multi_goal_enabled           = true;
-                  base.open_ended_value_enabled     = true;
-                  base.target_cap_enabled           = true;
-                  base.percentage_payout_enabled    = true;
-                  base.payout_upper_cap_enabled     = true;
-                  base.custom_tenure_enabled        = false;
-                  base.role_scoping_enabled         = false;
-                  base.department_scoping_enabled   = false;
-                  base.show_in_payslip              = false;
-                  base.self_reporting_enabled       = false;
-                }
-                if (t === "advanced") {
-                  base.max_active_plans             = null; // unlimited
-                  base.multi_goal_enabled           = true;
-                  base.open_ended_value_enabled     = true;
-                  base.target_cap_enabled           = true;
-                  base.percentage_payout_enabled    = true;
-                  base.payout_upper_cap_enabled     = true;
-                  base.custom_tenure_enabled        = true;
-                  base.role_scoping_enabled         = true;
-                  base.department_scoping_enabled   = true;
-                  base.show_in_payslip              = true;
-                  base.self_reporting_enabled       = true;
-                }
-                onChange(base);
-              }}
-            >
-              <div>
-                <span className={`${s.tierBadge} ${m.badgeClass}`}>{m.badge}</span>
+    <div className={s.panelLayout}>
+      <div className={s.tierColumn}>
+        <div className={s.tierColumnLabel}>Plan Tier</div>
+        <div className={s.tierGrid}>
+          {(["basic", "standard", "advanced", "custom"] as IncentiveTier[]).map(t => {
+            const m = TIER_META[t]; const Icon = m.icon;
+            return (
+              <div key={t} className={`${s.tierCard} ${tier === t ? s.active : ""}`}
+                onClick={() => {
+                  const base: Record<string, any> = { ...props, tier: t };
+                  if (t === "basic") { base.max_active_plans=1; base.multi_goal_enabled=false; base.open_ended_value_enabled=false; base.target_cap_enabled=false; base.percentage_payout_enabled=false; base.payout_upper_cap_enabled=false; base.custom_tenure_enabled=false; base.role_scoping_enabled=false; base.department_scoping_enabled=false; base.show_in_payslip=false; base.self_reporting_enabled=false; }
+                  if (t === "standard") { base.max_active_plans=5; base.multi_goal_enabled=true; base.open_ended_value_enabled=true; base.target_cap_enabled=true; base.percentage_payout_enabled=true; base.payout_upper_cap_enabled=true; }
+                  if (t === "advanced") { base.max_active_plans=null; base.multi_goal_enabled=true; base.open_ended_value_enabled=true; base.target_cap_enabled=true; base.percentage_payout_enabled=true; base.payout_upper_cap_enabled=true; base.custom_tenure_enabled=true; base.role_scoping_enabled=true; base.department_scoping_enabled=true; base.show_in_payslip=true; base.self_reporting_enabled=true; }
+                  onChange(base);
+                }}>
+                <div><span className={`${s.tierBadge} ${m.badgeClass}`}>{m.badge}</span></div>
+                <Icon size={16} color={tier === t ? "#6366f1" : "#475569"} />
+                <div className={s.tierName}>{m.label}</div>
+                <div className={s.tierDesc}>{m.desc}</div>
               </div>
-              <Icon size={20} color={tier === t ? "#6366f1" : "#475569"} style={{ margin: "6px auto" }} />
-              <div className={s.tierName}>{m.label}</div>
-              <div className={s.tierDesc}>{m.desc}</div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+        {isCust && (
+          <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.2)", fontSize: "0.72rem", color: "#fb923c", lineHeight: 1.5 }}>
+            🎛️ Custom — all features individually togglable.
+          </div>
+        )}
       </div>
-
+      <div className={s.featuresColumn}>
       {/* ── Capacity ───────────────────────────────────────────────────── */}
       <div className={s.section}>
         <div className={s.sectionHead}>
@@ -415,6 +376,7 @@ export default function IncentivesConfigPanel({ props, onChange, onSave, saving 
           {saving ? "Saving…" : "💾 Save Incentives Config"}
         </button>
       </div>
+    </div>
     </div>
   );
 }

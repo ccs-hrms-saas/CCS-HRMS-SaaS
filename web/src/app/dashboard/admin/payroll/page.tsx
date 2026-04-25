@@ -8,6 +8,7 @@ import {
   getWorkingDaysInMonth,
   isWorkingDay,
   buildWorkSchedule,
+  fetchEmployeeHolidays,
 } from "@/lib/dateUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -28,6 +29,8 @@ interface PayrollRow {
   remainingWorkingDays: number;
   dailyRate: number;
   deductions: number;
+  overtimeHours: number;
+  overtimePayout: number;
   finalPayout: number;
   projectedPayout: number;
 }
@@ -87,8 +90,7 @@ export default function AdminPayroll() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const [holsRes, attnRes, leavesRes, leaveTypesRes, adjsRes] = await Promise.all([
-      supabase.from("company_holidays").select("date").eq("company_id", profile!.company_id),
+    const [attnRes, leavesRes, leaveTypesRes, adjsRes, otRes] = await Promise.all([
       supabase
         .from("attendance_records")
         .select("user_id, date, check_in")
@@ -113,13 +115,60 @@ export default function AdminPayroll() {
         .eq("adjusted_against", "LWP")
         .gte("adjustment_date", mStartStr)
         .lte("adjustment_date", mEndStr),
+      // Overtime hours summed per employee for this month
+      supabase
+        .from("attendance_records")
+        .select("user_id, overtime_hours")
+        .eq("company_id", profile!.company_id)
+        .gte("date", mStartStr)
+        .lte("date", mEndStr)
+        .gt("overtime_hours", 0),
     ]);
 
-    const holidays = new Set<string>((holsRes.data ?? []).map((h: any) => h.date));
+    // ── Build global (scope='all') + group-scoped holiday set per employee ──
+    // First fetch the raw holiday list with scope info
+    const { data: rawHols } = await supabase
+      .from("company_holidays")
+      .select("id, date, scope")
+      .eq("company_id", profile!.company_id);
+
+    const globalHolDates = (rawHols ?? []).filter((h: any) => h.scope !== "group").map((h: any) => h.date as string);
+    const globalHolidays = new Set<string>(globalHolDates);
+
+    const hasGroupHols = (rawHols ?? []).some((h: any) => h.scope === "group");
+
+    // Pre-build per-employee holiday sets (only if group-scoped holidays exist)
+    // Map: userId → Set<dateStr>
+    const empHolidayMap = new Map<string, Set<string>>();
+    if (hasGroupHols) {
+      await Promise.all(
+        employees.map(async (emp: any) => {
+          const hols = await fetchEmployeeHolidays(supabase, profile!.company_id!, emp.id);
+          empHolidayMap.set(emp.id, hols);
+        })
+      );
+    }
+
+    const getEmpHolidays = (empId: string): Set<string> =>
+      hasGroupHols ? (empHolidayMap.get(empId) ?? globalHolidays) : globalHolidays;
+
     const attendance = attnRes.data ?? [];
-    const allLeaves = leavesRes.data ?? [];
+    const allLeaves  = leavesRes.data ?? [];
     const leaveTypes = leaveTypesRes.data ?? [];
-    const adjs = adjsRes.data ?? [];
+    const adjs       = adjsRes.data ?? [];
+
+    // Overtime hours per employee (summed from attendance_records.overtime_hours)
+    const otEnabled = !!(appSettings?.overtime_tracking);
+    const otRateType  = appSettings?.overtime_rate_type  ?? "flat";
+    const otRateValue = Number(appSettings?.overtime_rate_value ?? 0);
+    const otCapHrs    = Number(appSettings?.overtime_monthly_cap_hrs ?? 0);
+
+    const otHoursMap = new Map<string, number>();
+    if (otEnabled) {
+      (otRes.data ?? []).forEach((r: any) => {
+        otHoursMap.set(r.user_id, (otHoursMap.get(r.user_id) ?? 0) + Number(r.overtime_hours ?? 0));
+      });
+    }
 
     // Build set of unpaid leave type names (LWP + any custom unpaid)
     const unpaidLeaveNames = new Set<string>(
@@ -177,10 +226,11 @@ export default function AdminPayroll() {
 
       // Count target working days: effectiveStart → monthEnd
       let targetDays = 0;
+      const empHols = getEmpHolidays(emp.id);
       {
         const c = new Date(effectiveStart);
         while (c <= mEnd) {
-          if (isWorkingDay(c, holidays, empSchedule)) targetDays++;
+          if (isWorkingDay(c, empHols, empSchedule)) targetDays++;
           c.setDate(c.getDate() + 1);
         }
       }
@@ -208,7 +258,7 @@ export default function AdminPayroll() {
 
         const c = new Date(effectiveStart);
         while (c <= mEnd) {
-          if (isWorkingDay(c, holidays, empSchedule)) {
+          if (isWorkingDay(c, empHols, empSchedule)) {
             const ds = c.toISOString().split("T")[0];
             if (c <= lastDateToCount) {
               if (punches.has(ds)) {
@@ -229,13 +279,32 @@ export default function AdminPayroll() {
         const graceDaysUsed = Math.min(lwpRaw, graceDays);
         const effectiveLwpDays = Math.max(0, lwpRaw - graceDaysUsed);
         const deductions = effectiveLwpDays * dailyRate;
-        const finalPayout = Math.max(0, remuneration - deductions);
-        const projectedPayout = Math.min(remuneration, finalPayout + remainingWorkingDays * dailyRate);
+
+        // Overtime payout
+        const rawOtHours = otHoursMap.get(emp.id) ?? 0;
+        const cappedOtHours = otCapHrs > 0 ? Math.min(rawOtHours, otCapHrs) : rawOtHours;
+        let overtimePayout = 0;
+        if (otEnabled && otRateValue > 0 && cappedOtHours > 0) {
+          if (otRateType === "flat") {
+            overtimePayout = cappedOtHours * otRateValue;
+          } else {
+            // multiplier: hourly rate = dailyRate / hours_per_day
+            const hoursPerDay = Number(emp.hours_per_day ?? appSettings?.hours_per_day ?? 8.5);
+            const hourlyRate = dailyRate / hoursPerDay;
+            overtimePayout = cappedOtHours * hourlyRate * otRateValue;
+          }
+          overtimePayout = Math.round(overtimePayout * 100) / 100;
+        }
+
+        const finalPayout = Math.max(0, remuneration - deductions) + overtimePayout;
+        const projectedPayout = Math.min(remuneration, Math.max(0, remuneration - deductions) + remainingWorkingDays * dailyRate) + overtimePayout;
 
         return {
           ...emp, targetDays, effectiveStart: effectiveStart.toISOString().split("T")[0],
           daysPresent: daysPresent - paidLeaveDays, paidLeaveDays, lwpDays: effectiveLwpDays,
-          graceDaysUsed, remainingWorkingDays, dailyRate, deductions, finalPayout, projectedPayout,
+          graceDaysUsed, remainingWorkingDays, dailyRate, deductions,
+          overtimeHours: cappedOtHours, overtimePayout,
+          finalPayout, projectedPayout,
         };
       }
 
@@ -247,20 +316,35 @@ export default function AdminPayroll() {
           const c = new Date(l.start_date);
           const e = new Date(l.end_date);
           while (c <= e) {
-            if (isWorkingDay(c, holidays, empSchedule)) lwpDays++;
+            if (isWorkingDay(c, empHols, empSchedule)) lwpDays++;
             c.setDate(c.getDate() + 1);
           }
         });
-        // Deficit adjustments counted against LWP
-        const adjHours = adjMap.get(emp.id) ?? 0;
+      // ── Overtime for formal LWP mode ─────────────────────────────────────
+      const rawOtHrsFormal = otHoursMap.get(emp.id) ?? 0;
+      const cappedOtFormal = otCapHrs > 0 ? Math.min(rawOtHrsFormal, otCapHrs) : rawOtHrsFormal;
+      let overtimePayoutFormal = 0;
+      if (otEnabled && otRateValue > 0 && cappedOtFormal > 0) {
+        if (otRateType === "flat") {
+          overtimePayoutFormal = cappedOtFormal * otRateValue;
+        } else {
+          const hoursPerDay = Number(emp.hours_per_day ?? appSettings?.hours_per_day ?? 8.5);
+          overtimePayoutFormal = cappedOtFormal * (dailyRate / hoursPerDay) * otRateValue;
+        }
+        overtimePayoutFormal = Math.round(overtimePayoutFormal * 100) / 100;
+      }
+
+      const adjHours = adjMap.get(emp.id) ?? 0;
         lwpDays += adjHours / (emp.hours_per_day ?? orgHoursPerDay ?? 8.5);
 
         const deductions = lwpDays * dailyRate;
-        const finalPayout = Math.max(0, remuneration - deductions);
+        const finalPayout = Math.max(0, remuneration - deductions) + overtimePayoutFormal;
         return {
           ...emp, targetDays, effectiveStart: effectiveStart.toISOString().split("T")[0],
           daysPresent: 0, paidLeaveDays: 0, lwpDays, graceDaysUsed: 0,
-          remainingWorkingDays: 0, dailyRate, deductions, finalPayout, projectedPayout: finalPayout,
+          remainingWorkingDays: 0, dailyRate, deductions,
+          overtimeHours: cappedOtFormal, overtimePayout: overtimePayoutFormal,
+          finalPayout, projectedPayout: finalPayout,
         };
       }
     });
@@ -279,13 +363,17 @@ export default function AdminPayroll() {
       company_id: profile!.company_id,
       year,
       month,
-      base_remuneration: r.remuneration,
-      daily_rate: r.dailyRate,
-      total_lwp_days: r.lwpDays,
-      deductions_amount: r.deductions,
-      final_payout: r.finalPayout,
-      projected_payout: r.projectedPayout,
-      status: "Processed",
+      base_remuneration:    r.remuneration,
+      daily_rate:           r.dailyRate,
+      total_lwp_days:       r.lwpDays,
+      deductions_amount:    r.deductions,
+      total_overtime_hours: r.overtimeHours,
+      overtime_rate_type:   appSettings?.overtime_rate_type  ?? "flat",
+      overtime_rate_value:  Number(appSettings?.overtime_rate_value ?? 0),
+      overtime_payout:      r.overtimePayout,
+      final_payout:         r.finalPayout,
+      projected_payout:     r.projectedPayout,
+      status:               "Processed",
     }));
 
     await supabase
@@ -430,6 +518,16 @@ export default function AdminPayroll() {
                     <td style={{ color: "var(--danger)" }}>
                       -₹{r.deductions.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                     </td>
+                    {appSettings?.overtime_tracking && (
+                      <td style={{ textAlign: "center", color: r.overtimePayout > 0 ? "#f59e0b" : "var(--text-secondary)", fontWeight: r.overtimePayout > 0 ? 700 : 400 }}>
+                        {r.overtimeHours > 0 ? (
+                          <>
+                            <div>{r.overtimeHours.toFixed(1)}h</div>
+                            <div style={{ fontSize: "0.75rem" }}>+₹{r.overtimePayout.toLocaleString("en-IN", { minimumFractionDigits: 0 })}</div>
+                          </>
+                        ) : "—"}
+                      </td>
+                    )}
                     <td style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--success)" }}>
                       ₹{r.finalPayout.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                     </td>

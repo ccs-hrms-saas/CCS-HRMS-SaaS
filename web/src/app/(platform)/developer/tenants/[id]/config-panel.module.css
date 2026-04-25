@@ -3,23 +3,44 @@
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Tier Selector ─────────────────────────────────────────────────────── */
-.tierGrid {
+/* ── 2-column panel layout ─────────────────────────────────────────── */
+.panelLayout {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-bottom: 24px;
+  grid-template-columns: 220px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.tierColumn {
+  position: sticky;
+  top: 0;
+}
+
+.featuresColumn {
+  min-width: 0;
+}
+
+/* ── Tier Selector ─────────────────────────────────────────────────── */
+.tierGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 0;
 }
 
 .tierCard {
-  padding: 14px 12px;
-  border-radius: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
   border: 2px solid transparent;
   background: rgba(255,255,255,0.03);
   cursor: pointer;
-  text-align: center;
+  text-align: left;
   transition: all 0.2s;
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .tierCard:hover {
@@ -46,18 +67,30 @@
 .tierBadgeBasic    { background: rgba(16,185,129,0.15);  color: #34d399; }
 .tierBadgeStandard { background: rgba(99,102,241,0.15);  color: #818cf8; }
 .tierBadgeAdvanced { background: rgba(245,158,11,0.15);  color: #fbbf24; }
+.tierBadgeCustom   { background: rgba(249,115,22,0.15);  color: #fb923c; }
 
 .tierName {
-  font-size: 0.85rem;
+  font-size: 0.83rem;
   font-weight: 700;
   color: var(--text-primary, #f1f5f9);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .tierDesc {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--text-secondary, #64748b);
   line-height: 1.4;
+}
+
+/* Tier column header label */
+.tierColumnLabel {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-secondary, #64748b);
+  margin-bottom: 10px;
+  padding: 0 2px;
 }
 
 /* ── Section ────────────────────────────────────────────────────────────── */

@@ -40,6 +40,8 @@ const emptyForm = {
   short_leave_allowed: false, short_leaves_per_leave: 4,
   co_employee_can_split: false, co_expiry_days: "",
   max_consecutive_days: "",
+  // Phase C — no-ledger + custom cycle
+  no_ledger: false, ledger_cycle: "yearly",
 };
 
 // ── Reusable sub-components ───────────────────────────────────────────────────
@@ -64,8 +66,15 @@ export default function LeaveSettings() {
   const { getProps } = useModules();
   const modProps     = getProps("leave_settings");
   const isAdvanced   = modProps.tier === "advanced";
-  // Tier 2+ (Standard+): org can change hours anytime
-  const canEditHours = !!(modProps.org_hours_configurable);
+  // Developer-controlled feature flags
+  const canEditHours             = !!(modProps.org_hours_configurable);
+  const devHalfDayAllowed        = modProps.half_day_allowed !== false;
+  const devShortLeaveAllowed     = modProps.short_leave_allowed !== false;
+  const devSACanConfigPartial    = modProps.superadmin_can_configure_partial_day !== false;
+  const devDefaultHalfDays       = modProps.default_half_days_per_leave ?? 2;
+  const devDefaultShortLeaves    = modProps.default_short_leaves_per_leave ?? 4;
+  // Phase C: no-ledger feature gate
+  const devNoLedgerAllowed       = modProps.allow_no_ledger_leaves !== false;
   // Working hours state
   const [hoursPerDay, setHoursPerDay]   = useState<number>(8.5);
   const [hoursSetAt, setHoursSetAt]     = useState<string | null>(null);
@@ -73,7 +82,14 @@ export default function LeaveSettings() {
 
   // ── App settings / work schedule ──────────────────────────────────────────
   const [settings, setSettings]         = useState<any>(null);
-  const [scheduleForm, setScheduleForm] = useState({ week_off_type: "fixed", week_off_days: [0], overtime_tracking: false });
+  const [scheduleForm, setScheduleForm] = useState({
+    week_off_type: "fixed",
+    week_off_days: [0] as number[],
+    overtime_tracking: false,
+    overtime_rate_type: "flat",
+    overtime_rate_value: 0,
+    overtime_monthly_cap_hrs: 0,
+  });
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
@@ -96,9 +112,12 @@ export default function LeaveSettings() {
     if (sett) {
       setSettings(sett);
       setScheduleForm({
-        week_off_type:    sett.week_off_type ?? "fixed",
-        week_off_days:    sett.week_off_days ?? [0],
-        overtime_tracking: sett.overtime_tracking ?? false,
+        week_off_type:             sett.week_off_type ?? "fixed",
+        week_off_days:             sett.week_off_days ?? [0],
+        overtime_tracking:         sett.overtime_tracking ?? false,
+        overtime_rate_type:        sett.overtime_rate_type ?? "flat",
+        overtime_rate_value:       Number(sett.overtime_rate_value ?? 0),
+        overtime_monthly_cap_hrs:  Number(sett.overtime_monthly_cap_hrs ?? 0),
       });
       setHoursPerDay(sett.hours_per_day ?? 8.5);
       setHoursSetAt(sett.hours_per_day_set_at ?? null);
@@ -112,9 +131,12 @@ export default function LeaveSettings() {
   const saveSchedule = async () => {
     setSavingSchedule(true);
     await supabase.from("app_settings").update({
-      week_off_type:    scheduleForm.week_off_type,
-      week_off_days:    scheduleForm.week_off_type === "fixed" ? scheduleForm.week_off_days : [],
-      overtime_tracking: scheduleForm.overtime_tracking,
+      week_off_type:             scheduleForm.week_off_type,
+      week_off_days:             scheduleForm.week_off_type === "fixed" ? scheduleForm.week_off_days : [],
+      overtime_tracking:         scheduleForm.overtime_tracking,
+      overtime_rate_type:        scheduleForm.overtime_rate_type,
+      overtime_rate_value:       scheduleForm.overtime_rate_value,
+      overtime_monthly_cap_hrs:  scheduleForm.overtime_monthly_cap_hrs,
     }).eq("company_id", settings?.company_id);
     setSavingSchedule(false);
     load();
@@ -173,6 +195,9 @@ export default function LeaveSettings() {
       short_leaves_per_leave:      Number(form.short_leaves_per_leave),
       is_ml_type:                  cat === "ml",
       counts_as_lwp_for_payroll:   cat === "lwp",
+      // Phase C
+      no_ledger:                   !!form.no_ledger,
+      ledger_cycle:                form.no_ledger ? null : (form.ledger_cycle || "yearly"),
     };
     if (editing) await supabase.from("leave_types").update(payload).eq("id", editing.id);
     else          await supabase.from("leave_types").insert(payload);
@@ -276,17 +301,91 @@ export default function LeaveSettings() {
               </div>
             )}
 
-            {/* Overtime */}
+            {/* Overtime tracking toggle */}
             <div>
               <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-secondary)", marginBottom: 8 }}>Overtime</div>
               <Toggle
                 label="Track overtime hours"
-                note="Calculated vs office end time. Never shown to employees — superadmin view only."
+                note="Hours worked beyond daily target are logged per attendance punch."
                 checked={scheduleForm.overtime_tracking}
                 onChange={(v: boolean) => isAdvanced && setScheduleForm(f => ({ ...f, overtime_tracking: v }))}
                 disabled={!isAdvanced}
               />
             </div>
+
+            {/* Overtime Payout Config — shown when tracking is ON */}
+            {scheduleForm.overtime_tracking && (
+              <div style={{ padding: "16px 18px", borderRadius: 12, background: "rgba(245,158,11,0.05)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                <div style={{ fontWeight: 700, fontSize: "0.82rem", color: "#f59e0b", marginBottom: 14 }}>⏱ Overtime Payout Configuration</div>
+
+                {/* Rate type */}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginBottom: 8 }}>Payout type</div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    {(["flat", "multiplier"] as const).map(t => (
+                      <button
+                        type="button" key={t}
+                        onClick={() => isAdvanced && setScheduleForm(f => ({ ...f, overtime_rate_type: t }))}
+                        style={{
+                          flex: 1, padding: "9px 14px", borderRadius: 9, cursor: isAdvanced ? "pointer" : "not-allowed",
+                          border: `2px solid ${scheduleForm.overtime_rate_type === t ? "#f59e0b" : "rgba(255,255,255,0.08)"}`,
+                          background: scheduleForm.overtime_rate_type === t ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.03)",
+                          color: scheduleForm.overtime_rate_type === t ? "#f59e0b" : "var(--text-secondary)",
+                          fontSize: "0.8rem", fontWeight: scheduleForm.overtime_rate_type === t ? 700 : 400,
+                          transition: "all 0.15s",
+                        }}
+                      >
+                        {t === "flat" ? "⚡ Flat ₹/hour" : "✖ Multiplier of daily rate"}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginTop: 6 }}>
+                    {scheduleForm.overtime_rate_type === "flat"
+                      ? "e.g. ₹50/h → employee works 3h OT → Overtime Allowance: ₹150"
+                      : "e.g. 1.5 → employee's ₹800/day ÷ 8.5h × 1.5 = ₹141/h OT rate"}
+                  </div>
+                </div>
+
+                {/* Rate value + cap */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginBottom: 6, display: "block" }}>
+                      {scheduleForm.overtime_rate_type === "flat" ? "Rate (₹ per hour)" : "Multiplier (e.g. 1.5)"}
+                    </label>
+                    <input
+                      type="number" step={scheduleForm.overtime_rate_type === "flat" ? "1" : "0.25"}
+                      min="0" className="premium-input"
+                      value={scheduleForm.overtime_rate_value}
+                      disabled={!isAdvanced}
+                      onChange={e => setScheduleForm(f => ({ ...f, overtime_rate_value: Number(e.target.value) }))}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginBottom: 6, display: "block" }}>
+                      Monthly Cap (hours, 0 = no cap)
+                    </label>
+                    <input
+                      type="number" step="0.5" min="0" className="premium-input"
+                      value={scheduleForm.overtime_monthly_cap_hrs}
+                      disabled={!isAdvanced}
+                      onChange={e => setScheduleForm(f => ({ ...f, overtime_monthly_cap_hrs: Number(e.target.value) }))}
+                    />
+                  </div>
+                </div>
+
+                {/* Live preview */}
+                {scheduleForm.overtime_rate_value > 0 && (
+                  <div style={{ marginTop: 12, padding: "9px 12px", borderRadius: 8, background: "rgba(0,0,0,0.2)", fontSize: "0.78rem", color: "var(--text-secondary)" }}>
+                    <strong style={{ color: "#f59e0b" }}>Preview:</strong>{" "}
+                    {scheduleForm.overtime_rate_type === "flat"
+                      ? `Employee works 4h OT → Overtime Allowance: ₹${(4 * scheduleForm.overtime_rate_value).toLocaleString("en-IN")}`
+                      : `Employee (₹25,000/mo, ${settings?.hours_per_day ?? 8.5}h/day, 26 days) works 4h OT → Overtime Allowance: ₹${Math.round(25000 / 26 / (settings?.hours_per_day ?? 8.5) * scheduleForm.overtime_rate_value * 4).toLocaleString("en-IN")}`
+                    }
+                    {scheduleForm.overtime_monthly_cap_hrs > 0 && ` (capped at ${scheduleForm.overtime_monthly_cap_hrs}h/month)`}
+                  </div>
+                )}
+              </div>
+            )}
 
             {isAdvanced && (
               <div>
@@ -365,7 +464,12 @@ export default function LeaveSettings() {
                   </td>
                   <td>
                     {t.accrual_rate ? `1 per ${t.accrual_rate} days worked` : `${t.max_days_per_year} days`}
-                    <br /><span style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>Per {t.frequency}</span>
+                    <br /><span style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>
+                      {t.no_ledger
+                        ? <span style={{ color: "#fb923c", fontWeight: 700 }}>No Ledger</span>
+                        : <>Per {t.frequency} · {t.ledger_cycle && t.ledger_cycle !== "yearly" ? `${({"monthly":"Monthly","3monthly":"Quarterly","6monthly":"Half-Yrly"} as Record<string,string>)[t.ledger_cycle] ?? t.ledger_cycle} cycle` : "Yearly cycle"}</>
+                      }
+                    </span>
                   </td>
                   <td>{t.deduction_hours}h/day</td>
                   <td>{t.allow_carry_forward ? `${t.carry_forward_percent}% (max ${t.max_carry_forward}d)` : "—"}</td>
@@ -407,7 +511,26 @@ export default function LeaveSettings() {
             </div>
             <form onSubmit={save} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 
-              {/* Name + frequency */}
+              {/* ── No-Ledger toggle (shown when feature is ON for this tenant) ── */}
+              {devNoLedgerAllowed && (
+                <div style={{ padding: "10px 14px", borderRadius: 10, background: form.no_ledger ? "rgba(249,115,22,0.08)" : "rgba(0,0,0,0.15)", border: `1px solid ${form.no_ledger ? "rgba(249,115,22,0.3)" : "var(--glass-border)"}`, transition: "all 0.2s" }}>
+                  <Toggle
+                    label={
+                      <span style={{ fontWeight: 700 }}>
+                        Informal / No-Ledger Leave
+                        {form.no_ledger && <span style={{ marginLeft: 8, fontSize: "0.7rem", color: "#fb923c", fontWeight: 600 }}>ON — no balance tracking</span>}
+                      </span>
+                    }
+                    checked={form.no_ledger}
+                    onChange={(v: boolean) => setForm({ ...form, no_ledger: v })}
+                    note={form.no_ledger
+                      ? "Employee can apply any time. Approved = no deduction. Rejected = LWP (if unpaid)."
+                      : "Turn on for informal/retail leave types that don't use a balance ledger."}
+                  />
+                </div>
+              )}
+
+              {/* Name + frequency — always shown */}
               <div className={styles.formGroup} style={{ marginBottom: 0 }}>
                 <label>Leave Name *</label>
                 <input className="premium-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required placeholder="e.g. Casual Leave" />
@@ -418,27 +541,44 @@ export default function LeaveSettings() {
                 )}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div className={styles.formGroup} style={{ marginBottom: 0 }}>
-                  <label>Max Days *</label>
-                  <input type="number" className="premium-input" value={form.max_days_per_year} onChange={e => setForm({ ...form, max_days_per_year: e.target.value })} />
-                </div>
-                <div className={styles.formGroup} style={{ marginBottom: 0 }}>
-                  <label>Frequency</label>
-                  <select className="premium-input" value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>
-                    <option value="yearly">Yearly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
-                </div>
-              </div>
+              {/* Max Days + Frequency + Ledger Cycle — hidden for no-ledger types */}
+              {!form.no_ledger && (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                      <label>Max Days *</label>
+                      <input type="number" className="premium-input" value={form.max_days_per_year} onChange={e => setForm({ ...form, max_days_per_year: e.target.value })} />
+                    </div>
+                    <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                      <label>Ledger Cycle</label>
+                      <select className="premium-input" value={form.ledger_cycle} onChange={e => setForm({ ...form, ledger_cycle: e.target.value })}>
+                        <option value="yearly">Yearly (Jan–Dec or Apr–Mar FY)</option>
+                        <option value="monthly">Monthly (resets each month)</option>
+                        <option value="3monthly">Quarterly (Q1/Q2/Q3/Q4)</option>
+                        <option value="6monthly">Half-Yearly (H1/H2)</option>
+                      </select>
+                    </div>
+                  </div>
+                  {/* Frequency — only relevant for yearly/monthly (hidden for quarterly/half-yearly which use their own cycle) */}
+                  {(form.ledger_cycle === "yearly" || form.ledger_cycle === "monthly") && (
+                    <div className={styles.formGroup} style={{ marginBottom: 0 }}>
+                      <label>Frequency (how allowance is given)</label>
+                      <select className="premium-input" value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>
+                        <option value="yearly">Yearly lump sum</option>
+                        <option value="monthly">Monthly increment</option>
+                      </select>
+                    </div>
+                  )}
+                </>
+              )}
 
-              {/* Basic flags */}
+              {/* Basic flags — always shown, but some hidden for no-ledger */}
               <div style={{ display: "flex", gap: 20, flexWrap: "wrap", padding: 14, background: "rgba(0,0,0,0.2)", borderRadius: 12, border: "1px solid var(--glass-border)" }}>
                 {[
-                  { label: "Is Paid",             field: "is_paid" },
+                  { label: "Is Paid",                field: "is_paid" },
                   { label: "Holidays count as leave", field: "count_holidays" },
-                  { label: "Allow Carry Forward", field: "allow_carry_forward" },
-                  { label: "Requires Document",   field: "requires_attachment" },
+                  ...(!form.no_ledger ? [{ label: "Allow Carry Forward", field: "allow_carry_forward" }] : []),
+                  { label: "Requires Document",      field: "requires_attachment" },
                 ].map(({ label, field }) => (
                   <label key={field} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
                     <input type="checkbox" checked={!!form[field]} onChange={e => setForm({ ...form, [field]: e.target.checked })} style={{ accentColor: "var(--accent-primary)", width: 15, height: 15 }} />
@@ -447,8 +587,8 @@ export default function LeaveSettings() {
                 ))}
               </div>
 
-              {/* Carry forward config */}
-              {form.allow_carry_forward && (
+              {/* Carry forward config — hidden for no-ledger types */}
+              {!form.no_ledger && form.allow_carry_forward && (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div className={styles.formGroup} style={{ marginBottom: 0 }}>
                     <label>Carry Forward %</label>
@@ -473,22 +613,61 @@ export default function LeaveSettings() {
               {showHalfShort && (
                 <>
                   <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 12, fontSize: "0.75rem", fontWeight: 700, color: "#818cf8", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                    Half Day & Short Leave
+                    Half Day &amp; Short Leave
                   </div>
-                  <Toggle label="Allow half day applications" checked={form.half_day_allowed} onChange={(v: boolean) => setForm({ ...form, half_day_allowed: v })} />
-                  {form.half_day_allowed && (
+
+                  {/* Half-Day */}
+                  {devHalfDayAllowed ? (
+                    <Toggle
+                      label="Allow half day applications"
+                      checked={form.half_day_allowed}
+                      onChange={(v: boolean) => setForm({ ...form, half_day_allowed: v })} />
+                  ) : (
+                    <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", opacity: 0.6 }}>🔒 Half-day leave not enabled for this plan</div>
+                  )}
+                  {form.half_day_allowed && devHalfDayAllowed && (
                     <div className={styles.formGroup} style={{ marginBottom: 0 }}>
-                      <label>How many half days = 1 full leave day?</label>
-                      <input type="number" className="premium-input" value={form.half_days_per_leave} min={1} onChange={e => setForm({ ...form, half_days_per_leave: e.target.value })} style={{ maxWidth: 160 }} />
+                      <label>
+                        How many half days = 1 full leave day?
+                        {!devSACanConfigPartial && <span style={{ marginLeft: 8, fontSize: "0.7rem", color: "#fb923c" }}>🔒 Fixed by developer at {devDefaultHalfDays}</span>}
+                      </label>
+                      <input
+                        type="number"
+                        className="premium-input"
+                        value={devSACanConfigPartial ? form.half_days_per_leave : devDefaultHalfDays}
+                        min={1}
+                        disabled={!devSACanConfigPartial}
+                        onChange={e => setForm({ ...form, half_days_per_leave: e.target.value })}
+                        style={{ maxWidth: 160, opacity: devSACanConfigPartial ? 1 : 0.55 }} />
                     </div>
                   )}
-                  <Toggle label="Allow short leave (partial hour) applications" checked={form.short_leave_allowed} onChange={(v: boolean) => setForm({ ...form, short_leave_allowed: v })} />
-                  {form.short_leave_allowed && (
+
+                  {/* Short Leave */}
+                  {devShortLeaveAllowed ? (
+                    <Toggle
+                      label="Allow short leave (partial hour) applications"
+                      checked={form.short_leave_allowed}
+                      onChange={(v: boolean) => setForm({ ...form, short_leave_allowed: v })} />
+                  ) : (
+                    <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", opacity: 0.6 }}>🔒 Short leave not enabled for this plan</div>
+                  )}
+                  {form.short_leave_allowed && devShortLeaveAllowed && (
                     <div className={styles.formGroup} style={{ marginBottom: 0 }}>
-                      <label>How many short leaves = 1 full leave day?</label>
-                      <input type="number" className="premium-input" value={form.short_leaves_per_leave} min={1} onChange={e => setForm({ ...form, short_leaves_per_leave: e.target.value })} style={{ maxWidth: 160 }} />
+                      <label>
+                        How many short leaves = 1 full leave day?
+                        {!devSACanConfigPartial && <span style={{ marginLeft: 8, fontSize: "0.7rem", color: "#fb923c" }}>🔒 Fixed by developer at {devDefaultShortLeaves}</span>}
+                      </label>
+                      <input
+                        type="number"
+                        className="premium-input"
+                        value={devSACanConfigPartial ? form.short_leaves_per_leave : devDefaultShortLeaves}
+                        min={1}
+                        disabled={!devSACanConfigPartial}
+                        onChange={e => setForm({ ...form, short_leaves_per_leave: e.target.value })}
+                        style={{ maxWidth: 160, opacity: devSACanConfigPartial ? 1 : 0.55 }} />
                     </div>
                   )}
+
                   <div className={styles.formGroup} style={{ marginBottom: 0 }}>
                     <label>Max consecutive days (optional)</label>
                     <input type="number" className="premium-input" placeholder="Leave blank = no limit" value={form.max_consecutive_days} onChange={e => setForm({ ...form, max_consecutive_days: e.target.value })} style={{ maxWidth: 200 }} />
@@ -521,14 +700,16 @@ export default function LeaveSettings() {
               {/* ML note */}
               {showMLFields && (
                 <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(236,72,153,0.06)", border: "1px solid rgba(236,72,153,0.2)", fontSize: "0.8rem", color: "#f9a8d4" }}>
-                  🌸 Detected as Menstruation Leave. Set frequency to <strong>Monthly</strong> and deduction hours to ~1.0. Lapse tracking is managed via the Payroll module.
+                  🌸 Detected as Menstruation Leave. Set frequency to <strong>Monthly</strong> and Max Days to <strong>1</strong>.
+                  ML is treated as a standard paid leave — <strong>no hour deductions apply</strong>.
+                  Lapse tracking (N unused months → bonus CL) is managed via the developer module config.
                 </div>
               )}
 
               <div className={styles.formGroup} style={{ marginBottom: 0 }}>
                 <label>Deduction Hours per day *</label>
                 <input type="number" step="0.5" className="premium-input" value={form.deduction_hours} onChange={e => setForm({ ...form, deduction_hours: e.target.value })} style={{ maxWidth: 160 }} required />
-                <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)", marginTop: 4 }}>Typically 8.5. Set to 1.0 for ML.</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)", marginTop: 4 }}>Typically 8.5 h. For ML: keep at 8.5 (ML has no hour deduction — approved ML days are paid days off).</div>
               </div>
 
               <button type="submit" className={styles.primaryBtn} disabled={saving} style={{ marginTop: 4 }}>

@@ -48,7 +48,8 @@ export default function SAEmployeeProfilePage() {
   const [waivers, setWaivers]             = useState<Waiver[]>([]);
   const [adjustments, setAdjustments]     = useState<Adjustment[]>([]);
   const [monthSummaries, setMonthSummaries] = useState<MonthSummary[]>([]);
-  const [loading, setLoading]             = useState(true);
+  const [empGroups, setEmpGroups]         = useState<any[]>([]);
+  const [loading,   setLoading]           = useState(true);
 
   // Waiver modal
   const [showWaiver, setShowWaiver] = useState(false);
@@ -66,23 +67,24 @@ export default function SAEmployeeProfilePage() {
 
   const loadAll = async () => {
     setLoading(true);
-    const { isWorkingDay } = await import("@/lib/dateUtils");
+    const { isWorkingDay, fetchEmployeeHolidays } = await import("@/lib/dateUtils");
 
-    const [empRes, appraisalRes, waiversRes, adjRes, attnRes, leavesRes, holsRes, leaveTypesRes] = await Promise.all([
+    const [empRes, appraisalRes, waiversRes, adjRes, attnRes, leavesRes, groupsRes] = await Promise.all([
       supabase.from("profiles").select("*, manager:profiles!manager_id(full_name)").eq("id", id).single(),
       supabase.from("employee_appraisals").select("*").eq("user_id", id).order("appraisal_date", { ascending: false }),
       supabase.from("deficit_waivers").select("*, waived_by_profile:profiles!waived_by(full_name)").eq("user_id", id).order("created_at", { ascending: false }),
       supabase.from("deficit_adjustments").select("*").eq("user_id", id).order("adjustment_date", { ascending: false }),
       supabase.from("attendance_records").select("date,check_in,check_out").eq("user_id", id),
       supabase.from("leave_requests").select("start_date,end_date,type,status").eq("user_id", id).eq("status", "approved"),
-      supabase.from("company_holidays").select("date"),
-      supabase.from("leave_types").select("*"),
+      supabase.from("employee_group_members").select("group_id, employee_groups(id,name,color,icon)").eq("user_id", id),
     ]);
 
     const empData = empRes.data ?? {};
     setEmp(empData);
     setAppraisals(appraisalRes.data ?? []);
     setAdjustments(adjRes.data ?? []);
+    // Groups
+    setEmpGroups((groupsRes.data ?? []).map((r: any) => r.employee_groups).filter(Boolean));
 
     const rawWaivers: Waiver[] = (waiversRes.data ?? []).map((w: any) => ({
       id: w.id, month: w.month, hours_waived: Number(w.hours_waived),
@@ -91,7 +93,8 @@ export default function SAEmployeeProfilePage() {
     }));
     setWaivers(rawWaivers);
 
-    const hols           = new Set<string>((holsRes.data ?? []).map((h: any) => h.date));
+    // Fetch group-aware holiday set for this specific employee
+    const hols = await fetchEmployeeHolidays(supabase, empData.company_id, id as string);
     const approvedLeaves = leavesRes.data ?? [];
     const attnRecords    = attnRes.data ?? [];
     const allAdj         = adjRes.data ?? [];
@@ -163,21 +166,7 @@ export default function SAEmployeeProfilePage() {
           clocked += (new Date(r.check_out).getTime() - new Date(r.check_in).getTime()) / 3600000;
       });
 
-      // Menstruation Leave Penalty applies directly against actual clocked hours
-      let mlPenalty = 0;
-      const leaveTypes = leaveTypesRes?.data ?? [];
-      for (let d = new Date(mFrom); d <= new Date(clockCutoff); d.setDate(d.getDate() + 1)) {
-        const ds = d.toISOString().split("T")[0];
-        if (isWorkingDay(d, hols) && leaveDateType.has(ds)) {
-          const lt = leaveDateType.get(ds)!;
-          if (lt === "Menstruation Leave") {
-            const ltData = leaveTypes.find((x: any) => x.name === lt);
-            mlPenalty += Number(ltData?.deduction_hours || 0);
-          }
-        }
-      }
-      clocked -= mlPenalty;
-
+      // ML is now treated as a standard paid leave — no hour deduction
       clocked = Math.round(clocked * 10) / 10;
 
       // ── Adjustments for this month ───────────────────────────────────
@@ -264,6 +253,20 @@ export default function SAEmployeeProfilePage() {
               </div>
             ))}
           </div>
+
+          {/* Groups */}
+          {empGroups.length > 0 && (
+            <div className="glass-panel" style={{ padding: 20 }}>
+              <h3 style={{ margin: "0 0 14px", fontSize: "0.95rem", borderBottom: "1px solid var(--glass-border)", paddingBottom: 10 }}>👥 Groups</h3>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {empGroups.map((g: any) => (
+                  <span key={g.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 11px", borderRadius: 20, fontSize: "0.78rem", fontWeight: 600, background: `${g.color}18`, color: g.color, border: `1px solid ${g.color}35` }}>
+                    {g.icon} {g.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Documents */}
           <div className="glass-panel" style={{ padding: 20 }}>

@@ -20,9 +20,10 @@ interface MonthSlip {
   waived: number;
   salary: number;
   deduction: number;
+  overtimePayout: number;  // Phase F — from committed payroll_records
   paid: number;
   isCurrent: boolean;
-  isPreviousMonth: boolean;  // true during 1st–5th (salary processing window)
+  isPreviousMonth: boolean;
   netDeficit: number;
 }
 
@@ -83,25 +84,33 @@ export default function EmployeePayslips() {
 
   const computeSlips = async () => {
     if (!profile) return;
-    const { isWorkingDay } = await import("@/lib/dateUtils");
+    const { isWorkingDay, fetchEmployeeHolidays } = await import("@/lib/dateUtils");
 
-    const [attnRes, leavesRes, holsRes, adjRes, waiversRes] = await Promise.all([
+    // Fetch this employee's effective holidays (global + group-scoped)
+    const [attnRes, leavesRes, adjRes, waiversRes, payrollRecordsRes] = await Promise.all([
       supabase.from("attendance_records").select("date,check_in,check_out")
         .eq("user_id", profile.id).gte("date", SYSTEM_START),
       supabase.from("leave_requests").select("start_date,end_date,type,status")
         .eq("user_id", profile.id).eq("status", "approved").gte("end_date", SYSTEM_START),
-      supabase.from("company_holidays").select("date"),
       supabase.from("deficit_adjustments").select("adjustment_date,hours_cleared,adjusted_against")
         .eq("user_id", profile.id),
       supabase.from("deficit_waivers").select("month,hours_waived")
         .eq("user_id", profile.id),
+      // Committed payroll records for overtime payout lookup
+      supabase.from("payroll_records").select("year,month,overtime_payout")
+        .eq("user_id", profile.id),
     ]);
 
-    const hols         = new Set<string>((holsRes.data ?? []).map((h: any) => h.date));
+    const hols         = await fetchEmployeeHolidays(supabase, profile.company_id!, profile.id);
     const attnRecords  = attnRes.data ?? [];
     const allAdj       = adjRes.data ?? [];
     const allWaivers   = waiversRes.data ?? [];
     const salary       = Number((profile as any).remuneration ?? 0);
+    // Build overtime payout lookup: "YYYY-M" → amount
+    const otPayoutMap = new Map<string, number>();
+    (payrollRecordsRes.data ?? []).forEach((r: any) => {
+      otPayoutMap.set(`${r.year}-${r.month}`, Number(r.overtime_payout ?? 0));
+    });
 
     // Build leave date → type map
     const leaveDateType = new Map<string, string>();
@@ -174,12 +183,13 @@ export default function EmployeePayslips() {
       const obligation = workingHrs - leaveHrs;
       const netDeficit = Math.max(0, Math.round((obligation - clocked - lwpHrs - nonLwpAdj - waived) * 10) / 10);
 
-      // Pay calculation
-      const perDayRate = salary > 0 && workingDays > 0 ? salary / workingDays : 0;
-      const deduction  = Math.round(lwpDays * perDayRate * 100) / 100;
-      const paid       = Math.round((salary - deduction) * 100) / 100;
+      // Pay calculation (base + overtime from committed record)
+      const perDayRate    = salary > 0 && workingDays > 0 ? salary / workingDays : 0;
+      const deduction     = Math.round(lwpDays * perDayRate * 100) / 100;
+      const overtimePayout = otPayoutMap.get(`${y}-${m}`) ?? 0;
+      const paid          = Math.round((salary - deduction + overtimePayout) * 100) / 100;
 
-      result.push({ label: monthLabel(key), key, workingDays, workingHrs, clocked, leaveDetail, lwpDays, nonLwpAdj, waived, salary, deduction, paid, isCurrent, isPreviousMonth: isPrevMonth, netDeficit });
+      result.push({ label: monthLabel(key), key, workingDays, workingHrs, clocked, leaveDetail, lwpDays, nonLwpAdj, waived, salary, deduction, overtimePayout, paid, isCurrent, isPreviousMonth: isPrevMonth, netDeficit });
       m++; if (m > 11) { m = 0; y++; }
     }
 
@@ -276,6 +286,12 @@ export default function EmployeePayslips() {
                   <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--danger)" }}>−₹{prevMonthSlip.deduction.toLocaleString("en-IN")}</div>
                 </div>
               )}
+              {prevMonthSlip.overtimePayout > 0 && (
+                <div>
+                  <div style={{ fontSize: "0.75rem", color: "#f59e0b", textTransform: "uppercase" }}>Overtime Allowance</div>
+                  <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "#f59e0b" }}>+₹{prevMonthSlip.overtimePayout.toLocaleString("en-IN")}</div>
+                </div>
+              )}
               <div>
                 <div style={{ fontSize: "0.75rem", color: "var(--success)", textTransform: "uppercase" }}>Estimated Payout</div>
                 <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--success)" }}>₹{prevMonthSlip.paid.toLocaleString("en-IN")}</div>
@@ -298,16 +314,17 @@ export default function EmployeePayslips() {
               <thead>
                 <tr style={{ borderBottom: "2px solid var(--glass-border)" }}>
                   {[
-                    ["Month",        "left"],
-                    ["Working Days", "center"],
-                    ["Clocked",      "center"],
-                    ["Leaves",       "center"],
-                    ["LWP Days",     "center"],
-                    ["SA Waiver",    "center"],
-                    ["Deficit",      "center"],
-                    ["Base Salary",  "right"],
-                    ["Deduction",    "right"],
-                    ["Paid",         "right"],
+                    ["Month",              "left"],
+                    ["Working Days",       "center"],
+                    ["Clocked",            "center"],
+                    ["Leaves",             "center"],
+                    ["LWP Days",           "center"],
+                    ["SA Waiver",          "center"],
+                    ["Deficit",            "center"],
+                    ["Base Salary",        "right"],
+                    ["Deduction",          "right"],
+                    ...(slips.some(s => s.overtimePayout > 0) ? [["OT Allowance", "right"]] : []),
+                    ["Paid",               "right"],
                   ].map(([h, a]) => (
                     <th key={h} style={{ padding: "10px 12px", textAlign: a as any, color: "var(--text-secondary)", fontWeight: 600, fontSize: "0.78rem", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
@@ -345,9 +362,14 @@ export default function EmployeePayslips() {
                     <td style={{ padding: "11px 12px", textAlign: "right", color: s.deduction > 0 ? "var(--danger)" : "var(--text-secondary)" }}>
                       {s.deduction > 0 ? `−₹${s.deduction.toLocaleString("en-IN")}` : "—"}
                     </td>
+                    {slips.some(sl => sl.overtimePayout > 0) && (
+                      <td style={{ padding: "11px 12px", textAlign: "right", color: s.overtimePayout > 0 ? "#f59e0b" : "var(--text-secondary)", fontWeight: s.overtimePayout > 0 ? 700 : 400 }}>
+                        {s.overtimePayout > 0 ? `+₹${s.overtimePayout.toLocaleString("en-IN")}` : "—"}
+                      </td>
+                    )}
                     <td style={{ padding: "11px 12px", textAlign: "right", fontWeight: 700 }}>
                       {s.salary > 0
-                        ? <span style={{ color: s.deduction > 0 ? "var(--danger)" : "var(--success)" }}>₹{s.paid.toLocaleString("en-IN")}</span>
+                        ? <span style={{ color: s.deduction > 0 && s.overtimePayout === 0 ? "var(--danger)" : "var(--success)" }}>₹{s.paid.toLocaleString("en-IN")}</span>
                         : "—"}
                     </td>
                   </tr>
@@ -356,7 +378,7 @@ export default function EmployeePayslips() {
             </table>
           </div>
           <div style={{ marginTop: 16, padding: "10px 16px", background: "rgba(255,255,255,0.02)", borderRadius: 8, fontSize: "0.78rem", color: "var(--text-secondary)" }}>
-            ℹ️ <strong>Salary</strong> = your base remuneration. <strong>Deduction</strong> = LWP days × (salary ÷ working days in month). <strong>CL/EL/Comp-Off adjustments</strong> cover your deficit without deduction. <strong>If you spot an error, contact HR before the 5th.</strong>
+            ℹ️ <strong>Salary</strong> = your base remuneration. <strong>Deduction</strong> = LWP days × (salary ÷ working days). <strong>OT Allowance</strong> = overtime hours × agreed rate (added to payout). <strong>CL/EL/Comp-Off adjustments</strong> cover your deficit without deduction. <strong>If you spot an error, contact HR before the 5th.</strong>
           </div>
         </div>
       )}

@@ -257,3 +257,79 @@ export function isEarlyDeparture(
   }
   return true;
 }
+
+// ── Group-Scoped Holiday Helpers ──────────────────────────────────────────────
+
+/**
+ * Fetches the effective holiday date set for a given employee.
+ *
+ * Merges:
+ *   1. All global holidays (scope = 'all') for the company
+ *   2. Group-scoped holidays (scope = 'group') where the employee is a member
+ *
+ * Falls back to global-only if group tables aren't available.
+ *
+ * @param supabase   Supabase client instance
+ * @param companyId  The tenant's company UUID
+ * @param userId     The employee's profile UUID (nullable — returns only global holidays)
+ */
+export async function fetchEmployeeHolidays(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  companyId: string,
+  userId?: string | null
+): Promise<Set<string>> {
+  // 1. Fetch all company holidays
+  const { data: all } = await supabase
+    .from("company_holidays")
+    .select("id, date, scope")
+    .eq("company_id", companyId);
+
+  if (!all || all.length === 0) return new Set<string>();
+
+  const globalDates = (all as { id: string; date: string; scope: string }[])
+    .filter(h => h.scope === "all")
+    .map(h => h.date);
+
+  const groupHolidays = (all as { id: string; date: string; scope: string }[])
+    .filter(h => h.scope === "group");
+
+  // No user or no group holidays → return global only
+  if (!userId || groupHolidays.length === 0) {
+    return new Set<string>(globalDates);
+  }
+
+  // 2. Fetch which groups the employee belongs to
+  const { data: memberships } = await supabase
+    .from("employee_group_members")
+    .select("group_id")
+    .eq("user_id", userId)
+    .eq("company_id", companyId);
+
+  const memberGroupIds = new Set<string>(
+    (memberships ?? []).map((m: { group_id: string }) => m.group_id)
+  );
+
+  if (memberGroupIds.size === 0) {
+    return new Set<string>(globalDates);
+  }
+
+  // 3. Fetch group scopes for the group holidays
+  const groupHolidayIds = groupHolidays.map(h => h.id);
+  const { data: scopes } = await supabase
+    .from("holiday_group_scopes")
+    .select("holiday_id, group_id")
+    .in("holiday_id", groupHolidayIds);
+
+  // 4. Find group holidays where employee's group is listed
+  const applicableGroupDates = groupHolidays
+    .filter(h =>
+      (scopes ?? []).some(
+        (s: { holiday_id: string; group_id: string }) =>
+          s.holiday_id === h.id && memberGroupIds.has(s.group_id)
+      )
+    )
+    .map(h => h.date);
+
+  return new Set<string>([...globalDates, ...applicableGroupDates]);
+}
