@@ -416,7 +416,7 @@ export default function MobileTab({ companyId }: Props) {
         {/* PIN note */}
         <div style={{ padding: "12px 20px", background: "rgba(99,102,241,0.08)", borderRadius: 10, margin: "0 0 20px", fontSize: "0.82rem", color: "#94a3b8", border: "1px solid rgba(99,102,241,0.15)" }}>
           🔑 <strong style={{ color: "#c7d2fe" }}>Shared Pairing PIN</strong> — Desktop kiosk uses the same Tablet Pairing PIN shown above.
-          Employees enter the company subdomain and that PIN to pair any desktop.
+          The <strong style={{ color: "#c7d2fe" }}>admin or IT person</strong> setting up the device enters the company subdomain and this PIN once during first-time setup. After that, employees just tap their name on screen to clock in — no PIN setup needed for them.
         </div>
 
         {/* Download URLs editor */}
