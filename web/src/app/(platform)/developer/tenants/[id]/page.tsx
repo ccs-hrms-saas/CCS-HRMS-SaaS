@@ -591,7 +591,7 @@ export default function TenantDetailPage() {
                         />
                       ) : (
                         /* ── Raw key-value editor (fallback for all other modules) */
-                        <>
+                        <div className={s.propsPanelFallbackGrid}>
                           {Object.entries(propsEdit).map(([key, val]) => (
                             <div key={key} className={s.propField}>
                               <label className={s.propLabel}>{key.replace(/_/g, " ")}</label>
@@ -613,7 +613,7 @@ export default function TenantDetailPage() {
                           <button className={s.propSaveBtn} onClick={() => saveProps(mod)}>
                             Save Module Properties
                           </button>
-                        </>
+                        </div>
                       )}
                     </div>
                   )}
