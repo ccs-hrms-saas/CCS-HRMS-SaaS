@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { UserCheck, ShieldCheck, Crown, Sliders } from "lucide-react";
-import s from "./config-panel.module.css";
+import { Tier, TierTabs, TierActivateBlock, SectionHead, CheckRow, SelectRow } from "./ConfigUI";
 
 interface Props {
   props: Record<string, any>;
@@ -11,211 +10,120 @@ interface Props {
   saving: boolean;
 }
 
-type ProfilesTier = "basic" | "standard" | "advanced" | "custom";
-
-const TIER_META: Record<ProfilesTier, { label: string; badge: string; badgeClass: string; desc: string; icon: React.ElementType }> = {
-  basic:    { label: "Basic",    badge: "Tier 1", badgeClass: s.tierBadgeBasic,    desc: "Only SuperAdmin creates/edits. Manager and Admin read-only.",            icon: UserCheck },
-  standard: { label: "Standard", badge: "Tier 2", badgeClass: s.tierBadgeStandard, desc: "SuperAdmin + Admin manage profiles. Manager views team but not edit.",   icon: ShieldCheck },
-  advanced: { label: "Advanced", badge: "Tier 3", badgeClass: s.tierBadgeAdvanced, desc: "Custom job roles. Granular field permissions. Salary change approval.",   icon: Crown },
-  custom:   { label: "Custom",   badge: "Custom", badgeClass: s.tierBadgeCustom,   desc: "Hand-pick any profile management features individually.",               icon: Sliders },
-};
-
-function Toggle({ label, hint, field, value, locked, onChange }: {
-  label: string; hint?: string; field: string; value: boolean; locked: boolean;
-  onChange: (u: Record<string, any>) => void;
-}) {
-  return (
-    <div className={`${s.toggleRow} ${locked ? s.locked : ""}`} title={locked ? "Upgrade tier to unlock" : undefined}>
-      <div>
-        <div className={s.toggleLabel}>{label}</div>
-        {hint && <div className={s.toggleHint}>{hint}</div>}
-      </div>
-      <label className={s.switch}>
-        <input type="checkbox" checked={value} disabled={locked}
-          onChange={e => onChange({ [field]: e.target.checked })} />
-        <span className={s.switchSlider} />
-      </label>
-    </div>
-  );
-}
-
 export default function ProfilesConfigPanel({ props, onChange, onSave, saving }: Props) {
-  const tier = (props.tier ?? "basic") as ProfilesTier;
-  const isStd = tier !== "basic";
-  const isAdv = tier === "advanced";
-  const isCust = tier === "custom";
-  const locked = (rs: boolean, ra: boolean) => isCust ? false : ra ? !isAdv : rs ? !isStd : false;
-  const set = (partial: Record<string, any>) => onChange({ ...props, ...partial });
+  const activeTier = (props.tier ?? "basic") as Tier;
+  const [tab, setTab] = useState<Tier>(activeTier);
   const [newJobRole, setNewJobRole] = useState("");
-  const [customKey, setCustomKey] = useState("");
-  const [customVal, setCustomVal] = useState("");
+
+  const isCust = activeTier === "custom";
+  const locked = (requireTier: Tier) => {
+    if (isCust) return false;
+    if (requireTier === "advanced") return activeTier !== "advanced";
+    if (requireTier === "standard") return activeTier === "basic";
+    return false;
+  };
+
+  const set = (partial: Record<string, any>) => onChange({ ...props, ...partial });
+
+  const activatePlan = () => {
+    const base: Record<string, any> = { ...props, tier: tab };
+    if (tab === "basic") { base.who_can_create_profiles = "superadmin"; base.who_can_edit_profiles = "superadmin"; base.admin_can_create = false; base.admin_can_edit = false; }
+    if (tab === "standard") { base.admin_can_create = true; base.admin_can_edit = true; }
+    onChange(base);
+  };
 
   return (
-    <div className={s.panelLayout}>
-      <div className={s.tierColumn}>
-        <div className={s.tierColumnLabel}>Plan Tier</div>
-        <div className={s.tierGrid}>
-          {(["basic", "standard", "advanced", "custom"] as ProfilesTier[]).map(t => {
-            const m = TIER_META[t]; const Icon = m.icon;
-            return (
-              <div key={t} className={`${s.tierCard} ${tier === t ? s.active : ""}`}
-                onClick={() => {
-                  const base: Record<string, any> = { ...props, tier: t };
-                  if (t === "basic") { base.who_can_create_profiles = "superadmin"; base.who_can_edit_profiles = "superadmin"; base.admin_can_create = false; base.admin_can_edit = false; }
-                  if (t === "standard") { base.admin_can_create = true; base.admin_can_edit = true; }
-                  onChange(base);
-                }}>
-                <div><span className={`${s.tierBadge} ${m.badgeClass}`}>{m.badge}</span></div>
-                <Icon size={16} color={tier === t ? "#6366f1" : "#475569"} />
-                <div className={s.tierName}>{m.label}</div>
-                <div className={s.tierDesc}>{m.desc}</div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <TierTabs activeTab={tab} onSelect={setTab} />
+
+      <div style={{ flex: 1, padding: "0 4px" }}>
+        <TierActivateBlock tier={tab} activeTier={activeTier} onActivate={activatePlan} />
+
+        {/* BASIC TAB */}
+        {tab === "basic" && (
+          <>
+            <SectionHead title="Core Access Settings" />
+            <SelectRow label="Who Can Create Profiles"
+              field="who_can_create_profiles" value={props.who_can_create_profiles ?? "superadmin"}
+              options={[{ value: "superadmin", label: "Superadmin Only" }, { value: "superadmin_admin", label: "Superadmin + Admin" }, { value: "any_assigned", label: "Any Assigned Role (Advanced)" }]}
+              locked={locked("advanced")} onChange={set} />
+            <SelectRow label="Who Can Edit Profiles"
+              field="who_can_edit_profiles" value={props.who_can_edit_profiles ?? "superadmin"}
+              options={[{ value: "superadmin", label: "Superadmin Only" }, { value: "superadmin_admin", label: "Superadmin + Admin" }, { value: "any_assigned", label: "Any Assigned Role (Advanced)" }]}
+              locked={locked("advanced")} onChange={set} />
+            
+            <CheckRow label="Manager Can View Team" hint="Managers can see profiles of employees directly under them"
+              field="manager_can_view_team" value={!!props.manager_can_view_team} locked={false} onChange={set} />
+          </>
+        )}
+
+        {/* STANDARD TAB */}
+        {tab === "standard" && (
+          <>
+            <SectionHead title="Standard Features" locked={locked("standard")} lockNote="Requires Standard" />
+            <CheckRow label="Admin Can Create Profiles" hint="Basic: only SuperAdmin creates. Standard+ allows Admin."
+              field="admin_can_create" value={!!props.admin_can_create} locked={locked("standard")} onChange={set} />
+            <CheckRow label="Admin Can Edit Profiles" hint="Standard+ allows admins to edit employee details"
+              field="admin_can_edit" value={!!props.admin_can_edit} locked={locked("standard")} onChange={set} />
+            <CheckRow label="Salary Change Requires Approval" hint="Any salary modification goes through a superadmin approval workflow"
+              field="salary_change_requires_approval" value={!!props.salary_change_requires_approval} locked={locked("standard")} onChange={set} />
+          </>
+        )}
+
+        {/* ADVANCED TAB */}
+        {tab === "advanced" && (
+          <>
+            <SectionHead title="Advanced Features" locked={locked("advanced")} lockNote="Requires Advanced" />
+            <CheckRow label="Custom Job Roles" hint="Enable job_role field on employee profiles. Used in Advanced reimbursement approval chains."
+              field="custom_job_roles_enabled" value={!!props.custom_job_roles_enabled} locked={locked("advanced")} onChange={set} />
+            
+            {!!props.custom_job_roles_enabled && (!locked("advanced")) && (
+              <div style={{ padding: "12px 18px", borderRadius: 10, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", marginLeft: 24, marginBottom: 12 }}>
+                <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: 8 }}>Defined Job Roles</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                  {(props.job_roles_list ?? []).map((r: string) => (
+                    <span key={r} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.25)", fontSize: "0.78rem", color: "#818cf8" }}>
+                      {r}
+                      <button onClick={() => set({ job_roles_list: (props.job_roles_list ?? []).filter((x: string) => x !== r) })}
+                        style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: "0.75rem", lineHeight: 1, padding: 0 }}>✕</button>
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input placeholder="e.g. Department Head, HR Executive, Team Lead…" value={newJobRole} onChange={e => setNewJobRole(e.target.value)}
+                    style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(0,0,0,0.3)", color: "var(--text-primary)", fontSize: "0.82rem" }} />
+                  <button onClick={() => { if (!newJobRole.trim()) return; const ex = props.job_roles_list ?? []; if (!ex.includes(newJobRole)) set({ job_roles_list: [...ex, newJobRole] }); setNewJobRole(""); }}
+                    style={{ padding: "8px 16px", borderRadius: 8, background: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.3)", color: "#818cf8", cursor: "pointer", fontSize: "0.82rem", fontWeight: 700 }}>+ Add</button>
+                </div>
               </div>
-            );
-          })}
-        </div>
-        {isCust && (
-          <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.2)", fontSize: "0.72rem", color: "#fb923c", lineHeight: 1.5 }}>
-            🎛️ Custom — all features individually togglable.
+            )}
+
+            <CheckRow label="Designation Change Requires Approval" hint="Changing an employee's designation triggers a formal sign-off workflow"
+              field="designation_change_approval" value={!!props.designation_change_approval} locked={locked("advanced")} onChange={set} />
+            <CheckRow label="Granular Field-Level Permissions" hint="Control which roles can edit specific fields (salary, department, etc.) per profile"
+              field="granular_field_permissions" value={!!props.granular_field_permissions} locked={locked("advanced")} onChange={set} />
+            <CheckRow label="Team-Scoped Manager Edit" hint="Manager can edit profile details only for employees directly reporting to them"
+              field="team_scoped_manager_edit" value={!!props.team_scoped_manager_edit} locked={locked("advanced")} onChange={set} />
+          </>
+        )}
+
+        {/* CUSTOM TAB */}
+        {tab === "custom" && (
+          <div style={{ padding: "16px", borderRadius: 10, background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)", textAlign: "center", color: "var(--text-secondary)", fontSize: "0.85rem", marginTop: 20 }}>
+            Custom tier unlocks all features in Standard and Advanced natively.
           </div>
         )}
       </div>
-      <div className={s.featuresColumn}>
 
-      {/* ── Core Access Settings ──────────────────────────────────────── */}
-      <div className={s.section}>
-        <div className={s.sectionHead}><span className={s.sectionTitle}>🔐 Profile Access Control</span></div>
-        <div className={s.fieldGrid}>
-          <div className={s.field}>
-            <label className={s.label}>Who Can Create Profiles</label>
-            <select className={s.select}
-              value={props.who_can_create_profiles ?? "superadmin"}
-              disabled={!isAdv}
-              onChange={e => set({ who_can_create_profiles: e.target.value })}>
-              <option value="superadmin">Superadmin Only</option>
-              <option value="superadmin_admin">Superadmin + Admin</option>
-              {isAdv && <option value="any_assigned">Any Assigned Role</option>}
-            </select>
-          </div>
-
-          <div className={s.field}>
-            <label className={s.label}>Who Can Edit Profiles</label>
-            <select className={s.select}
-              value={props.who_can_edit_profiles ?? "superadmin"}
-              disabled={!isAdv}
-              onChange={e => set({ who_can_edit_profiles: e.target.value })}>
-              <option value="superadmin">Superadmin Only</option>
-              <option value="superadmin_admin">Superadmin + Admin</option>
-              {isAdv && <option value="any_assigned">Any Assigned Role</option>}
-            </select>
-          </div>
-        </div>
-
-        <div className={s.fieldGrid1} style={{ marginTop: 12 }}>
-          <Toggle label="Manager Can View Team" locked={false}
-            hint="Managers can see profiles of employees directly under them"
-            field="manager_can_view_team" value={!!props.manager_can_view_team} onChange={set} />
-
-          <Toggle label="Admin Can Create Profiles" locked={locked(true,false)}
-            hint="Basic: only SuperAdmin creates. Standard+ allows Admin."
-            field="admin_can_create" value={!!props.admin_can_create} onChange={set} />
-          <Toggle label="Admin Can Edit Profiles" locked={locked(true,false)}
-            hint="Standard+ allows admins to edit employee details"
-            field="admin_can_edit" value={!!props.admin_can_edit} onChange={set} />
-        </div>
-      </div>
-
-      {/* ── Standard Features ─────────────────────────────────────────── */}
-      <div className={s.section}>
-        <div className={s.sectionHead}>
-          <span className={s.sectionTitle}>📋 Standard Features</span>
-          {!isStd && <span className={s.lockedBadge}>🔒 Requires Standard+</span>}
-        </div>
-        <div className={s.fieldGrid1}>
-          <Toggle label="Salary Change Requires Approval" locked={!isStd}
-            hint="Any salary modification goes through a superadmin approval workflow"
-            field="salary_change_requires_approval" value={!!props.salary_change_requires_approval} onChange={set} />
-        </div>
-      </div>
-
-      {/* ── Advanced Features ─────────────────────────────────────────── */}
-      <div className={s.section}>
-        <div className={s.sectionHead}>
-          <span className={s.sectionTitle}>🚀 Advanced Features</span>
-          {!isAdv && <span className={s.lockedBadge}>🔒 Requires Advanced</span>}
-        </div>
-        <div className={s.fieldGrid1}>
-          <Toggle label="Custom Job Roles" locked={!isAdv}
-            hint="Enable job_role field on employee profiles. Used in Advanced reimbursement approval chains."
-            field="custom_job_roles_enabled" value={!!props.custom_job_roles_enabled} onChange={set} />
-
-          {!!props.custom_job_roles_enabled && (isAdv || isCust) && (
-            <div className={s.subField}>
-              <label className={s.label}>Defined Job Roles</label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 7, margin: "8px 0" }}>
-                {(props.job_roles_list ?? []).map((r: string) => (
-                  <span key={r} className={s.customTag}>
-                    {r}
-                    <button className={s.customTagRemove}
-                      onClick={() => set({ job_roles_list: (props.job_roles_list ?? []).filter((x: string) => x !== r) })}>✕</button>
-                  </span>
-                ))}
-              </div>
-              <div className={s.otherRow}>
-                <input className={s.otherInput} placeholder="e.g. Department Head, HR Executive, Team Lead…"
-                  value={newJobRole} onChange={e => setNewJobRole(e.target.value)} />
-                <button className={s.addBtn} onClick={() => {
-                  if (!newJobRole.trim()) return;
-                  const existing = props.job_roles_list ?? [];
-                  if (!existing.includes(newJobRole)) set({ job_roles_list: [...existing, newJobRole] });
-                  setNewJobRole("");
-                }}>+ Add</button>
-              </div>
-            </div>
-          )}
-
-          <Toggle label="Designation Change Requires Approval" locked={!isAdv}
-            hint="Changing an employee's designation triggers a formal sign-off workflow"
-            field="designation_change_approval" value={!!props.designation_change_approval} onChange={set} />
-
-          <Toggle label="Granular Field-Level Permissions" locked={!isAdv}
-            hint="Control which roles can edit specific fields (salary, department, etc.) per profile"
-            field="granular_field_permissions" value={!!props.granular_field_permissions} onChange={set} />
-
-          <Toggle label="Team-Scoped Manager Edit" locked={!isAdv}
-            hint="Manager can edit profile details only for employees directly reporting to them"
-            field="team_scoped_manager_edit" value={!!props.team_scoped_manager_edit} onChange={set} />
-        </div>
-      </div>
-
-      {/* ── Custom Extensions ─────────────────────────────────────────── */}
-      <div className={s.customSection}>
-        <div className={s.customTitle}>⚡ Custom Properties</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 12 }}>
-          {Object.entries(props._custom ?? {}).map(([k, v]) => (
-            <span key={k} className={s.customTag}>
-              {k}: {String(v)}
-              <button className={s.customTagRemove}
-                onClick={() => { const c = { ...props._custom }; delete c[k]; set({ _custom: c }); }}>✕</button>
-            </span>
-          ))}
-        </div>
-        <div className={s.customGrid}>
-          <input className={s.input} placeholder="property_key" value={customKey} onChange={e => setCustomKey(e.target.value)} />
-          <input className={s.input} placeholder="value" value={customVal} onChange={e => setCustomVal(e.target.value)} />
-          <button className={s.addBtn} onClick={() => {
-            if (!customKey.trim()) return;
-            set({ _custom: { ...props._custom, [customKey]: customVal } });
-            setCustomKey(""); setCustomVal("");
-          }}>+ Add</button>
-        </div>
-      </div>
-
-      <div className={s.actionsRow}>
-        <button className={s.saveBtn} onClick={onSave} disabled={saving}>
+      <div style={{ paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.07)", marginTop: 16 }}>
+        <button onClick={onSave} disabled={saving} style={{
+          width: "100%", padding: "12px 24px", borderRadius: 10, fontWeight: 700, fontSize: "0.9rem", cursor: "pointer",
+          background: "linear-gradient(135deg,#6366f1,#8b5cf6)", border: "none", color: "#fff",
+          opacity: saving ? 0.7 : 1, transition: "opacity 0.15s",
+        }}>
           {saving ? "Saving…" : "💾 Save Profiles Config"}
         </button>
       </div>
-    </div>
     </div>
   );
 }
