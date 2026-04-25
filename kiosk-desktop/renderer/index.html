@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CCS HRMS Kiosk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCREEN 1 — DEVICE SETUP / PAIRING
+  ══════════════════════════════════════════════════════════ -->
+  <div id="screen-setup" class="screen active">
+    <div class="setup-container">
+      <div class="logo-area">
+        <div class="logo-icon">🏢</div>
+        <h1 class="app-title">CCS HRMS</h1>
+        <p class="app-subtitle">Kiosk Attendance System</p>
+      </div>
+
+      <div class="card setup-card">
+        <h2 class="card-title">Pair this device to your workspace</h2>
+
+        <div class="form-group">
+          <label class="form-label">COMPANY CODE (SUBDOMAIN)</label>
+          <input id="input-company-code" class="form-input" type="text"
+            placeholder="e.g. radiance" autocomplete="off" spellcheck="false" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">API SERVER URL</label>
+          <input id="input-api-url" class="form-input" type="url"
+            value="https://www.ccshrms.com" autocomplete="off" />
+          <span class="form-hint">Leave default unless self-hosting</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">SETUP PIN (FROM ADMIN PANEL)</label>
+          <input id="input-setup-pin" class="form-input" type="password"
+            placeholder="••••••" maxlength="10" autocomplete="off" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">DEVICE NAME</label>
+          <input id="input-device-name" class="form-input" type="text"
+            placeholder="e.g. Reception Desk" autocomplete="off" />
+        </div>
+
+        <button id="btn-pair" class="btn btn-primary btn-full">
+          <span id="btn-pair-text">Pair Device</span>
+          <div id="btn-pair-spinner" class="btn-spinner hidden"></div>
+        </button>
+
+        <div id="setup-error" class="error-banner hidden"></div>
+      </div>
+
+      <p class="setup-footer">v1.0.0 · Windows &amp; macOS</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCREEN 2 — HOME / EMPLOYEE GRID
+  ══════════════════════════════════════════════════════════ -->
+  <div id="screen-home" class="screen">
+    <!-- Header bar -->
+    <header class="home-header">
+      <div class="company-info">
+        <div id="company-logo-wrap" class="company-logo hidden">
+          <img id="company-logo-img" src="" alt="" />
+        </div>
+        <div>
+          <div id="company-name-display" class="company-name">CCS HRMS</div>
+          <div id="device-name-display" class="device-name">Kiosk Device</div>
+        </div>
+      </div>
+      <div class="clock-area">
+        <div id="clock-time" class="clock-time">00:00:00</div>
+        <div id="clock-date" class="clock-date">Loading...</div>
+      </div>
+      <button id="btn-admin-trigger" class="admin-trigger" title="Admin Exit">⚙</button>
+    </header>
+
+    <!-- Instruction -->
+    <div class="home-instruction">
+      <div class="instruction-icon">👆</div>
+      <div class="instruction-text">Tap your name to clock in or out</div>
+    </div>
+
+    <!-- Employee grid -->
+    <div id="employee-grid" class="employee-grid">
+      <div class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading employees…</p>
+      </div>
+    </div>
+
+    <!-- Refresh button -->
+    <div style="text-align:center; padding-bottom: 16px;">
+      <button id="btn-refresh" class="btn btn-ghost btn-sm">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCREEN 3 — PIN ENTRY
+  ══════════════════════════════════════════════════════════ -->
+  <div id="screen-pin" class="screen">
+    <button id="btn-pin-back" class="back-btn">← Back</button>
+
+    <div class="pin-container">
+      <div class="pin-avatar-wrap">
+        <img id="pin-employee-avatar" class="pin-avatar" src="" alt="" />
+        <div id="pin-employee-initials" class="pin-initials"></div>
+      </div>
+      <h2 id="pin-employee-name" class="pin-name"></h2>
+      <p id="pin-action-label" class="pin-action-label"></p>
+
+      <!-- PIN dots -->
+      <div class="pin-dots">
+        <div class="pin-dot" id="dot-0"></div>
+        <div class="pin-dot" id="dot-1"></div>
+        <div class="pin-dot" id="dot-2"></div>
+        <div class="pin-dot" id="dot-3"></div>
+      </div>
+
+      <!-- Numpad -->
+      <div class="numpad">
+        <button class="num-btn" data-num="1">1</button>
+        <button class="num-btn" data-num="2">2<span class="num-sub">ABC</span></button>
+        <button class="num-btn" data-num="3">3<span class="num-sub">DEF</span></button>
+        <button class="num-btn" data-num="4">4<span class="num-sub">GHI</span></button>
+        <button class="num-btn" data-num="5">5<span class="num-sub">JKL</span></button>
+        <button class="num-btn" data-num="6">6<span class="num-sub">MNO</span></button>
+        <button class="num-btn" data-num="7">7<span class="num-sub">PQRS</span></button>
+        <button class="num-btn" data-num="8">8<span class="num-sub">TUV</span></button>
+        <button class="num-btn" data-num="9">9<span class="num-sub">WXYZ</span></button>
+        <div></div>
+        <button class="num-btn" data-num="0">0</button>
+        <button class="num-btn num-del" id="btn-del">⌫</button>
+      </div>
+
+      <div id="pin-error" class="error-banner hidden"></div>
+      <div id="pin-spinner-wrap" class="hidden" style="text-align:center; margin-top:16px;">
+        <div class="spinner"></div>
+        <p style="margin-top:8px; color:var(--text-secondary)">Verifying PIN…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCREEN 4 — CAMERA / PHOTO CAPTURE
+  ══════════════════════════════════════════════════════════ -->
+  <div id="screen-camera" class="screen">
+    <div class="camera-container">
+      <h2 id="camera-title" class="camera-title">📸 Smile for the Camera</h2>
+      <p id="camera-subtitle" class="camera-subtitle">Hold still — auto-capturing in <span id="countdown-num">3</span>s</p>
+
+      <div class="camera-frame">
+        <video id="camera-video" autoplay playsinline muted></video>
+        <canvas id="camera-canvas" style="display:none;"></canvas>
+        <div id="camera-flash" class="camera-flash hidden"></div>
+        <div id="countdown-overlay" class="countdown-overlay">
+          <div id="countdown-circle" class="countdown-circle"></div>
+        </div>
+      </div>
+
+      <div class="camera-actions">
+        <button id="btn-capture-now" class="btn btn-primary" style="min-width:200px;">📷 Capture Now</button>
+        <button id="btn-skip-photo" class="btn btn-ghost">Skip Photo</button>
+      </div>
+
+      <div id="camera-error" class="error-banner hidden"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCREEN 5 — SUCCESS
+  ══════════════════════════════════════════════════════════ -->
+  <div id="screen-success" class="screen">
+    <div class="success-container">
+      <div id="success-icon" class="success-icon">✅</div>
+      <h1 id="success-headline" class="success-headline">Checked In!</h1>
+      <p id="success-name" class="success-name"></p>
+      <p id="success-time" class="success-time"></p>
+      <div id="success-progress" class="success-progress">
+        <div id="success-progress-bar" class="success-progress-bar"></div>
+      </div>
+      <p class="success-return">Returning to main screen…</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       OVERLAY — ADMIN EXIT
+  ══════════════════════════════════════════════════════════ -->
+  <div id="overlay-admin" class="overlay hidden">
+    <div class="overlay-card">
+      <div style="font-size:2.5rem; margin-bottom:12px;">🔐</div>
+      <h2 style="margin-bottom:8px;">Admin Exit</h2>
+      <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:24px;">
+        Enter the admin exit PIN to close the kiosk application.
+      </p>
+      <input id="admin-exit-pin" class="form-input" type="password"
+        placeholder="Admin PIN (default: 9999)" maxlength="10"
+        style="text-align:center; letter-spacing:8px; font-size:1.5rem;" />
+      <div style="display:flex; gap:12px; margin-top:16px;">
+        <button id="btn-admin-cancel" class="btn btn-ghost btn-full">Cancel</button>
+        <button id="btn-admin-exit" class="btn btn-danger btn-full">Exit Kiosk</button>
+      </div>
+      <div id="admin-exit-error" class="error-banner hidden" style="margin-top:12px;"></div>
+      <div style="margin-top:16px; font-size:0.75rem; color:var(--text-muted);">
+        Also: <strong style="color:var(--accent);">Ctrl+Shift+Q</strong> to open this dialog
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
