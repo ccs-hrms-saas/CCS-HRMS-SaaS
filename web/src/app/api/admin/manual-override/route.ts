@@ -104,8 +104,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Check-out time must be after check-in time.' }, { status: 400 })
       }
 
+      // ── Override cleanup: remove any leave_request for this date ────────
+      // Admin is explicitly saying "this person was present", so any
+      // conflicting leave record must be removed.
+      await supabaseAdmin
+        .from('leave_requests')
+        .delete()
+        .eq('user_id', user_id)
+        .lte('start_date', date)
+        .gte('end_date', date)
+
       // Upsert: update if record exists for this employee+date, else insert
-      // IMPORTANT: scope lookup by company_id to avoid cross-tenant collisions
       const { data: existing } = await supabaseAdmin
         .from('attendance_records')
         .select('id')
@@ -160,11 +169,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'A leave record already exists for this employee on this date.' }, { status: 409 })
       }
 
+      // ── Override cleanup: remove any attendance_record for this date ────
+      // Admin is explicitly saying "this person was on leave", so any
+      // conflicting punch/attendance record must be removed.
+      await supabaseAdmin
+        .from('attendance_records')
+        .delete()
+        .eq('user_id', user_id)
+        .eq('date', date)
+
       const { error: lvErr } = await supabaseAdmin
         .from('leave_requests')
         .insert({
           user_id,
-          company_id: targetProfile.company_id,  // ← MUST include for RLS visibility
+          company_id: targetProfile.company_id,
           type: leave_type,
           start_date: date,
           end_date: date,
