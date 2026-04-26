@@ -23,17 +23,15 @@ const admin = createClient(
 
 function isoDate(d: Date) { return d.toISOString().split('T')[0]; }
 
-function isWeeklyOff(date: Date): boolean {
-  const dow = date.getDay();
-  if (dow === 0) return true;
-  if (dow === 6) {
-    const wk = Math.ceil(date.getDate() / 7);
-    return wk === 1 || wk === 3;
-  }
-  return false;
-}
-
-async function processEmployee(userId: string, from: string, to: string, holidaySet: Set<string>, fy: number) {
+// ── processEmployee now receives the tenant's work schedule days ──────────────
+async function processEmployee(
+  userId: string,
+  from: string,
+  to: string,
+  holidaySet: Set<string>,
+  weekOffDays: number[],   // 0=Sun … 6=Sat, from app_settings.week_off_days
+  fy: number
+) {
   // 1. Get all attendance records in range
   const { data: attData } = await admin.from('attendance_records')
     .select('date').eq('user_id', userId).gte('date', from).lte('date', to);
@@ -63,7 +61,9 @@ async function processEmployee(userId: string, from: string, to: string, holiday
   while (cur <= end) {
     const ds = isoDate(cur);
     if (ds >= todayStr) { cur.setDate(cur.getDate() + 1); continue; } // skip future
-    if (!isWeeklyOff(cur) && !holidaySet.has(ds) && !checkedInDates.has(ds) && !approvedLeaveDates.has(ds)) {
+    const dow = cur.getDay();
+    const isWeeklyOff = weekOffDays.includes(dow);
+    if (!isWeeklyOff && !holidaySet.has(ds) && !checkedInDates.has(ds) && !approvedLeaveDates.has(ds)) {
       trueAbsents++;
     }
     cur.setDate(cur.getDate() + 1);
@@ -128,14 +128,40 @@ export async function POST(req: Request) {
     const fromDate = new Date(from as string);
     const fy = fromDate.getMonth() < 3 ? fromDate.getFullYear() - 1 : fromDate.getFullYear();
 
-    // Holidays
-    const { data: holData } = await admin.from('company_holidays').select('date');
+    // Determine company_id: either from the request body (admin API) or from caller's profile
+    const companyId: string | undefined = body.company_id;
+    if (!companyId) {
+      return NextResponse.json({ error: 'company_id is required' }, { status: 400 });
+    }
+
+    // Fetch the tenant's work schedule so we honour their week-off days
+    const { data: appSettings } = await admin
+      .from('app_settings')
+      .select('week_off_type, week_off_days')
+      .eq('company_id', companyId)
+      .single();
+    // Default: Sunday off only (safe fallback)
+    const weekOffDays: number[] = Array.isArray(appSettings?.week_off_days)
+      ? appSettings.week_off_days
+      : [0];
+
+    // Holidays — scoped to this tenant only
+    const { data: holData } = await admin
+      .from('company_holidays')
+      .select('date')
+      .eq('company_id', companyId);
     const holidaySet = new Set<string>((holData ?? []).map((h: any) => h.date));
 
     let userIds: string[] = [];
     if (run_all) {
-      const { data } = await admin.from('profiles').select('id').eq('is_active', true).not('role', 'eq', 'superadmin');
-
+      // Employees scoped to this company only
+      const { data } = await admin
+        .from('profiles')
+        .select('id')
+        .eq('is_active', true)
+        .eq('company_id', companyId)
+        .not('role', 'eq', 'superadmin')
+        .is('system_role', null);
       userIds = (data ?? []).map((p: any) => p.id);
     } else if (user_id) {
       userIds = [user_id];
@@ -144,7 +170,7 @@ export async function POST(req: Request) {
     }
 
     const results = await Promise.all(
-      userIds.map(id => processEmployee(id, from as string, to as string, holidaySet, fy))
+      userIds.map(id => processEmployee(id, from as string, to as string, holidaySet, weekOffDays, fy))
     );
 
     // ── Log this run so it never repeats for the same month ──

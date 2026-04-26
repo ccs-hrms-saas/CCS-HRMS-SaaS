@@ -77,72 +77,57 @@ export default function AdminPayroll() {
     setLoading(true);
     setStep("preview");
 
-    const mode = appSettings?.lwp_deduction_mode ?? "attendance_based";
-    const prorateJoiners = appSettings?.payroll_prorate_mid_joiners ?? true;
-    const graceDays = appSettings?.attendance_grace_days ?? 0;
-    const orgHoursPerDay = appSettings?.hours_per_day ?? 8.5;
+    // ── Fetch ALL payroll data via service-role API (bypasses RLS) ──────────
+    // REASON: The RESTRICTIVE tenant isolation policy blocks attendance records
+    // with company_id=NULL from client-side queries — even for admins. Manual
+    // overrides historically lacked company_id. The server-side API queries by
+    // user_id membership (not company_id), finding every valid record.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setLoading(false); return; }
 
-    // ── Shared data fetches ─────────────────────────────────────────────────
-    const mStart = new Date(year, month - 1, 1);
-    const mEnd = new Date(year, month, 0);
-    const mStartStr = mStart.toISOString().split("T")[0];
-    const mEndStr = mEnd.toISOString().split("T")[0];
-    const today = new Date();
+    const res = await fetch(
+      `/api/admin/payroll-data?year=${year}&month=${month}`,
+      { headers: { Authorization: `Bearer ${session.access_token}` } }
+    );
+    if (!res.ok) { setLoading(false); return; }
+    const raw = await res.json();
+
+    // Re-use appSettings from API response (more up-to-date than cached state)
+    const settingsFromApi = raw.appSettings ?? appSettings;
+    const mode            = settingsFromApi?.lwp_deduction_mode ?? "attendance_based";
+    const prorateJoiners  = settingsFromApi?.payroll_prorate_mid_joiners ?? true;
+    const graceDays       = settingsFromApi?.attendance_grace_days ?? 0;
+    const orgHoursPerDay  = settingsFromApi?.hours_per_day ?? 8.5;
+
+    const mStart    = new Date(year, month - 1, 1);
+    const mEnd      = new Date(year, month, 0);
+    const mStartStr = `${year}-${String(month).padStart(2,"0")}-01`;
+    const mEndStr   = `${year}-${String(month).padStart(2,"0")}-${String(new Date(year,month,0).getDate()).padStart(2,"0")}`;
+    const today     = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const [attnRes, leavesRes, leaveTypesRes, adjsRes, otRes] = await Promise.all([
-      supabase
-        .from("attendance_records")
-        .select("user_id, date, check_in")
-        .eq("company_id", profile!.company_id)
-        .gte("date", mStartStr)
-        .lte("date", mEndStr),
-      supabase
-        .from("leave_requests")
-        .select("user_id, type, start_date, end_date, status")
-        .eq("company_id", profile!.company_id)
-        .eq("status", "approved")
-        .gte("start_date", mStartStr)
-        .lte("end_date", mEndStr),
-      supabase
-        .from("leave_types")
-        .select("name, is_paid")
-        .eq("company_id", profile!.company_id),
-      supabase
-        .from("deficit_adjustments")
-        .select("user_id, hours_cleared")
-        .eq("company_id", profile!.company_id)
-        .eq("adjusted_against", "LWP")
-        .gte("adjustment_date", mStartStr)
-        .lte("adjustment_date", mEndStr),
-      // Overtime hours summed per employee for this month
-      supabase
-        .from("attendance_records")
-        .select("user_id, overtime_hours")
-        .eq("company_id", profile!.company_id)
-        .gte("date", mStartStr)
-        .lte("date", mEndStr)
-        .gt("overtime_hours", 0),
-    ]);
+    // Reconstruct the shape the rest of the engine expects
+    const attnRes      = { data: raw.attendance };
+    const leavesRes    = { data: raw.leaves };
+    const leaveTypesRes= { data: raw.leaveTypes };
+    const adjsRes      = { data: raw.adjustments };
+    const otRes        = { data: raw.overtimeRecords };
+    // Override employees with what the API returned (already filtered correctly)
+    const apiEmployees: any[] = raw.employees ?? employees;
 
-    // ── Build global (scope='all') + group-scoped holiday set per employee ──
-    // First fetch the raw holiday list with scope info
-    const { data: rawHols } = await supabase
-      .from("company_holidays")
-      .select("id, date, scope")
-      .eq("company_id", profile!.company_id);
+    // ── Build holiday sets from API response (already fetched server-side) ──
+    const rawHols = raw.holidays ?? [];
 
-    const globalHolDates = (rawHols ?? []).filter((h: any) => h.scope !== "group").map((h: any) => h.date as string);
+    const globalHolDates = rawHols.filter((h: any) => h.scope !== "group").map((h: any) => h.date as string);
     const globalHolidays = new Set<string>(globalHolDates);
 
-    const hasGroupHols = (rawHols ?? []).some((h: any) => h.scope === "group");
+    const hasGroupHols = rawHols.some((h: any) => h.scope === "group");
 
     // Pre-build per-employee holiday sets (only if group-scoped holidays exist)
-    // Map: userId → Set<dateStr>
     const empHolidayMap = new Map<string, Set<string>>();
     if (hasGroupHols) {
       await Promise.all(
-        employees.map(async (emp: any) => {
+        apiEmployees.map(async (emp: any) => {
           const hols = await fetchEmployeeHolidays(supabase, profile!.company_id!, emp.id);
           empHolidayMap.set(emp.id, hols);
         })
@@ -157,11 +142,11 @@ export default function AdminPayroll() {
     const leaveTypes = leaveTypesRes.data ?? [];
     const adjs       = adjsRes.data ?? [];
 
-    // Overtime hours per employee (summed from attendance_records.overtime_hours)
-    const otEnabled = !!(appSettings?.overtime_tracking);
-    const otRateType  = appSettings?.overtime_rate_type  ?? "flat";
-    const otRateValue = Number(appSettings?.overtime_rate_value ?? 0);
-    const otCapHrs    = Number(appSettings?.overtime_monthly_cap_hrs ?? 0);
+    // Overtime settings from API response
+    const otEnabled   = !!(settingsFromApi?.overtime_tracking);
+    const otRateType  = settingsFromApi?.overtime_rate_type  ?? "flat";
+    const otRateValue = Number(settingsFromApi?.overtime_rate_value ?? 0);
+    const otCapHrs    = Number(settingsFromApi?.overtime_monthly_cap_hrs ?? 0);
 
     const otHoursMap = new Map<string, number>();
     if (otEnabled) {
@@ -193,10 +178,14 @@ export default function AdminPayroll() {
       .forEach((l: any) => {
         if (!paidLeaveMap.has(l.user_id)) paidLeaveMap.set(l.user_id, new Set());
         const set = paidLeaveMap.get(l.user_id)!;
-        const cursor = new Date(l.start_date);
-        const end = new Date(l.end_date);
+        // Parse dates as local (not UTC) by appending T00:00:00 to avoid IST→UTC shift
+        const leaveStart = new Date(l.start_date + "T00:00:00");
+        const leaveEnd   = new Date(l.end_date   + "T00:00:00");
+        // Clamp to payroll month bounds so cross-month leaves don't over-count
+        const cursor = new Date(Math.max(leaveStart.getTime(), mStart.getTime()));
+        const end    = new Date(Math.min(leaveEnd.getTime(),   mEnd.getTime()));
         while (cursor <= end) {
-          set.add(cursor.toISOString().split("T")[0]);
+          set.add(toDateStr(cursor));  // ← must use toDateStr, NOT toISOString
           cursor.setDate(cursor.getDate() + 1);
         }
       });
@@ -206,15 +195,22 @@ export default function AdminPayroll() {
     adjs.forEach((a: any) => {
       adjMap.set(a.user_id, (adjMap.get(a.user_id) ?? 0) + (a.hours_cleared ?? 0));
     });
+    // For formal LWP: also expand only within the payroll month
     const formalLwpLeaves = allLeaves.filter((l: any) => unpaidLeaveNames.has(l.type));
 
-    // ── Build org-wide schedule for fixed week-off ───────────────────────────
-    const orgSchedule = buildWorkSchedule(appSettings);
+    // Use settingsFromApi for schedule (comes from server-side API)
+    const orgSchedule = buildWorkSchedule(settingsFromApi);
+
+    // ── Helper: build YYYY-MM-DD without timezone shift ─────────────────────
+    // toISOString() converts to UTC which shifts dates by -5:30 in IST browsers.
+    // Instead, construct the date string directly from local date components.
+    const toDateStr = (d: Date): string =>
+      `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 
     // ── Calculate for each employee ─────────────────────────────────────────
-    const computed: PayrollRow[] = employees.map((emp) => {
+    const computed: PayrollRow[] = apiEmployees.map((emp) => {
       const remuneration = emp.remuneration ?? 0;
-      const empSchedule = buildWorkSchedule(appSettings, emp);
+      const empSchedule = buildWorkSchedule(settingsFromApi, emp);
 
       // Effective start date (pro-rate mid-month joiners)
       let effectiveStart = new Date(mStart);
@@ -237,9 +233,10 @@ export default function AdminPayroll() {
 
       if (targetDays === 0 || remuneration === 0) {
         return {
-          ...emp, targetDays: 0, effectiveStart: effectiveStart.toISOString().split("T")[0],
+          ...emp, targetDays: 0, effectiveStart: toDateStr(effectiveStart),
           daysPresent: 0, paidLeaveDays: 0, lwpDays: 0, graceDaysUsed: 0,
           remainingWorkingDays: 0, dailyRate: 0, deductions: 0, finalPayout: 0, projectedPayout: 0,
+          overtimeHours: 0, overtimePayout: 0,
         };
       }
 
@@ -259,7 +256,7 @@ export default function AdminPayroll() {
         const c = new Date(effectiveStart);
         while (c <= mEnd) {
           if (isWorkingDay(c, empHols, empSchedule)) {
-            const ds = c.toISOString().split("T")[0];
+            const ds = toDateStr(c);  // ← local date string, no UTC shift
             if (c <= lastDateToCount) {
               if (punches.has(ds)) {
                 daysPresent++;
@@ -289,7 +286,7 @@ export default function AdminPayroll() {
             overtimePayout = cappedOtHours * otRateValue;
           } else {
             // multiplier: hourly rate = dailyRate / hours_per_day
-            const hoursPerDay = Number(emp.hours_per_day ?? appSettings?.hours_per_day ?? 8.5);
+            const hoursPerDay = Number(emp.hours_per_day ?? settingsFromApi?.hours_per_day ?? 8.5);
             const hourlyRate = dailyRate / hoursPerDay;
             overtimePayout = cappedOtHours * hourlyRate * otRateValue;
           }
@@ -300,7 +297,7 @@ export default function AdminPayroll() {
         const projectedPayout = Math.min(remuneration, Math.max(0, remuneration - deductions) + remainingWorkingDays * dailyRate) + overtimePayout;
 
         return {
-          ...emp, targetDays, effectiveStart: effectiveStart.toISOString().split("T")[0],
+          ...emp, targetDays, effectiveStart: toDateStr(effectiveStart),
           daysPresent: daysPresent - paidLeaveDays, paidLeaveDays, lwpDays: effectiveLwpDays,
           graceDaysUsed, remainingWorkingDays, dailyRate, deductions,
           overtimeHours: cappedOtHours, overtimePayout,
@@ -313,8 +310,9 @@ export default function AdminPayroll() {
         const userFormalLeaves = formalLwpLeaves.filter((l: any) => l.user_id === emp.id);
         let lwpDays = 0;
         userFormalLeaves.forEach((l: any) => {
-          const c = new Date(l.start_date);
-          const e = new Date(l.end_date);
+          // Clamp to payroll month so cross-month leaves don't double-count
+          const c = new Date(Math.max(new Date(l.start_date).getTime(), mStart.getTime()));
+          const e = new Date(Math.min(new Date(l.end_date).getTime(),   mEnd.getTime()));
           while (c <= e) {
             if (isWorkingDay(c, empHols, empSchedule)) lwpDays++;
             c.setDate(c.getDate() + 1);
@@ -328,7 +326,7 @@ export default function AdminPayroll() {
         if (otRateType === "flat") {
           overtimePayoutFormal = cappedOtFormal * otRateValue;
         } else {
-          const hoursPerDay = Number(emp.hours_per_day ?? appSettings?.hours_per_day ?? 8.5);
+          const hoursPerDay = Number(emp.hours_per_day ?? settingsFromApi?.hours_per_day ?? 8.5);
           overtimePayoutFormal = cappedOtFormal * (dailyRate / hoursPerDay) * otRateValue;
         }
         overtimePayoutFormal = Math.round(overtimePayoutFormal * 100) / 100;
@@ -340,7 +338,7 @@ export default function AdminPayroll() {
         const deductions = lwpDays * dailyRate;
         const finalPayout = Math.max(0, remuneration - deductions) + overtimePayoutFormal;
         return {
-          ...emp, targetDays, effectiveStart: effectiveStart.toISOString().split("T")[0],
+          ...emp, targetDays, effectiveStart: toDateStr(effectiveStart),
           daysPresent: 0, paidLeaveDays: 0, lwpDays, graceDaysUsed: 0,
           remainingWorkingDays: 0, dailyRate, deductions,
           overtimeHours: cappedOtFormal, overtimePayout: overtimePayoutFormal,

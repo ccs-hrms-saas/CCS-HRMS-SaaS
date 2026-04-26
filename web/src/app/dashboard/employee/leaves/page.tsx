@@ -122,7 +122,8 @@ export default function EmployeeLeaves() {
 
     // 1. Submit leave request
     await supabase.from("leave_requests").insert({ 
-      user_id: profile.id, type: form.type, start_date: form.start_date, end_date: form.end_date,
+      user_id: profile.id, company_id: profile.company_id,
+      type: form.type, start_date: form.start_date, end_date: form.end_date,
       reason: form.reason, attachment_url, is_violation, violation_reason
     });
 

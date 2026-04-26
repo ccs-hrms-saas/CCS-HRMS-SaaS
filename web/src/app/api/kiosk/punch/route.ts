@@ -61,23 +61,44 @@ export async function POST(req: Request) {
     const now   = new Date().toISOString();
 
     if (type === 'check_in') {
-      // Insert a new record for today
-      const { error } = await admin.from('attendance_records').insert({
-        employee_id,
-        company_id: device.company_id,
-        date:       today,
-        check_in:   now,
-        status:     'present',
-        source:     'kiosk',
-      });
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      // Check if already checked in today (prevent duplicate check-in)
+      const { data: existing } = await admin
+        .from('attendance_records')
+        .select('id, check_in')
+        .eq('user_id', employee_id)
+        .eq('company_id', device.company_id)
+        .eq('date', today)
+        .maybeSingle();
+
+      if (existing?.check_in) {
+        // Already checked in — treat as a no-op and return success
+        return NextResponse.json({ ok: true, employee_name: employee.full_name, type: 'already_checked_in', timestamp: now });
+      }
+
+      if (existing) {
+        // Row exists but no check_in yet — update it
+        const { error } = await admin
+          .from('attendance_records')
+          .update({ check_in: now })
+          .eq('id', existing.id);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      } else {
+        // Insert a new record for today — user_id is the correct column name
+        const { error } = await admin.from('attendance_records').insert({
+          user_id:    employee_id,      // ← MUST be user_id, NOT employee_id
+          company_id: device.company_id,
+          date:       today,
+          check_in:   now,
+        });
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      }
 
     } else {
-      // Update existing record with check_out time
+      // Update existing record with check_out time — also uses user_id
       const { error } = await admin
         .from('attendance_records')
         .update({ check_out: now })
-        .eq('employee_id', employee_id)
+        .eq('user_id', employee_id)    // ← MUST be user_id, NOT employee_id
         .eq('company_id', device.company_id)
         .eq('date', today)
         .is('check_out', null);

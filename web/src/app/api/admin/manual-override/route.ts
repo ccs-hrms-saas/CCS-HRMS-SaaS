@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       // IMPORTANT: Admin enters times in IST. Append +05:30 so JS correctly
       // converts to UTC before storing. Without this, "10:35" is treated as
       // UTC and stored as 10:35Z, which displays as 16:05 IST — wrong.
-      const inISO  = new Date(`${date}T${check_in}:00+05:30`).toISOString()
+      const inISO = new Date(`${date}T${check_in}:00+05:30`).toISOString()
       const outISO = check_out ? new Date(`${date}T${check_out}:00+05:30`).toISOString() : null
 
       // Validate times make sense
@@ -105,10 +105,12 @@ export async function POST(req: NextRequest) {
       }
 
       // Upsert: update if record exists for this employee+date, else insert
+      // IMPORTANT: scope lookup by company_id to avoid cross-tenant collisions
       const { data: existing } = await supabaseAdmin
         .from('attendance_records')
         .select('id')
         .eq('user_id', user_id)
+        .eq('company_id', targetProfile.company_id)
         .eq('date', date)
         .maybeSingle()
 
@@ -116,9 +118,10 @@ export async function POST(req: NextRequest) {
         const { error } = await supabaseAdmin
           .from('attendance_records')
           .update({
-            check_in:  inISO,
-            check_out: outISO,
-            photo_url: `manual_override_by_${callerProfile.id}`,
+            check_in:   inISO,
+            check_out:  outISO,
+            company_id: targetProfile.company_id,
+            photo_url:  `manual_override_by_${callerProfile.id}`,
           })
           .eq('id', existing.id)
         if (error) throw error
@@ -127,10 +130,11 @@ export async function POST(req: NextRequest) {
           .from('attendance_records')
           .insert({
             user_id,
+            company_id: targetProfile.company_id,
             date,
-            check_in:  inISO,
-            check_out: outISO,
-            photo_url: `manual_override_by_${callerProfile.id}`,
+            check_in:   inISO,
+            check_out:  outISO,
+            photo_url:  `manual_override_by_${callerProfile.id}`,
           })
         if (error) throw error
       }
@@ -160,11 +164,12 @@ export async function POST(req: NextRequest) {
         .from('leave_requests')
         .insert({
           user_id,
-          type:       leave_type,
+          company_id: targetProfile.company_id,  // ← MUST include for RLS visibility
+          type: leave_type,
           start_date: date,
-          end_date:   date,
-          reason:     `Admin Manual Override by ${callerProfile.id}`,
-          status:     'approved',
+          end_date: date,
+          reason: `Admin Manual Override by ${callerProfile.id}`,
+          status: 'approved',
         })
       if (lvErr) throw lvErr
 

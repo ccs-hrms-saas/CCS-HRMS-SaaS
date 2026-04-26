@@ -112,7 +112,7 @@ export default function AdminReports() {
     fetch("/api/absence-deduction", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ run_all: true, from: prevFrom, to: prevTo }),
+      body: JSON.stringify({ run_all: true, from: prevFrom, to: prevTo, company_id: companyId }),
     }).catch(() => {});
   }, [profile]);
 
@@ -616,38 +616,82 @@ export default function AdminReports() {
                       </td>
                     </tr>
 
-                    {/* Expanded daily breakdown */}
-                    {expandedEmp === r.id && (
-                      <tr key={`${r.id}-expanded`}>
-                        <td colSpan={10} style={{ padding: 0 }}>
-                          <div style={{ background: "rgba(99,102,241,0.04)", borderTop: "1px solid var(--glass-border)", padding: "16px 24px" }}>
-                            <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 12 }}>
-                              Daily log for {r.name} ({r.rows.length} entries)
+                    {/* Expanded daily breakdown — attendance punches + approved leave days */}
+                    {expandedEmp === r.id && (() => {
+                      // Build a unified list of day-cards: punch records + leave day expansions
+                      const empLeaveRecords = leaveRecords.filter((l: any) => l.user_id === r.id);
+
+                      // Expand each leave record into individual day entries
+                      const leaveDayCards: { date: string; type: string; leaveId: string }[] = [];
+                      empLeaveRecords.forEach((lv: any) => {
+                        const cursor = new Date(lv.start_date + "T00:00:00");
+                        const end    = new Date(lv.end_date   + "T00:00:00");
+                        while (cursor <= end) {
+                          const ds = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,"0")}-${String(cursor.getDate()).padStart(2,"0")}`;
+                          // Only show if within the report range
+                          if (ds >= fromDate && ds <= toDate) {
+                            leaveDayCards.push({ date: ds, type: lv.type, leaveId: lv.id });
+                          }
+                          cursor.setDate(cursor.getDate() + 1);
+                        }
+                      });
+
+                      // Dates already covered by attendance records
+                      const punchDates = new Set(r.rows.map((x: any) => x.date));
+
+                      // Filter leave cards to only show dates NOT already covered by a punch
+                      const leaveOnlyCards = leaveDayCards.filter(lc => !punchDates.has(lc.date));
+
+                      // Merge and sort by date descending
+                      type DayCard = { date: string; isPunch: boolean; row?: any; leaveType?: string };
+                      const allCards: DayCard[] = [
+                        ...r.rows.map((day: any) => ({ date: day.date, isPunch: true, row: day })),
+                        ...leaveOnlyCards.map(lc => ({ date: lc.date, isPunch: false, leaveType: lc.type })),
+                      ].sort((a, b) => b.date.localeCompare(a.date));
+
+                      return (
+                        <tr key={`${r.id}-expanded`}>
+                          <td colSpan={10} style={{ padding: 0 }}>
+                            <div style={{ background: "rgba(99,102,241,0.04)", borderTop: "1px solid var(--glass-border)", padding: "16px 24px" }}>
+                              <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 12 }}>
+                                Daily log for {r.name} ({allCards.length} entries)
+                              </div>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+                                {allCards.map((card, idx) => {
+                                  if (card.isPunch && card.row) {
+                                    const day = card.row;
+                                    const h = diffHrs(day.check_in, day.check_out);
+                                    return (
+                                      <div key={day.id ?? idx} style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", borderRadius: 8, padding: "10px 14px" }}>
+                                        <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: 4 }}>{fmtDate(day.date)}</div>
+                                        {(() => { const emp = employees.find(e => e.id === r.id); return emp?.shift_start_time ? (
+                                          <div style={{ fontSize: "0.72rem", color: "#818cf8", marginBottom: 3 }}>⏰ {formatShiftTime(emp.shift_start_time)} → {emp.shift_end_time ? formatShiftTime(emp.shift_end_time) : "—"}</div>
+                                        ) : null; })()}
+                                        <div style={{ fontSize: "0.76rem", color: "var(--text-secondary)" }}>
+                                          In: {fmtTime(day.check_in)} · Out: {fmtTime(day.check_out)}
+                                        </div>
+                                        <div style={{ fontSize: "0.82rem", fontWeight: 700, color: h >= orgHoursPerDay ? "var(--success)" : "var(--warning)", marginTop: 4 }}>
+                                          {h > 0 ? `${h.toFixed(2)}h` : "In Office"}
+                                        </div>
+                                      </div>
+                                    );
+                                  } else {
+                                    // Leave day card
+                                    return (
+                                      <div key={`leave-${card.date}-${idx}`} style={{ background: "rgba(99,102,241,0.08)", border: "1.5px solid rgba(99,102,241,0.35)", borderRadius: 8, padding: "10px 14px" }}>
+                                        <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: 4 }}>{fmtDate(card.date)}</div>
+                                        <div style={{ fontSize: "0.76rem", color: "#818cf8", marginBottom: 4 }}>🗓️ {card.leaveType}</div>
+                                        <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "#a5b4fc" }}>Approved Leave</div>
+                                      </div>
+                                    );
+                                  }
+                                })}
+                              </div>
                             </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
-                              {r.rows.sort((a: any, b: any) => b.date.localeCompare(a.date)).map((day: any) => {
-                                const h = diffHrs(day.check_in, day.check_out);
-                                return (
-                                  <div key={day.id} style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", borderRadius: 8, padding: "10px 14px" }}>
-                                    <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: 4 }}>{fmtDate(day.date)}</div>
-                                    {/* Prescribed shift (if per_employee_shift enabled and set) */}
-                                    {(() => { const emp = employees.find(e => e.id === r.id); return emp?.shift_start_time ? (
-                                      <div style={{ fontSize: "0.72rem", color: "#818cf8", marginBottom: 3 }}>⏰ {formatShiftTime(emp.shift_start_time)} → {emp.shift_end_time ? formatShiftTime(emp.shift_end_time) : '—'}</div>
-                                    ) : null; })()}
-                                    <div style={{ fontSize: "0.76rem", color: "var(--text-secondary)" }}>
-                                      In: {fmtTime(day.check_in)} · Out: {fmtTime(day.check_out)}
-                                    </div>
-                                    <div style={{ fontSize: "0.82rem", fontWeight: 700, color: h >= orgHoursPerDay ? "var(--success)" : "var(--warning)", marginTop: 4 }}>
-                                      {h > 0 ? `${h.toFixed(2)}h` : "In Office"}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </>
                 ))}
               </tbody>
