@@ -618,35 +618,30 @@ export default function AdminReports() {
 
                     {/* Expanded daily breakdown — attendance punches + approved leave days */}
                     {expandedEmp === r.id && (() => {
-                      // Build a unified list of day-cards: punch records + leave day expansions
+                      // Build a date→leaveType map from approved leaves
                       const empLeaveRecords = leaveRecords.filter((l: any) => l.user_id === r.id);
-
-                      // Expand each leave record into individual day entries
-                      const leaveDayCards: { date: string; type: string; leaveId: string }[] = [];
+                      const leaveByDate = new Map<string, string>();
                       empLeaveRecords.forEach((lv: any) => {
                         const cursor = new Date(lv.start_date + "T00:00:00");
                         const end    = new Date(lv.end_date   + "T00:00:00");
                         while (cursor <= end) {
                           const ds = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,"0")}-${String(cursor.getDate()).padStart(2,"0")}`;
-                          // Only show if within the report range
-                          if (ds >= fromDate && ds <= toDate) {
-                            leaveDayCards.push({ date: ds, type: lv.type, leaveId: lv.id });
-                          }
+                          if (ds >= fromDate && ds <= toDate) leaveByDate.set(ds, lv.type);
                           cursor.setDate(cursor.getDate() + 1);
                         }
                       });
 
-                      // Dates already covered by attendance records
+                      // Dates covered by punch records
                       const punchDates = new Set(r.rows.map((x: any) => x.date));
 
-                      // Filter leave cards to only show dates NOT already covered by a punch
-                      const leaveOnlyCards = leaveDayCards.filter(lc => !punchDates.has(lc.date));
+                      // Leave-only dates (no punch)
+                      const leaveOnlyDates = [...leaveByDate.entries()].filter(([d]) => !punchDates.has(d));
 
-                      // Merge and sort by date descending
+                      // Merge punch cards + leave-only cards, sorted by date desc
                       type DayCard = { date: string; isPunch: boolean; row?: any; leaveType?: string };
                       const allCards: DayCard[] = [
-                        ...r.rows.map((day: any) => ({ date: day.date, isPunch: true, row: day })),
-                        ...leaveOnlyCards.map(lc => ({ date: lc.date, isPunch: false, leaveType: lc.type })),
+                        ...r.rows.map((day: any) => ({ date: day.date, isPunch: true, row: day, leaveType: leaveByDate.get(day.date) })),
+                        ...leaveOnlyDates.map(([d, t]) => ({ date: d, isPunch: false, leaveType: t })),
                       ].sort((a, b) => b.date.localeCompare(a.date));
 
                       return (
@@ -661,9 +656,19 @@ export default function AdminReports() {
                                   if (card.isPunch && card.row) {
                                     const day = card.row;
                                     const h = diffHrs(day.check_in, day.check_out);
+                                    const hasLeave = !!card.leaveType;
                                     return (
-                                      <div key={day.id ?? idx} style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", borderRadius: 8, padding: "10px 14px" }}>
+                                      <div key={day.id ?? idx} style={{
+                                        background: hasLeave ? "rgba(99,102,241,0.08)" : "var(--glass-bg)",
+                                        border: hasLeave ? "1.5px solid rgba(99,102,241,0.35)" : "1px solid var(--glass-border)",
+                                        borderRadius: 8, padding: "10px 14px"
+                                      }}>
                                         <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: 4 }}>{fmtDate(day.date)}</div>
+                                        {hasLeave && (
+                                          <div style={{ fontSize: "0.72rem", color: "#a5b4fc", fontWeight: 600, marginBottom: 4, background: "rgba(99,102,241,0.15)", display: "inline-block", padding: "2px 8px", borderRadius: 4 }}>
+                                            🗓️ {card.leaveType}
+                                          </div>
+                                        )}
                                         {(() => { const emp = employees.find(e => e.id === r.id); return emp?.shift_start_time ? (
                                           <div style={{ fontSize: "0.72rem", color: "#818cf8", marginBottom: 3 }}>⏰ {formatShiftTime(emp.shift_start_time)} → {emp.shift_end_time ? formatShiftTime(emp.shift_end_time) : "—"}</div>
                                         ) : null; })()}
@@ -676,7 +681,7 @@ export default function AdminReports() {
                                       </div>
                                     );
                                   } else {
-                                    // Leave day card
+                                    // Leave-only card (no punch on this date)
                                     return (
                                       <div key={`leave-${card.date}-${idx}`} style={{ background: "rgba(99,102,241,0.08)", border: "1.5px solid rgba(99,102,241,0.35)", borderRadius: 8, padding: "10px 14px" }}>
                                         <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: 4 }}>{fmtDate(card.date)}</div>
