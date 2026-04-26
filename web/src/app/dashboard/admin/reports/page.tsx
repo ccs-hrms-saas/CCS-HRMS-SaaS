@@ -633,6 +633,7 @@ export default function AdminReports() {
                     {expandedEmp === r.id && (() => {
                       // Build a date→leaveType map from approved leaves
                       const empLeaveRecords = leaveRecords.filter((l: any) => l.user_id === r.id);
+                      console.log("[DEBUG-LEAVE] r.id=", r.id, "leaveRecords.length=", leaveRecords.length, "empLeaveRecords=", empLeaveRecords);
                       const leaveByDate = new Map<string, string>();
                       empLeaveRecords.forEach((lv: any) => {
                         const cursor = new Date(lv.start_date + "T00:00:00");
@@ -657,6 +658,10 @@ export default function AdminReports() {
                       // Merge and sort by date descending
                       const allCards = [...punchCards, ...leaveCards]
                         .sort((a, b) => b.date.localeCompare(a.date));
+
+                      console.log("[DEBUG-LEAVE] leaveByDate size=", leaveByDate.size, "entries=", [...leaveByDate.entries()]);
+                      console.log("[DEBUG-LEAVE] punchCards=", punchCards.length, "leaveCards=", leaveCards.length, "allCards=", allCards.length);
+                      console.log("[DEBUG-LEAVE] r.rows dates=", r.rows.map((x: any) => x.date));
 
                       return (
                         <tr key={`${r.id}-expanded`}>
