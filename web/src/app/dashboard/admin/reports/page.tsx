@@ -655,10 +655,10 @@ export default function AdminReports() {
                         });
                       }
 
-                      // Generate every working day in the filter range
+                      // Generate EVERY date in the filter range — no date is skipped
                       type DayCard = {
                         date: string;
-                        status: "present" | "leave" | "lwp";
+                        status: "present" | "leave" | "lwp" | "weekoff";
                         punch?: any;
                         leaveType?: string;
                       };
@@ -666,38 +666,44 @@ export default function AdminReports() {
                       const cursor = new Date(fromDate + "T00:00:00");
                       const endD   = new Date(toDate   + "T00:00:00");
                       while (cursor <= endD) {
-                        if (isWorkingDay(cursor)) {
-                          const ds = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,"0")}-${String(cursor.getDate()).padStart(2,"0")}`;
-                          const punch = punchByDate.get(ds);
-                          const leave = leaveByDate.get(ds);
+                        const ds = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,"0")}-${String(cursor.getDate()).padStart(2,"0")}`;
+                        const punch = punchByDate.get(ds);
+                        const leave = leaveByDate.get(ds);
+                        const working = isWorkingDay(cursor);
 
-                          if (leave) {
-                            // Leave takes priority — admin's override is final
-                            allDays.push({ date: ds, status: "leave", leaveType: leave, punch });
-                          } else if (punch) {
-                            allDays.push({ date: ds, status: "present", punch });
-                          } else {
-                            allDays.push({ date: ds, status: "lwp" });
-                          }
+                        if (leave) {
+                          // Leave takes priority — admin's override is final
+                          allDays.push({ date: ds, status: "leave", leaveType: leave, punch });
+                        } else if (punch) {
+                          // Present — works on both working and non-working days (rotating weekoff)
+                          allDays.push({ date: ds, status: "present", punch });
+                        } else if (!working) {
+                          // Non-working day, no punch, no leave → weekly off
+                          allDays.push({ date: ds, status: "weekoff" });
+                        } else {
+                          // Working day, no punch, no leave → absent/LWP
+                          allDays.push({ date: ds, status: "lwp" });
                         }
                         cursor.setDate(cursor.getDate() + 1);
                       }
                       // Sort descending (latest first)
                       allDays.sort((a, b) => b.date.localeCompare(a.date));
 
-                      const presentCount = allDays.filter(d => d.status === "present").length;
-                      const leaveCount   = allDays.filter(d => d.status === "leave").length;
-                      const lwpCount     = allDays.filter(d => d.status === "lwp").length;
+                      const presentCount  = allDays.filter(d => d.status === "present").length;
+                      const leaveCount    = allDays.filter(d => d.status === "leave").length;
+                      const lwpCount      = allDays.filter(d => d.status === "lwp").length;
+                      const weekoffCount  = allDays.filter(d => d.status === "weekoff").length;
 
                       return (
                         <tr key={`${r.id}-expanded`}>
                           <td colSpan={10} style={{ padding: 0 }}>
                             <div style={{ background: "rgba(99,102,241,0.04)", borderTop: "1px solid var(--glass-border)", padding: "16px 24px" }}>
                               <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                                <span>Daily log for {r.name} ({allDays.length} working days)</span>
+                                <span>Daily log for {r.name} ({allDays.length} days)</span>
                                 <span style={{ color: "var(--success)" }}>✓ {presentCount} Present</span>
                                 {leaveCount > 0 && <span style={{ color: "#818cf8" }}>🗓️ {leaveCount} Leave</span>}
                                 {lwpCount > 0 && <span style={{ color: "var(--danger)" }}>✕ {lwpCount} LWP</span>}
+                                {weekoffCount > 0 && <span style={{ color: "var(--text-muted, #6b7280)" }}>⏸ {weekoffCount} Off</span>}
                               </div>
                               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
                                 {allDays.map((card, idx) => {
@@ -722,15 +728,23 @@ export default function AdminReports() {
                                   } else if (card.status === "leave") {
                                     // ── LEAVE card (compact, purple) ──
                                     return (
-                                      <div key={`l-${card.date}`} style={{ background: "rgba(99,102,241,0.10)", border: "1.5px solid rgba(99,102,241,0.4)", borderRadius: 8, padding: "8px 12px", minHeight: 0 }}>
+                                      <div key={`l-${card.date}`} style={{ background: "rgba(99,102,241,0.10)", border: "1.5px solid rgba(99,102,241,0.4)", borderRadius: 8, padding: "8px 12px" }}>
                                         <div style={{ fontWeight: 600, fontSize: "0.78rem", marginBottom: 2 }}>{fmtDate(card.date)}</div>
                                         <div style={{ fontSize: "0.82rem", color: "#818cf8", fontWeight: 700 }}>🗓️ {card.leaveType}</div>
+                                      </div>
+                                    );
+                                  } else if (card.status === "weekoff") {
+                                    // ── WEEKLY OFF card (compact, muted grey) ──
+                                    return (
+                                      <div key={`w-${card.date}`} style={{ background: "rgba(107,114,128,0.06)", border: "1px dashed rgba(107,114,128,0.25)", borderRadius: 8, padding: "8px 12px", opacity: 0.7 }}>
+                                        <div style={{ fontWeight: 600, fontSize: "0.78rem", marginBottom: 2, color: "var(--text-muted, #6b7280)" }}>{fmtDate(card.date)}</div>
+                                        <div style={{ fontSize: "0.76rem", color: "var(--text-muted, #6b7280)" }}>⏸ Weekly Off</div>
                                       </div>
                                     );
                                   } else {
                                     // ── LWP/ABSENT card (compact, red-tinted) ──
                                     return (
-                                      <div key={`a-${card.date}`} style={{ background: "rgba(239,68,68,0.08)", border: "1.5px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "8px 12px", minHeight: 0 }}>
+                                      <div key={`a-${card.date}`} style={{ background: "rgba(239,68,68,0.08)", border: "1.5px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "8px 12px" }}>
                                         <div style={{ fontWeight: 600, fontSize: "0.78rem", marginBottom: 2 }}>{fmtDate(card.date)}</div>
                                         <div style={{ fontSize: "0.82rem", color: "#ef4444", fontWeight: 700 }}>✕ LWP</div>
                                       </div>
