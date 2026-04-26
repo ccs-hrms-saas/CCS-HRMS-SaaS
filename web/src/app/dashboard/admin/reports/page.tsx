@@ -630,39 +630,84 @@ export default function AdminReports() {
                       </td>
                     </tr>
 
-                    {/* Expanded daily breakdown — attendance punches + approved leave days */}
+                    {/* Expanded daily breakdown — DATE-FIRST: one card per working day */}
                     {expandedEmp === r.id && (() => {
-                      // Use leaveMap from summary (already computed, no separate state needed)
-                      const leaveByDate = r.leaveMap ?? new Map();
+                      // Build lookup maps from raw data
+                      const punchByDate = new Map<string, any>();
+                      r.rows.forEach((day: any) => punchByDate.set(day.date, day));
 
-                      // Punch cards: EXCLUDE any date that has an approved leave
-                      const punchCards = r.rows
-                        .filter((day: any) => !leaveByDate.has(day.date))
-                        .map((day: any) => ({ date: day.date, kind: "punch" as const, row: day }));
+                      // Leave dates — try r.leaveMap from summary, fallback to leaveRecords state
+                      let leaveByDate: Map<string, string> = r.leaveMap instanceof Map && r.leaveMap.size > 0
+                        ? r.leaveMap
+                        : new Map<string, string>();
 
-                      // Leave cards: one per leave date
-                      const leaveCards = [...leaveByDate.entries()]
-                        .map(([d, t]: [string, string]) => ({ date: d, kind: "leave" as const, leaveType: t }));
+                      // Fallback: rebuild from leaveRecords state if leaveMap was empty
+                      if (leaveByDate.size === 0 && leaveRecords.length > 0) {
+                        const empLv = leaveRecords.filter((l: any) => l.user_id === r.id);
+                        empLv.forEach((lv: any) => {
+                          const c2 = new Date(lv.start_date + "T00:00:00");
+                          const e2 = new Date(lv.end_date   + "T00:00:00");
+                          while (c2 <= e2) {
+                            const ds2 = `${c2.getFullYear()}-${String(c2.getMonth()+1).padStart(2,"0")}-${String(c2.getDate()).padStart(2,"0")}`;
+                            leaveByDate.set(ds2, lv.type);
+                            c2.setDate(c2.getDate() + 1);
+                          }
+                        });
+                      }
 
-                      // Merge and sort by date descending
-                      const allCards = [...punchCards, ...leaveCards]
-                        .sort((a, b) => b.date.localeCompare(a.date));
+                      // Generate every working day in the filter range
+                      type DayCard = {
+                        date: string;
+                        status: "present" | "leave" | "lwp";
+                        punch?: any;
+                        leaveType?: string;
+                      };
+                      const allDays: DayCard[] = [];
+                      const cursor = new Date(fromDate + "T00:00:00");
+                      const endD   = new Date(toDate   + "T00:00:00");
+                      while (cursor <= endD) {
+                        if (isWorkingDay(cursor)) {
+                          const ds = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,"0")}-${String(cursor.getDate()).padStart(2,"0")}`;
+                          const punch = punchByDate.get(ds);
+                          const leave = leaveByDate.get(ds);
+
+                          if (leave) {
+                            // Leave takes priority — admin's override is final
+                            allDays.push({ date: ds, status: "leave", leaveType: leave, punch });
+                          } else if (punch) {
+                            allDays.push({ date: ds, status: "present", punch });
+                          } else {
+                            allDays.push({ date: ds, status: "lwp" });
+                          }
+                        }
+                        cursor.setDate(cursor.getDate() + 1);
+                      }
+                      // Sort descending (latest first)
+                      allDays.sort((a, b) => b.date.localeCompare(a.date));
+
+                      const presentCount = allDays.filter(d => d.status === "present").length;
+                      const leaveCount   = allDays.filter(d => d.status === "leave").length;
+                      const lwpCount     = allDays.filter(d => d.status === "lwp").length;
 
                       return (
                         <tr key={`${r.id}-expanded`}>
                           <td colSpan={10} style={{ padding: 0 }}>
                             <div style={{ background: "rgba(99,102,241,0.04)", borderTop: "1px solid var(--glass-border)", padding: "16px 24px" }}>
-                              <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 12 }}>
-                                Daily log for {r.name} ({allCards.length} entries)
+                              <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                                <span>Daily log for {r.name} ({allDays.length} working days)</span>
+                                <span style={{ color: "var(--success)" }}>✓ {presentCount} Present</span>
+                                {leaveCount > 0 && <span style={{ color: "#818cf8" }}>🗓️ {leaveCount} Leave</span>}
+                                {lwpCount > 0 && <span style={{ color: "var(--danger)" }}>✕ {lwpCount} LWP</span>}
                               </div>
                               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
-                                {allCards.map((card, idx) => {
-                                  if (card.kind === "punch") {
-                                    const day = (card as any).row;
+                                {allDays.map((card, idx) => {
+                                  if (card.status === "present" && card.punch) {
+                                    // ── PRESENT card (full size, normal style) ──
+                                    const day = card.punch;
                                     const h = diffHrs(day.check_in, day.check_out);
                                     return (
-                                      <div key={day.id ?? idx} style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", borderRadius: 8, padding: "10px 14px" }}>
-                                        <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: 4 }}>{fmtDate(day.date)}</div>
+                                      <div key={`p-${card.date}`} style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", borderRadius: 8, padding: "10px 14px" }}>
+                                        <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: 4 }}>{fmtDate(card.date)}</div>
                                         {(() => { const emp = employees.find(e => e.id === r.id); return emp?.shift_start_time ? (
                                           <div style={{ fontSize: "0.72rem", color: "#818cf8", marginBottom: 3 }}>⏰ {formatShiftTime(emp.shift_start_time)} → {emp.shift_end_time ? formatShiftTime(emp.shift_end_time) : "—"}</div>
                                         ) : null; })()}
@@ -674,14 +719,20 @@ export default function AdminReports() {
                                         </div>
                                       </div>
                                     );
-                                  } else {
-                                    // Leave card
-                                    const lt = (card as any).leaveType;
+                                  } else if (card.status === "leave") {
+                                    // ── LEAVE card (compact, purple) ──
                                     return (
-                                      <div key={`leave-${card.date}-${idx}`} style={{ background: "rgba(99,102,241,0.08)", border: "1.5px solid rgba(99,102,241,0.35)", borderRadius: 8, padding: "10px 14px" }}>
-                                        <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: 4 }}>{fmtDate(card.date)}</div>
-                                        <div style={{ fontSize: "0.82rem", color: "#818cf8", fontWeight: 600, marginBottom: 4 }}>🗓️ {lt}</div>
-                                        <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "#a5b4fc" }}>Approved Leave</div>
+                                      <div key={`l-${card.date}`} style={{ background: "rgba(99,102,241,0.10)", border: "1.5px solid rgba(99,102,241,0.4)", borderRadius: 8, padding: "8px 12px", minHeight: 0 }}>
+                                        <div style={{ fontWeight: 600, fontSize: "0.78rem", marginBottom: 2 }}>{fmtDate(card.date)}</div>
+                                        <div style={{ fontSize: "0.82rem", color: "#818cf8", fontWeight: 700 }}>🗓️ {card.leaveType}</div>
+                                      </div>
+                                    );
+                                  } else {
+                                    // ── LWP/ABSENT card (compact, red-tinted) ──
+                                    return (
+                                      <div key={`a-${card.date}`} style={{ background: "rgba(239,68,68,0.08)", border: "1.5px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "8px 12px", minHeight: 0 }}>
+                                        <div style={{ fontWeight: 600, fontSize: "0.78rem", marginBottom: 2 }}>{fmtDate(card.date)}</div>
+                                        <div style={{ fontSize: "0.82rem", color: "#ef4444", fontWeight: 700 }}>✕ LWP</div>
                                       </div>
                                     );
                                   }
