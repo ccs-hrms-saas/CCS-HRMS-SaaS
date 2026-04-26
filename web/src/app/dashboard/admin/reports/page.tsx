@@ -223,13 +223,27 @@ export default function AdminReports() {
     });
 
     return Object.entries(empMap).map(([id, { name, rows }]) => {
-      const daysPresent = rows.length;
-      const totalHrs = rows.reduce((s, r) => s + diffHrs(r.check_in, r.check_out), 0);
-      const avgHrs = daysPresent ? totalHrs / daysPresent : 0;
+      // Build set of dates covered by approved leaves for this employee
+      const empLeaves = leaveRecords.filter(l => l.user_id === id);
+      const leaveDateSet = new Set<string>();
+      empLeaves.forEach(l => {
+        const cursor = new Date(l.start_date + "T00:00:00");
+        const end    = new Date(l.end_date   + "T00:00:00");
+        while (cursor <= end) {
+          leaveDateSet.add(`${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,"0")}-${String(cursor.getDate()).padStart(2,"0")}`);
+          cursor.setDate(cursor.getDate() + 1);
+        }
+      });
+
+      // Exclude punch records on leave dates — leave override is final
+      const punchRows = rows.filter(r => !leaveDateSet.has(r.date));
+      const daysPresent = punchRows.length + leaveDateSet.size; // punches + paid leave days
+      const totalHrs = punchRows.reduce((s, r) => s + diffHrs(r.check_in, r.check_out), 0);
+      const avgHrs = punchRows.length ? totalHrs / punchRows.length : 0;
       const attendance = workingDaysInRange > 0 ? (daysPresent / workingDaysInRange) * 100 : 0;
 
-      // Late arrivals — use per-employee shift_start_time when available, else 09:31 fallback
-      const lateArrivals = rows.filter(r => {
+      // Late arrivals — only count actual punch days (not leave days)
+      const lateArrivals = punchRows.filter(r => {
         if (!r.check_in) return false;
         const emp = employees.find(e => e.id === id);
         if (emp?.shift_start_time) {
@@ -240,17 +254,16 @@ export default function AdminReports() {
         return d.getHours() > 9 || (d.getHours() === 9 && d.getMinutes() > 30);
       }).length;
 
-      // Overtime: days where worked hours exceed employee's required hours
+      // Overtime: only on actual punch days
       const empProfile2 = employees.find(e => e.id === id);
       const empHPD2 = resolveHoursPerDay(empProfile2?.hours_per_day ?? null, orgHoursPerDay);
-      const overtimeDays = rows.filter(r => diffHrs(r.check_in, r.check_out) > empHPD2 + 0.5).length;
-      const overtimeHrs = rows.reduce((s, r) => {
+      const overtimeDays = punchRows.filter(r => diffHrs(r.check_in, r.check_out) > empHPD2 + 0.5).length;
+      const overtimeHrs = punchRows.reduce((s, r) => {
         const h = diffHrs(r.check_in, r.check_out);
         return s + (h > empHPD2 ? h - empHPD2 : 0);
       }, 0);
 
-      // Approved leaves for this period
-      const empLeaves = leaveRecords.filter(l => l.user_id === id);
+      // Leave days taken
       const leaveDaysTaken = empLeaves.reduce((s, l) => {
         const t = leaveTypes.find(x => x.name === l.type);
         return s + getLeaveDaysCount(l.start_date, l.end_date, t?.count_holidays ?? false);
@@ -631,18 +644,19 @@ export default function AdminReports() {
                         }
                       });
 
-                      // Dates covered by punch records
-                      const punchDates = new Set(r.rows.map((x: any) => x.date));
+                      // Punch cards: EXCLUDE any date that has an approved leave
+                      // (leave override is the admin's final word — stale punches are irrelevant)
+                      const punchCards = r.rows
+                        .filter((day: any) => !leaveByDate.has(day.date))
+                        .map((day: any) => ({ date: day.date, kind: "punch" as const, row: day }));
 
-                      // Leave-only dates (no punch)
-                      const leaveOnlyDates = [...leaveByDate.entries()].filter(([d]) => !punchDates.has(d));
+                      // Leave cards: one per leave date
+                      const leaveCards = [...leaveByDate.entries()]
+                        .map(([d, t]) => ({ date: d, kind: "leave" as const, leaveType: t }));
 
-                      // Merge punch cards + leave-only cards, sorted by date desc
-                      type DayCard = { date: string; isPunch: boolean; row?: any; leaveType?: string };
-                      const allCards: DayCard[] = [
-                        ...r.rows.map((day: any) => ({ date: day.date, isPunch: true, row: day, leaveType: leaveByDate.get(day.date) })),
-                        ...leaveOnlyDates.map(([d, t]) => ({ date: d, isPunch: false, leaveType: t })),
-                      ].sort((a, b) => b.date.localeCompare(a.date));
+                      // Merge and sort by date descending
+                      const allCards = [...punchCards, ...leaveCards]
+                        .sort((a, b) => b.date.localeCompare(a.date));
 
                       return (
                         <tr key={`${r.id}-expanded`}>
@@ -653,22 +667,12 @@ export default function AdminReports() {
                               </div>
                               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
                                 {allCards.map((card, idx) => {
-                                  if (card.isPunch && card.row) {
-                                    const day = card.row;
+                                  if (card.kind === "punch") {
+                                    const day = (card as any).row;
                                     const h = diffHrs(day.check_in, day.check_out);
-                                    const hasLeave = !!card.leaveType;
                                     return (
-                                      <div key={day.id ?? idx} style={{
-                                        background: hasLeave ? "rgba(99,102,241,0.08)" : "var(--glass-bg)",
-                                        border: hasLeave ? "1.5px solid rgba(99,102,241,0.35)" : "1px solid var(--glass-border)",
-                                        borderRadius: 8, padding: "10px 14px"
-                                      }}>
+                                      <div key={day.id ?? idx} style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", borderRadius: 8, padding: "10px 14px" }}>
                                         <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: 4 }}>{fmtDate(day.date)}</div>
-                                        {hasLeave && (
-                                          <div style={{ fontSize: "0.72rem", color: "#a5b4fc", fontWeight: 600, marginBottom: 4, background: "rgba(99,102,241,0.15)", display: "inline-block", padding: "2px 8px", borderRadius: 4 }}>
-                                            🗓️ {card.leaveType}
-                                          </div>
-                                        )}
                                         {(() => { const emp = employees.find(e => e.id === r.id); return emp?.shift_start_time ? (
                                           <div style={{ fontSize: "0.72rem", color: "#818cf8", marginBottom: 3 }}>⏰ {formatShiftTime(emp.shift_start_time)} → {emp.shift_end_time ? formatShiftTime(emp.shift_end_time) : "—"}</div>
                                         ) : null; })()}
@@ -681,11 +685,12 @@ export default function AdminReports() {
                                       </div>
                                     );
                                   } else {
-                                    // Leave-only card (no punch on this date)
+                                    // Leave card
+                                    const lt = (card as any).leaveType;
                                     return (
                                       <div key={`leave-${card.date}-${idx}`} style={{ background: "rgba(99,102,241,0.08)", border: "1.5px solid rgba(99,102,241,0.35)", borderRadius: 8, padding: "10px 14px" }}>
                                         <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: 4 }}>{fmtDate(card.date)}</div>
-                                        <div style={{ fontSize: "0.76rem", color: "#818cf8", marginBottom: 4 }}>🗓️ {card.leaveType}</div>
+                                        <div style={{ fontSize: "0.82rem", color: "#818cf8", fontWeight: 600, marginBottom: 4 }}>🗓️ {lt}</div>
                                         <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "#a5b4fc" }}>Approved Leave</div>
                                       </div>
                                     );

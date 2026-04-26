@@ -258,10 +258,12 @@ export default function AdminPayroll() {
           if (isWorkingDay(c, empHols, empSchedule)) {
             const ds = toDateStr(c);  // ← local date string, no UTC shift
             if (c <= lastDateToCount) {
-              if (punches.has(ds)) {
-                daysPresent++;
-              } else if (paidLeaves.has(ds)) {
+              if (paidLeaves.has(ds)) {
+                // Paid leave takes priority — admin explicitly marked this day as leave.
+                // Any stale punch on the same date is irrelevant.
                 paidLeaveDays++;
+                daysPresent++;
+              } else if (punches.has(ds)) {
                 daysPresent++;
               } else {
                 lwpRaw++;
