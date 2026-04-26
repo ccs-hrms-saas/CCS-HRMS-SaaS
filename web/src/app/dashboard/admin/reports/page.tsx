@@ -223,21 +223,22 @@ export default function AdminReports() {
     });
 
     return Object.entries(empMap).map(([id, { name, rows }]) => {
-      // Build set of dates covered by approved leaves for this employee
+      // Build map of dates→leaveType from approved leaves for this employee
       const empLeaves = leaveRecords.filter(l => l.user_id === id);
-      const leaveDateSet = new Set<string>();
+      const leaveMap = new Map<string, string>();  // date → leave type
       empLeaves.forEach(l => {
         const cursor = new Date(l.start_date + "T00:00:00");
         const end    = new Date(l.end_date   + "T00:00:00");
         while (cursor <= end) {
-          leaveDateSet.add(`${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,"0")}-${String(cursor.getDate()).padStart(2,"0")}`);
+          const ds = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,"0")}-${String(cursor.getDate()).padStart(2,"0")}`;
+          leaveMap.set(ds, l.type);
           cursor.setDate(cursor.getDate() + 1);
         }
       });
 
       // Exclude punch records on leave dates — leave override is final
-      const punchRows = rows.filter(r => !leaveDateSet.has(r.date));
-      const daysPresent = punchRows.length + leaveDateSet.size; // punches + paid leave days
+      const punchRows = rows.filter(r => !leaveMap.has(r.date));
+      const daysPresent = punchRows.length + leaveMap.size; // punches + paid leave days
       const totalHrs = punchRows.reduce((s, r) => s + diffHrs(r.check_in, r.check_out), 0);
       const avgHrs = punchRows.length ? totalHrs / punchRows.length : 0;
       const attendance = workingDaysInRange > 0 ? (daysPresent / workingDaysInRange) * 100 : 0;
@@ -286,7 +287,7 @@ export default function AdminReports() {
       const deficit = finalTotalHrs - adjustedTarget;
       const monthTarget = workingDaysInFullMonth * empHPD;
 
-      return { id, name, daysPresent, totalHrs: finalTotalHrs, avgHrs, attendance, lateArrivals, overtimeDays, overtimeHrs, leaveDaysTaken, workingDaysInRange, workingDaysInFullMonth, monthTarget, deficit, rows };
+      return { id, name, daysPresent, totalHrs: finalTotalHrs, avgHrs, attendance, lateArrivals, overtimeDays, overtimeHrs, leaveDaysTaken, workingDaysInRange, workingDaysInFullMonth, monthTarget, deficit, rows, leaveMap };
     });
   }, [rawRecords, leaveRecords, tab, workingDaysInRange, workingDaysInFullMonth, selectedIds, employees, orgHoursPerDay]);
 
@@ -631,37 +632,21 @@ export default function AdminReports() {
 
                     {/* Expanded daily breakdown — attendance punches + approved leave days */}
                     {expandedEmp === r.id && (() => {
-                      // Build a date→leaveType map from approved leaves
-                      const empLeaveRecords = leaveRecords.filter((l: any) => l.user_id === r.id);
-                      console.log("[DEBUG-LEAVE] r.id=", r.id, "leaveRecords.length=", leaveRecords.length, "empLeaveRecords=", empLeaveRecords);
-                      const leaveByDate = new Map<string, string>();
-                      empLeaveRecords.forEach((lv: any) => {
-                        const cursor = new Date(lv.start_date + "T00:00:00");
-                        const end    = new Date(lv.end_date   + "T00:00:00");
-                        while (cursor <= end) {
-                          const ds = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,"0")}-${String(cursor.getDate()).padStart(2,"0")}`;
-                          if (ds >= fromDate && ds <= toDate) leaveByDate.set(ds, lv.type);
-                          cursor.setDate(cursor.getDate() + 1);
-                        }
-                      });
+                      // Use leaveMap from summary (already computed, no separate state needed)
+                      const leaveByDate = r.leaveMap ?? new Map();
 
                       // Punch cards: EXCLUDE any date that has an approved leave
-                      // (leave override is the admin's final word — stale punches are irrelevant)
                       const punchCards = r.rows
                         .filter((day: any) => !leaveByDate.has(day.date))
                         .map((day: any) => ({ date: day.date, kind: "punch" as const, row: day }));
 
                       // Leave cards: one per leave date
                       const leaveCards = [...leaveByDate.entries()]
-                        .map(([d, t]) => ({ date: d, kind: "leave" as const, leaveType: t }));
+                        .map(([d, t]: [string, string]) => ({ date: d, kind: "leave" as const, leaveType: t }));
 
                       // Merge and sort by date descending
                       const allCards = [...punchCards, ...leaveCards]
                         .sort((a, b) => b.date.localeCompare(a.date));
-
-                      console.log("[DEBUG-LEAVE] leaveByDate size=", leaveByDate.size, "entries=", [...leaveByDate.entries()]);
-                      console.log("[DEBUG-LEAVE] punchCards=", punchCards.length, "leaveCards=", leaveCards.length, "allCards=", allCards.length);
-                      console.log("[DEBUG-LEAVE] r.rows dates=", r.rows.map((x: any) => x.date));
 
                       return (
                         <tr key={`${r.id}-expanded`}>
