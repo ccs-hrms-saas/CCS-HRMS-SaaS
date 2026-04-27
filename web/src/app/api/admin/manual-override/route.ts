@@ -191,6 +191,40 @@ export async function POST(req: NextRequest) {
         })
       if (lvErr) throw lvErr
 
+      // ── Auto-create leave type if it doesn't exist yet ────────────────
+      // When an admin/superadmin uses a leave type name via override that
+      // doesn't exist in the leave_types table, create it automatically
+      // as a no-ledger, paid, informal leave. This ensures:
+      // 1. The leave type appears in Leave Settings immediately
+      // 2. Employees can opt for it in future applications
+      // 3. The Override dropdown shows it next time
+      const { data: existingType } = await supabaseAdmin
+        .from('leave_types')
+        .select('id')
+        .eq('name', leave_type)
+        .eq('company_id', targetProfile.company_id)
+        .maybeSingle()
+
+      if (!existingType) {
+        await supabaseAdmin
+          .from('leave_types')
+          .insert({
+            company_id: targetProfile.company_id,
+            name: leave_type,
+            frequency: 'yearly',
+            max_days_per_year: 12,
+            is_paid: true,
+            deduction_hours: 0,
+            count_holidays: false,
+            allow_carry_forward: false,
+            carry_forward_percent: 0,
+            max_carry_forward: 0,
+            no_ledger: true,
+            half_day_allowed: false,
+            short_leave_allowed: false,
+          })
+      }
+
       // Deduct from leave balance if it's a paid non-LWP leave
       if (leave_type !== 'Leave Without Pay (LWP)') {
         const { data: typeRes } = await supabaseAdmin
