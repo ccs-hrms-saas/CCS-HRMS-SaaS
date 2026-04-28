@@ -39,7 +39,8 @@ export function isWorkingDay(
   holidays: Set<string> = new Set(),
   schedule?: WorkSchedule
 ): boolean {
-  const dateStr = date.toISOString().split("T")[0];
+  // Use local date components — toISOString() shifts dates by -5:30 in IST browsers
+  const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
 
   // 1. Public holiday
   if (holidays.has(dateStr)) return false;

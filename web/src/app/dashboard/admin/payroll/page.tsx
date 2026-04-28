@@ -155,11 +155,20 @@ export default function AdminPayroll() {
       });
     }
 
+    // ── Helper: build YYYY-MM-DD without timezone shift ─────────────────────
+    // toISOString() converts to UTC which shifts dates by -5:30 in IST browsers.
+    // MUST be defined before any code that uses it (paidLeaveMap, per-employee loop).
+    const toDateStr = (d: Date): string =>
+      `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+
     // Build set of unpaid leave type names (LWP + any custom unpaid)
     const unpaidLeaveNames = new Set<string>(
       leaveTypes.filter((lt: any) => !lt.is_paid).map((lt: any) => lt.name as string)
     );
-    unpaidLeaveNames.add("Leave Without Pay (LWP)"); // always unpaid
+    // Catch ALL known LWP name variants used across the system
+    unpaidLeaveNames.add("Leave Without Pay (LWP)");
+    unpaidLeaveNames.add("LWP");
+    unpaidLeaveNames.add("Leave Without Pay");
 
     // ── Per-employee attendance lookup ──────────────────────────────────────
     // Map: userId → Set<dateStr> (days with check_in)
@@ -201,11 +210,7 @@ export default function AdminPayroll() {
     // Use settingsFromApi for schedule (comes from server-side API)
     const orgSchedule = buildWorkSchedule(settingsFromApi);
 
-    // ── Helper: build YYYY-MM-DD without timezone shift ─────────────────────
-    // toISOString() converts to UTC which shifts dates by -5:30 in IST browsers.
-    // Instead, construct the date string directly from local date components.
-    const toDateStr = (d: Date): string =>
-      `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    // (toDateStr is defined above — before paidLeaveMap which uses it first)
 
     // ── Calculate for each employee ─────────────────────────────────────────
     const computed: PayrollRow[] = apiEmployees.map((emp) => {

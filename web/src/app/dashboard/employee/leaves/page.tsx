@@ -29,7 +29,7 @@ export default function EmployeeLeaves() {
     
     const [resLeaves, resTypes, resHols, resBals, profRes] = await Promise.all([
       supabase.from("leave_requests").select("*").eq("user_id", profile.id).order("created_at", { ascending: false }),
-      supabase.from("leave_types").select("*").order("name"),
+      supabase.from("leave_types").select("*").eq("company_id", profile.company_id!).order("name"),
       supabase.from("company_holidays").select("date"),
       supabase.from("leave_balances").select("*, leave_types(name, max_days_per_year)").eq("user_id", profile.id).eq("financial_year", currentFY),
       supabase.from("profiles").select("gender").eq("id", profile.id).single()

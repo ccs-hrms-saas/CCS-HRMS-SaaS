@@ -41,6 +41,10 @@ export default function EmployeeDashboard() {
 
   useEffect(() => {
     if (!profile) return;
+
+    // Helper: local date string without UTC shift
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const localDateStr = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
     // Fetch kiosk PIN on mount and every 60 seconds
     const fetchPin = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -64,7 +68,7 @@ export default function EmployeeDashboard() {
 
       const now        = new Date();
       const dayOfMonth = now.getDate();
-      const todayStr   = now.toISOString().split("T")[0];
+      const todayStr   = localDateStr(now);
 
       // ── Which month are we evaluating? ──────────────────────────────────────
       // Days 1–5: evaluate PREVIOUS month's deficit (salary processing window)
@@ -76,14 +80,14 @@ export default function EmployeeDashboard() {
 
       const evalYear   = evalDate.getFullYear();
       const evalMonth  = evalDate.getMonth();  // 0-indexed
-      const evalFrom   = new Date(evalYear, evalMonth, 1).toISOString().split("T")[0];
+      const evalFrom   = localDateStr(new Date(evalYear, evalMonth, 1));
       // Last day of evaluate month
       const evalLastDay = new Date(evalYear, evalMonth + 1, 0);
-      const evalTo     = evalLastDay.toISOString().split("T")[0];
+      const evalTo     = localDateStr(evalLastDay);
       const evalMonthLabel = evalDate.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 
       // For current month "This Month" display (always current month)
-      const currFrom = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+      const currFrom = localDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
       const currTo   = todayStr;
 
       // ── Fetch everything ────────────────────────────────────────────────────
@@ -100,12 +104,12 @@ export default function EmployeeDashboard() {
           .gte("end_date", evalFrom),
         supabase.from("announcements").select("*, profiles(full_name)")
           .order("created_at", { ascending: false }).limit(5),
-        supabase.from("company_holidays").select("date"),
+        supabase.from("company_holidays").select("date").eq("company_id", profile.company_id!),
         supabase.from("deficit_adjustments").select("hours_cleared, adjustment_date")
           .eq("user_id", profile.id),
         supabase.from("deficit_waivers").select("hours_waived, month")
           .eq("user_id", profile.id),
-        supabase.from("leave_types").select("name, deduction_hours, count_holidays"),
+        supabase.from("leave_types").select("name, deduction_hours, count_holidays").eq("company_id", profile.company_id!),
         // Fetch org working hours setting (company-scoped)
         supabase.from("app_settings").select("hours_per_day").eq("company_id", profile.company_id).single(),
       ]);
@@ -133,7 +137,7 @@ export default function EmployeeDashboard() {
         let d = new Date(l.start_date);
         const end = new Date(l.end_date);
         while (d <= end) {
-          const ds = d.toISOString().split("T")[0];
+          const ds = localDateStr(d);
           if (ds >= evalFrom && ds <= evalTo) leaveDateSet.add(ds);
           d.setDate(d.getDate() + 1);
         }
@@ -145,7 +149,7 @@ export default function EmployeeDashboard() {
       let d = new Date(evalFrom);
       const evalEnd = new Date(evalTo);
       while (d <= evalEnd) {
-        const ds = d.toISOString().split("T")[0];
+        const ds = localDateStr(d);
         if (isWorkingDay(d, hols) && !leaveDateSet.has(ds)) {
           evalTargetDays++;
           // Days still remaining (after today, for amber "X days left" display)
@@ -172,7 +176,7 @@ export default function EmployeeDashboard() {
             let d = new Date(l.start_date);
             const end = new Date(l.end_date);
             while (d <= end) {
-               const ds = d.toISOString().split("T")[0];
+               const ds = localDateStr(d);
                if (ds >= evalFrom && ds <= evalTo) {
                    evalMlPenalty += Number(t.deduction_hours || 0);
                }
@@ -218,7 +222,7 @@ export default function EmployeeDashboard() {
         let ld = new Date(l.start_date);
         const lend = new Date(l.end_date);
         while (ld <= lend) {
-          const ds = ld.toISOString().split("T")[0];
+          const ds = localDateStr(ld);
           if (ds >= currFrom && ds <= currTo) currLeaveDateSet.add(ds);
           ld.setDate(ld.getDate() + 1);
         }
@@ -229,7 +233,7 @@ export default function EmployeeDashboard() {
       let fd = new Date(now.getFullYear(), now.getMonth(), 1);
       const fullEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       while (fd <= fullEnd) {
-        const ds = fd.toISOString().split("T")[0];
+        const ds = localDateStr(fd);
         if (isWorkingDay(fd, hols) && !currLeaveDateSet.has(ds)) fullMonthTargetDays++;
         fd.setDate(fd.getDate() + 1);
       }
@@ -248,7 +252,7 @@ export default function EmployeeDashboard() {
             let d = new Date(l.start_date);
             const end = new Date(l.end_date);
             while (d <= end) {
-               const ds = d.toISOString().split("T")[0];
+               const ds = localDateStr(d);
                if (ds >= currFrom && ds <= currTo) {
                    currMlPenalty += Number(t.deduction_hours || 0);
                }
@@ -303,7 +307,7 @@ export default function EmployeeDashboard() {
     setAdjusting(true);
     await supabase.from("deficit_adjustments").insert({
       user_id:         profile.id,
-      adjustment_date: new Date().toISOString().split("T")[0],
+      adjustment_date: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })(),
       hours_cleared:   8.5,
       adjusted_against: adjustType,
     });

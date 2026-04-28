@@ -58,7 +58,8 @@ export default function AdminUsers() {
   const [compOffTarget, setCompOffTarget]       = useState<Profile | null>(null);
   const [compOffForm, setCompOffForm]           = useState({ days: 1, expires_in: 30, reason: "Weekend Support" });
   const [creditTarget, setCreditTarget]         = useState<Profile | null>(null);
-  const [creditForm, setCreditForm]             = useState({ type_name: "Earned Leave (EL)", days: 1, add_to_used: false });
+  const [creditForm, setCreditForm]             = useState({ type_name: "", days: 1, add_to_used: false });
+  const [companyLeaveTypes, setCompanyLeaveTypes] = useState<{id: string; name: string}[]>([]);
   const [actionLoading, setActionLoading]       = useState(false);
 
   // Week off schedule config
@@ -69,7 +70,7 @@ export default function AdminUsers() {
     if (!companyId) { setLoading(false); return; }
 
     // Fetch employees AND work schedule settings together — guaranteed same tick
-    const [{ data }, { data: sett }] = await Promise.all([
+    const [{ data }, { data: sett }, { data: ltData }] = await Promise.all([
       supabase.from("profiles")
         .select("*")
         .eq("company_id", companyId)
@@ -79,9 +80,20 @@ export default function AdminUsers() {
         .select("week_off_type, hours_per_day")
         .eq("company_id", companyId)
         .single(),
+      // Fetch THIS tenant's leave types for Credit Leave modal
+      supabase.from("leave_types")
+        .select("id, name")
+        .eq("company_id", companyId)
+        .order("name"),
     ]);
 
     setUsers(data ?? []);
+    const lt = ltData ?? [];
+    setCompanyLeaveTypes(lt);
+    // Default the credit form to the first leave type if not already set
+    if (lt.length > 0 && !creditForm.type_name) {
+      setCreditForm(prev => ({ ...prev, type_name: lt[0].name }));
+    }
     // This is what controls the "Weekly Off Day" field visibility in Add/Edit forms
     if (sett?.week_off_type) setWeekOffMode(sett.week_off_type);
     setLoading(false);
@@ -290,9 +302,9 @@ export default function AdminUsers() {
     if (!creditTarget || !profile) return;
     setActionLoading(true);
     
-    // Get leave type ID securely
-    const { data: lt } = await supabase.from("leave_types").select("id").eq("name", creditForm.type_name).single();
-    if (!lt) { setError("Leave type not found"); setActionLoading(false); return; }
+    // Get leave type ID — scoped to THIS company to prevent cross-tenant match
+    const { data: lt } = await supabase.from("leave_types").select("id").eq("name", creditForm.type_name).eq("company_id", profile.company_id!).single();
+    if (!lt) { setError("Leave type not found for this company"); setActionLoading(false); return; }
 
     const fy = new Date().getMonth() < 3 ? new Date().getFullYear() - 1 : new Date().getFullYear();
 
@@ -1003,9 +1015,10 @@ export default function AdminUsers() {
               <div className={styles.formGroup}>
                 <label>Leave Type</label>
                 <select className="premium-input" value={creditForm.type_name} onChange={e => setCreditForm({...creditForm, type_name: e.target.value})}>
-                  <option>Earned Leave (EL)</option>
-                  <option>Casual Leave (CL)</option>
-                  <option>Sick Leave (SL)</option>
+                  {companyLeaveTypes.length === 0 && <option value="">No leave types configured</option>}
+                  {companyLeaveTypes.map(lt => (
+                    <option key={lt.id} value={lt.name}>{lt.name}</option>
+                  ))}
                 </select>
               </div>
               <div className={styles.formGroup}>

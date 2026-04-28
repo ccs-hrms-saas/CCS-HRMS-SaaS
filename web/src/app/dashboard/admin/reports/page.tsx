@@ -99,7 +99,7 @@ export default function AdminReports() {
       .eq("is_active", true)
       .order("full_name")
       .then(({ data }) => setEmployees(data ?? []));
-    supabase.from("leave_types").select("*").then(({ data }) => setLeaveTypes(data ?? []));
+    supabase.from("leave_types").select("*").eq("company_id", companyId).then(({ data }) => setLeaveTypes(data ?? []));
     // Fetch org-level working hours for target calculation
     supabase.from("app_settings").select("hours_per_day").eq("company_id", companyId).single()
       .then(({ data }) => { if (data?.hours_per_day) setOrgHoursPerDay(Number(data.hours_per_day)); });

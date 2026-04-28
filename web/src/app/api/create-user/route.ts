@@ -72,13 +72,15 @@ export async function POST(req: NextRequest) {
     
     if (types && types.length > 0) {
       const balancesToInsert = types
-        .filter((t: any) => !(t.name === 'Menstruation Leave' && gender !== 'Female'))
+        .filter((t: any) => !(t.is_ml_type && gender !== 'Female'))
         .map((t: any) => ({
           user_id: userId,
           leave_type_id: t.id,
           company_id,
           financial_year: fy,
-          accrued: t.name === 'Earned Leave (EL)' ? 0 : (t.max_days_per_year || 0),
+          // If leave type has accrual_rate set, start with 0 (earned over time)
+          // Otherwise grant the full max_days_per_year upfront
+          accrued: t.accrual_rate ? 0 : (t.max_days_per_year || 0),
           used: 0
         }))
       await supabaseAdmin.from('leave_balances').insert(balancesToInsert)
