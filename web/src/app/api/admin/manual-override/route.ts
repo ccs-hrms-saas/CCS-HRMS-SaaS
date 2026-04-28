@@ -91,6 +91,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden — employee belongs to a different company.' }, { status: 403 })
     }
 
+    // ── HARD GUARD: company_id must NEVER be null ─────────────────────────
+    // Resolve from target's profile first, then caller's profile as fallback.
+    // If both are null, reject the request entirely.
+    const resolvedCompanyId = targetProfile.company_id ?? callerProfile.company_id
+    if (!resolvedCompanyId) {
+      return NextResponse.json(
+        { error: 'Cannot determine company_id. Both target and caller profiles have null company_id.' },
+        { status: 400 }
+      )
+    }
+
     // ── 5A. Mode: Present ─────────────────────────────────────────────────
     if (mode === 'present') {
       // IMPORTANT: Admin enters times in IST. Append +05:30 so JS correctly
@@ -130,7 +141,7 @@ export async function POST(req: NextRequest) {
           .update({
             check_in:   inISO,
             check_out:  outISO,
-            company_id: targetProfile.company_id,
+            company_id: resolvedCompanyId,
             photo_url:  `manual_override_by_${callerProfile.id}`,
           })
           .eq('id', existing.id)
@@ -140,7 +151,7 @@ export async function POST(req: NextRequest) {
           .from('attendance_records')
           .insert({
             user_id,
-            company_id: targetProfile.company_id,
+            company_id: resolvedCompanyId,
             date,
             check_in:   inISO,
             check_out:  outISO,
@@ -183,7 +194,7 @@ export async function POST(req: NextRequest) {
         .from('leave_requests')
         .insert({
           user_id,
-          company_id: targetProfile.company_id,
+          company_id: resolvedCompanyId,
           type: leave_type,
           start_date: date,
           end_date: date,
@@ -203,14 +214,14 @@ export async function POST(req: NextRequest) {
         .from('leave_types')
         .select('id')
         .eq('name', leave_type)
-        .eq('company_id', targetProfile.company_id)
+        .eq('company_id', resolvedCompanyId)
         .maybeSingle()
 
       if (!existingType) {
         await supabaseAdmin
           .from('leave_types')
           .insert({
-            company_id: targetProfile.company_id,
+            company_id: resolvedCompanyId,
             name: leave_type,
             frequency: 'yearly',
             max_days_per_year: 12,
@@ -227,12 +238,13 @@ export async function POST(req: NextRequest) {
       }
 
       // Deduct from leave balance if it's a paid non-LWP leave
-      if (leave_type !== 'Leave Without Pay (LWP)') {
+      const unpaidNames = ['Leave Without Pay (LWP)', 'LWP', 'Leave Without Pay'];
+      if (!unpaidNames.includes(leave_type)) {
         const { data: typeRes } = await supabaseAdmin
           .from('leave_types')
           .select('id, count_holidays, deduction_hours')
           .eq('name', leave_type)
-          .eq('company_id', targetProfile.company_id)
+          .eq('company_id', resolvedCompanyId)
           .single()
 
         if (typeRes) {
