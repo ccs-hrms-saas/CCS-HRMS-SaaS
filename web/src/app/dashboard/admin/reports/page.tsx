@@ -274,7 +274,7 @@ export default function AdminReports() {
       let mlPenalty = 0;
       empLeaves.forEach(l => {
         const t = leaveTypes.find(x => x.name === l.type);
-        if (t?.name === "Menstruation Leave") {
+        if (t?.deduction_hours) {
           mlPenalty += getLeaveDaysCount(l.start_date, l.end_date, t.count_holidays) * Number(t.deduction_hours || 0);
         }
       });
@@ -849,7 +849,7 @@ export default function AdminReports() {
               const lvDeduction = lvRows.reduce((s, l) => {
                 const t = leaveTypes.find(x => x.name === l.type);
                 const count = getLeaveDaysCount(l.start_date, l.end_date, t?.count_holidays ?? false);
-                if (t?.name === "Menstruation Leave") {
+                if (t?.deduction_hours) {
                   mlPenalty += count * Number(t.deduction_hours || 0);
                   return s + count * empHPDLocal; // ML waives full day target
                 }

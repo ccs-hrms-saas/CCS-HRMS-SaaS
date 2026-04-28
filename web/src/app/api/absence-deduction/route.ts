@@ -13,7 +13,8 @@ import { createClient } from '@supabase/supabase-js'
  * OR:   { run_all: true, from: string, to: string }  ← bulk for all active employees
  */
 
-const DEDUCTION_ORDER = ["Earned Leave (EL)", "Comp Off", "Casual Leave (CL)"];
+// Deduction order is now DYNAMIC — fetched from the tenant's leave_types table.
+// All paid, non-ML leave types are eligible for deduction, ordered by name.
 const ABSENCE_THRESHOLD = 3; // deduct only if truly absent > 3 days
 
 const admin = createClient(
@@ -21,7 +22,9 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-function isoDate(d: Date) { return d.toISOString().split('T')[0]; }
+function localIsoDate(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 
 // ── processEmployee now receives the tenant's work schedule days ──────────────
 async function processEmployee(
@@ -29,8 +32,9 @@ async function processEmployee(
   from: string,
   to: string,
   holidaySet: Set<string>,
-  weekOffDays: number[],   // 0=Sun … 6=Sat, from app_settings.week_off_days
-  fy: number
+  weekOffDays: number[],
+  fy: number,
+  companyId: string    // ← needed to fetch tenant-specific leave types
 ) {
   // 1. Get all attendance records in range
   const { data: attData } = await admin.from('attendance_records')
@@ -48,7 +52,7 @@ async function processEmployee(
     const cur = new Date(lv.start_date + 'T00:00:00');
     const end = new Date(lv.end_date + 'T00:00:00');
     while (cur <= end) {
-      approvedLeaveDates.add(isoDate(cur));
+      approvedLeaveDates.add(localIsoDate(cur));
       cur.setDate(cur.getDate() + 1);
     }
   });
@@ -57,9 +61,9 @@ async function processEmployee(
   let trueAbsents = 0;
   const cur = new Date(from + 'T00:00:00');
   const end = new Date(to + 'T00:00:00');
-  const todayStr = isoDate(new Date());
+  const todayStr = localIsoDate(new Date());
   while (cur <= end) {
-    const ds = isoDate(cur);
+    const ds = localIsoDate(cur);
     if (ds >= todayStr) { cur.setDate(cur.getDate() + 1); continue; } // skip future
     const dow = cur.getDay();
     const isWeeklyOff = weekOffDays.includes(dow);
@@ -75,17 +79,26 @@ async function processEmployee(
 
   const daysToDeduct = trueAbsents; // deduct all truly absent days
 
-  // 4. Fetch all leave balances for this user/FY, filter to deduction-eligible types in JS
+  // 4. Fetch tenant's leave types to determine deduction order dynamically
+  const { data: tenantLeaveTypes } = await admin.from('leave_types')
+    .select('name, is_paid, is_ml_type')
+    .eq('company_id', companyId);
+  
+  // Eligible for deduction: paid, non-ML types (SL/ML are case-by-case, never auto-deducted)
+  const deductionOrder = (tenantLeaveTypes ?? [])
+    .filter((t: any) => t.is_paid && !t.is_ml_type)
+    .map((t: any) => t.name);
+
   const { data: balancesRaw } = await admin.from('leave_balances')
     .select('*, leave_types(name)')
     .eq('user_id', userId).eq('financial_year', fy);
-  const balances = (balancesRaw ?? []).filter((b: any) => DEDUCTION_ORDER.includes(b.leave_types?.name));
+  const balances = (balancesRaw ?? []).filter((b: any) => deductionOrder.includes(b.leave_types?.name));
 
 
   let remaining = daysToDeduct;
   const deductions: { type: string; days: number }[] = [];
 
-  for (const leaveTypeName of DEDUCTION_ORDER) {
+  for (const leaveTypeName of deductionOrder) {
     if (remaining <= 0) break;
     const bal = (balances ?? []).find((b: any) => b.leave_types?.name === leaveTypeName);
     if (!bal) continue;
@@ -170,7 +183,7 @@ export async function POST(req: Request) {
     }
 
     const results = await Promise.all(
-      userIds.map(id => processEmployee(id, from as string, to as string, holidaySet, weekOffDays, fy))
+      userIds.map(id => processEmployee(id, from as string, to as string, holidaySet, weekOffDays, fy, companyId))
     );
 
     // ── Log this run so it never repeats for the same month ──
@@ -189,7 +202,7 @@ export async function POST(req: Request) {
         await admin.from('notifications').insert({
           user_id: r.userId,
           title: '📋 Leave Balance Auto-Adjusted',
-          message: `${r.deducted} absence day(s) in ${monthKey} were automatically deducted from your leave balance (EL → Comp Off → CL) as per company policy.`,
+          message: `${r.deducted} absence day(s) in ${monthKey} were automatically deducted from your leave balance as per company policy.`,
           link: '/dashboard/employee/leaves',
         });
       }

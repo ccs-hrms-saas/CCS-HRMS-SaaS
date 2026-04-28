@@ -255,17 +255,24 @@ export default function AdminPayroll() {
         let daysPresent = 0;
         let paidLeaveDays = 0;
         let lwpRaw = 0;
+        let extraDaysWorked = 0;  // Days worked on weekoffs/holidays (offsets LWP)
         let remainingWorkingDays = 0;
         const lastDateToCount = today < mEnd ? today : mEnd;
 
+        // ── Iterate ALL days in the month ──────────────────────────────────
+        // The schedule defines the TARGET (how many days they should work),
+        // but actual attendance is the source of truth for PRESENT count.
+        // If an employee works on their weekoff day, that compensates for
+        // any missed working day — their paycheck should not be cut.
         const c = new Date(effectiveStart);
         while (c <= mEnd) {
-          if (isWorkingDay(c, empHols, empSchedule)) {
-            const ds = toDateStr(c);  // ← local date string, no UTC shift
-            if (c <= lastDateToCount) {
+          const ds = toDateStr(c);
+          const isWorking = isWorkingDay(c, empHols, empSchedule);
+
+          if (c <= lastDateToCount) {
+            if (isWorking) {
+              // ── Scheduled working day ───────────────────────────────────
               if (paidLeaves.has(ds)) {
-                // Paid leave takes priority — admin explicitly marked this day as leave.
-                // Any stale punch on the same date is irrelevant.
                 paidLeaveDays++;
                 daysPresent++;
               } else if (punches.has(ds)) {
@@ -274,14 +281,31 @@ export default function AdminPayroll() {
                 lwpRaw++;
               }
             } else {
-              remainingWorkingDays++;
+              // ── Non-working day (weekoff / holiday) ─────────────────────
+              // If there's actual attendance, credit them — they worked
+              // on their off day. This offsets any LWP on missed working days.
+              if (punches.has(ds)) {
+                daysPresent++;
+                extraDaysWorked++;
+              } else if (paidLeaves.has(ds)) {
+                // Approved paid leave on a non-working day (e.g., "Week Off"
+                // override on a day that's already their scheduled off).
+                // Count as paid leave — no deduction, but don't inflate present.
+                paidLeaveDays++;
+              }
+              // Otherwise: regular off day — no impact on payroll
             }
+          } else {
+            if (isWorking) remainingWorkingDays++;
           }
           c.setDate(c.getDate() + 1);
         }
 
-        const graceDaysUsed = Math.min(lwpRaw, graceDays);
-        const effectiveLwpDays = Math.max(0, lwpRaw - graceDaysUsed);
+        // Extra days worked on weekoffs offset LWP (swapped weekoff scenario)
+        const netLwpRaw = Math.max(0, lwpRaw - extraDaysWorked);
+
+        const graceDaysUsed = Math.min(netLwpRaw, graceDays);
+        const effectiveLwpDays = Math.max(0, netLwpRaw - graceDaysUsed);
         const deductions = effectiveLwpDays * dailyRate;
 
         // Overtime payout

@@ -40,7 +40,7 @@ export default function EmployeeLeaves() {
     // Filter leave types
     const gender = profRes.data?.gender || "Male";
     setUserGender(gender);
-    const validTypes = (resTypes.data ?? []).filter((t: any) => t.name !== "Menstruation Leave" || gender === "Female");
+    const validTypes = (resTypes.data ?? []).filter((t: any) => !t.is_ml_type || gender === "Female");
     setLeaveTypes(validTypes);
     setBalances(resBals.data ?? []);
 
@@ -73,16 +73,16 @@ export default function EmployeeLeaves() {
     e.preventDefault();
     if (!profile || !selectedTypeObj) return;
 
-    // Strict Rule: Menstruation limit 1 per month, no overlap.
-    if (form.type === "Menstruation Leave") {
-       if (leaveDays > 1) { setErrorMsg("Menstruation Leave is strictly limited to 1 day per month."); return; }
+    // Strict Rule: ML-type leave is limited to 1 day per month, no overlap.
+    if (selectedTypeObj?.is_ml_type) {
+       if (leaveDays > 1) { setErrorMsg(`${form.type} is strictly limited to 1 day per month.`); return; }
        
        const reqMonth = new Date(form.start_date).getMonth();
        const reqYear = new Date(form.start_date).getFullYear();
        
-       const alreadyTaken = leaves.find(l => l.type === "Menstruation Leave" && l.status !== "rejected" && new Date(l.start_date).getMonth() === reqMonth && new Date(l.start_date).getFullYear() === reqYear);
+       const alreadyTaken = leaves.find(l => l.type === form.type && l.status !== "rejected" && new Date(l.start_date).getMonth() === reqMonth && new Date(l.start_date).getFullYear() === reqYear);
        if (alreadyTaken) {
-         setErrorMsg("You have already utilized your Menstruation Leave for this calendar month.");
+         setErrorMsg(`You have already utilized your ${form.type} for this calendar month.`);
          return;
        }
     }

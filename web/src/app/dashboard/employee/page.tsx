@@ -34,6 +34,7 @@ export default function EmployeeDashboard() {
   const [adjusting, setAdjusting]           = useState(false);
   const [announcements, setAnnouncements]   = useState<any[]>([]);
   const [attendance, setAttendance]         = useState<any[]>([]);
+  const [adjustLeaveTypes, setAdjustLeaveTypes] = useState<any[]>([]);
   const [loading, setLoading]               = useState(true);
   // Kiosk PIN
   const [kioskPin, setKioskPin]           = useState<string | null>(null);
@@ -109,7 +110,7 @@ export default function EmployeeDashboard() {
           .eq("user_id", profile.id),
         supabase.from("deficit_waivers").select("hours_waived, month")
           .eq("user_id", profile.id),
-        supabase.from("leave_types").select("name, deduction_hours, count_holidays").eq("company_id", profile.company_id!),
+        supabase.from("leave_types").select("name, deduction_hours, count_holidays, is_paid, is_ml_type").eq("company_id", profile.company_id!),
         // Fetch org working hours setting (company-scoped)
         supabase.from("app_settings").select("hours_per_day").eq("company_id", profile.company_id).single(),
       ]);
@@ -172,7 +173,7 @@ export default function EmployeeDashboard() {
       let evalMlPenalty = 0;
       leaveApproved.forEach(l => {
          const t = leaveTypesRes?.data?.find((x: any) => x.name === l.type);
-         if (t?.name === "Menstruation Leave") {
+         if (t?.deduction_hours) {
             let d = new Date(l.start_date);
             const end = new Date(l.end_date);
             while (d <= end) {
@@ -248,7 +249,7 @@ export default function EmployeeDashboard() {
       let currMlPenalty = 0;
       leaveApproved.forEach(l => {
          const t = leaveTypesRes?.data?.find((x: any) => x.name === l.type);
-         if (t?.name === "Menstruation Leave") {
+         if (t?.deduction_hours) {
             let d = new Date(l.start_date);
             const end = new Date(l.end_date);
             while (d <= end) {
@@ -291,6 +292,10 @@ export default function EmployeeDashboard() {
       } else {
         setPendingTeamLeaves(0);
       }
+
+      // Store paid leave types for the deficit adjustment dropdown (dynamic, not hardcoded)
+      const paidTypes = (leaveTypesRes?.data ?? []).filter((t: any) => t.is_paid && !t.is_ml_type);
+      setAdjustLeaveTypes(paidTypes);
 
       setLoading(false);
     };
@@ -403,9 +408,9 @@ export default function EmployeeDashboard() {
                 <label>Adjust Against</label>
                 <select className="premium-input" value={adjustType} onChange={e => setAdjustType(e.target.value)}>
                   <option value="LWP">Leave Without Pay — 1 Day Salary Deduction</option>
-                  <option value="Casual Leave (CL)">Casual Leave (CL)</option>
-                  <option value="Earned Leave (EL)">Earned Leave (EL)</option>
-                  <option value="Comp-Off">Comp-Off</option>
+                  {adjustLeaveTypes.map(t => (
+                    <option key={t.name} value={t.name}>{t.name}</option>
+                  ))}
                 </select>
               </div>
               <button type="submit" className={styles.primaryBtn} disabled={adjusting}>
