@@ -168,17 +168,18 @@ export async function POST(req: NextRequest) {
 
     // ── 5B. Mode: Leave ───────────────────────────────────────────────────
     if (mode === 'leave') {
-      // Check for duplicate leave on the same date
+      // If a leave already exists for this date, DELETE it — this is an OVERRIDE.
+      // Admin is explicitly saying "replace whatever was there with this new leave type".
       const { data: dupLeave } = await supabaseAdmin
         .from('leave_requests')
-        .select('id')
+        .select('id, type')
         .eq('user_id', user_id)
         .lte('start_date', date)
         .gte('end_date', date)
         .maybeSingle()
 
       if (dupLeave) {
-        return NextResponse.json({ error: 'A leave record already exists for this employee on this date.' }, { status: 409 })
+        await supabaseAdmin.from('leave_requests').delete().eq('id', dupLeave.id)
       }
 
       // ── Override cleanup: remove any attendance_record for this date ────
