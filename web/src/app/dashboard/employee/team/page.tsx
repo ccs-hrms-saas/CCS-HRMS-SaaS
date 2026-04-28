@@ -25,7 +25,7 @@ interface TeamMember extends Reportee {
   alertSent: boolean;
 }
 
-const isoDate = (d: Date) => d.toISOString().split("T")[0];
+const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const fmtTime = (d?: string) => d ? new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—";
 
 export default function MyTeamPage() {
@@ -204,11 +204,11 @@ export default function MyTeamPage() {
       const hols = new Set<string>();
       (hRes ?? []).forEach(h => hols.add(h.date));
 
-      const { data: typeRes } = await supabase.from("leave_types").select("*").eq("name", l.type).single();
+      const { data: typeRes } = await supabase.from("leave_types").select("*").eq("name", l.type).eq("company_id", l.company_id).single();
       const typeId = typeRes?.id;
       const countHolidays = typeRes?.count_holidays ?? false;
 
-      if (typeId && l.type !== "Leave Without Pay (LWP)") {
+      if (typeId && l.type !== "Leave Without Pay (LWP)" && l.type !== "LWP" && l.type !== "Leave Without Pay") {
         const days = getLeaveDaysCount(l.start_date, l.end_date, countHolidays, hols);
         const fy = getCurrentFinancialYear();
         const { data: bal } = await supabase.from("leave_balances").select("*").eq("user_id", empId).eq("leave_type_id", typeId).eq("financial_year", fy).single();

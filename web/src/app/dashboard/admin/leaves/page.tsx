@@ -37,11 +37,11 @@ export default function AdminLeaves() {
         (hRes ?? []).forEach(h => hols.add(h.date));
 
         // Fetch Leave Type configs
-        const { data: typeRes } = await supabase.from("leave_types").select("*").eq("name", l.type).single();
+        const { data: typeRes } = await supabase.from("leave_types").select("*").eq("name", l.type).eq("company_id", l.company_id).single();
         const typeId = typeRes?.id;
         const countHolidays = typeRes?.count_holidays ?? false;
         
-        if (typeId && l.type !== "Leave Without Pay (LWP)") {
+        if (typeId && l.type !== "Leave Without Pay (LWP)" && l.type !== "LWP" && l.type !== "Leave Without Pay") {
             const days = getLeaveDaysCount(l.start_date, l.end_date, countHolidays, hols);
             // Fetch current balance
             const fy = getCurrentFinancialYear();
@@ -97,7 +97,8 @@ export default function AdminLeaves() {
     }
 
     // 5. Check if the employee's manager is absent today (escalation alert)
-    const todayStr = new Date().toISOString().split("T")[0];
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
     const managerId = l.profiles?.manager_id;
     if (managerId && status === "approved") {
       supabase.from("attendance_records").select("id", { count: "exact", head: true })

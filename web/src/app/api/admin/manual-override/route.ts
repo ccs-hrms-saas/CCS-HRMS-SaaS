@@ -115,11 +115,12 @@ export async function POST(req: NextRequest) {
         .gte('end_date', date)
 
       // Upsert: update if record exists for this employee+date, else insert
+      // NOTE: Do NOT filter by company_id — older records may have NULL company_id
+      // from before the tenant isolation fix. We match by user_id + date only.
       const { data: existing } = await supabaseAdmin
         .from('attendance_records')
         .select('id')
         .eq('user_id', user_id)
-        .eq('company_id', targetProfile.company_id)
         .eq('date', date)
         .maybeSingle()
 
