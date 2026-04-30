@@ -57,7 +57,7 @@ const WORK_DAYS   = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // ── Defaults per leave type ────────────────────────────────────────────────
 const CL_DEFAULT  = { enabled: true,  days: 10, carry: false, carry_pct: 0,  carry_max: 0,  half: true,  half_per: 2, short: true,  short_per: 4, consec: true,  consec_limit: 2 };
-const EL_DEFAULT  = { enabled: false, days: 15, carry: true,  carry_pct: 50, carry_max: 15, half: true,  half_per: 2, short: false, short_per: 4, consec: false, consec_limit: 0, accrual: "" };
+const EL_DEFAULT  = { enabled: false, days: 10, carry: true,  carry_pct: 50, carry_max: 5, half: true,  half_per: 2, short: false, short_per: 4, consec: false, consec_limit: 0, accrual: "20", permanent_only: true, credit_mode: "half_yearly" as "upfront"|"half_yearly"|"accrual", first_half: 5, second_half: 5 };
 const SL_DEFAULT  = { enabled: true,  days: 12, proof_after: 2 };
 const ML_DEFAULT  = { enabled: false, per_month: 1, lapse_award: "Comp-Off", lapse_threshold: 4 };
 const CO_DEFAULT  = { enabled: false, expiry: 30, employee_split: true };
@@ -78,6 +78,7 @@ export default function SetupWizard() {
   const [weekOffType,    setWeekOffType]    = useState<"fixed"|"rotating">("fixed");
   const [fixedOffDays,   setFixedOffDays]   = useState<number[]>([0]); // 0=Sun
   const [overtimeTrack,  setOvertimeTrack]  = useState(false);
+  const [yearType,       setYearType]       = useState<"financial"|"calendar"|"diwali">("financial");
 
   // Per-day configurator (Sun=0..Sat=6)
   const [dayConfigs, setDayConfigs] = useState<DayConfig[]>([
@@ -174,6 +175,7 @@ export default function SetupWizard() {
       week_off_days:         flatOffDays,
       week_off_rules:        rules,
       overtime_tracking:     overtimeTrack,
+      year_type:             yearType,
       hours_per_day:         hoursPerDay,
       hours_per_day_set_at:  new Date().toISOString(),
     }, { onConflict: "company_id" });
@@ -231,7 +233,11 @@ export default function SetupWizard() {
       short_leave_allowed:    el.short,
       short_leaves_per_leave: el.short_per,
       max_consecutive_days:   el.consec ? el.consec_limit : null,
-      accrual_rate:           el.accrual !== "" ? Number(el.accrual) : null,
+      accrual_rate:           (el.credit_mode === "accrual" && el.accrual !== "") ? Number(el.accrual) : null,
+      permanent_only:         el.permanent_only,
+      credit_mode:            el.credit_mode,
+      first_half_credit:      el.credit_mode === "half_yearly" ? el.first_half : null,
+      second_half_credit:     el.credit_mode === "half_yearly" ? el.second_half : null,
       eligible_for_deficit_adj: true,
       counts_as_lwp_for_payroll: false,
       is_ml_type:             false,
@@ -707,26 +713,116 @@ export default function SetupWizard() {
 
                 {/* EL */}
                 <LeaveCard icon="🌴" title="Earned / Annual Leave (EL)" checked={el.enabled} onToggle={(v: boolean) => setEl({ ...el, enabled: v })}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    <NumInput label="Days per year" value={el.days} onChange={(v: number) => setEl({ ...el, days: v })} min={1} />
-                    <div className={s.fieldGroup} style={{ marginBottom: 0 }}>
-                      <label className={s.label}>Accrual rate (optional)</label>
-                      <input type="number" className={s.input} placeholder="e.g. 20" value={el.accrual}
-                        onChange={e => setEl({ ...el, accrual: e.target.value })} />
-                      <div style={{ fontSize: "0.7rem", color: "#475569", marginTop: 4 }}>Worked days needed to earn 1 EL. Leave blank for upfront grant.</div>
+
+                  {/* Permanent only toggle */}
+                  <Toggle label="Only for confirmed / permanent employees" checked={el.permanent_only} onChange={v => setEl({ ...el, permanent_only: v })} />
+                  {el.permanent_only && (
+                    <div style={{ fontSize: "0.72rem", color: "#475569", paddingLeft: 48, marginTop: -6 }}>
+                      Probationary employees will not receive EL until confirmation.
+                    </div>
+                  )}
+
+                  {/* Max EL per year */}
+                  <NumInput label="Maximum EL per year" value={el.days} onChange={(v: number) => setEl({ ...el, days: v })} min={1} note="Total EL an employee can earn in one year" />
+
+                  {/* Year Type */}
+                  <div className={s.fieldGroup} style={{ marginBottom: 0 }}>
+                    <label className={s.label}>Year Calculation</label>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {(["financial", "calendar", "diwali"] as const).map(yt => (
+                        <div key={yt} onClick={() => setYearType(yt)} style={{
+                          flex: 1, padding: "8px 10px", borderRadius: 8, cursor: "pointer", fontSize: "0.78rem", fontWeight: 600,
+                          textAlign: "center", transition: "all 0.2s",
+                          border: `1px solid ${yearType === yt ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.08)"}`,
+                          background: yearType === yt ? "rgba(99,102,241,0.12)" : "transparent",
+                          color: yearType === yt ? "#818cf8" : "#64748b",
+                        }}>
+                          {yt === "financial" ? "📅 Financial (Apr–Mar)" : yt === "calendar" ? "🗓️ Calendar (Jan–Dec)" : "🪔 Diwali Year"}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: "0.7rem", color: "#475569", marginTop: 4 }}>Your organisation's year cycle for leave calculation, carry forward, etc.</div>
+                  </div>
+
+                  {/* Credit Mode */}
+                  <div className={s.fieldGroup} style={{ marginBottom: 0 }}>
+                    <label className={s.label}>How is EL credited?</label>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {(["upfront", "half_yearly", "accrual"] as const).map(mode => {
+                        const labels: Record<string, string> = {
+                          upfront: "⬆ Upfront",
+                          half_yearly: "📊 Half-Yearly",
+                          accrual: "📈 Accrual",
+                        };
+                        const descs: Record<string, string> = {
+                          upfront: "All at start of year",
+                          half_yearly: "Split into 2 halves",
+                          accrual: "Earn per X working days",
+                        };
+                        return (
+                          <div key={mode} onClick={() => setEl({ ...el, credit_mode: mode })} style={{
+                            flex: 1, padding: "10px 10px", borderRadius: 10, cursor: "pointer", textAlign: "center",
+                            transition: "all 0.2s",
+                            border: `1px solid ${el.credit_mode === mode ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.08)"}`,
+                            background: el.credit_mode === mode ? "rgba(99,102,241,0.12)" : "transparent",
+                            color: el.credit_mode === mode ? "#818cf8" : "#64748b",
+                          }}>
+                            <div style={{ fontWeight: 700, fontSize: "0.82rem" }}>{labels[mode]}</div>
+                            <div style={{ fontSize: "0.68rem", marginTop: 3, color: "#475569" }}>{descs[mode]}</div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
+
+                  {/* Half-yearly split config */}
+                  {el.credit_mode === "half_yearly" && (
+                    <div style={{ padding: "12px 16px", borderRadius: 10, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)" }}>
+                      <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#818cf8", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Half-Yearly Split</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <NumInput label={`First half (${yearType === "financial" ? "Apr–Sep" : yearType === "calendar" ? "Jan–Jun" : "H1"})`}
+                          value={el.first_half} onChange={(v: number) => setEl({ ...el, first_half: v, days: v + el.second_half })} min={0} />
+                        <NumInput label={`Second half (${yearType === "financial" ? "Oct–Mar" : yearType === "calendar" ? "Jul–Dec" : "H2"})`}
+                          value={el.second_half} onChange={(v: number) => setEl({ ...el, second_half: v, days: el.first_half + v })} min={0} />
+                      </div>
+                      <div style={{ fontSize: "0.7rem", color: "#475569", marginTop: 6 }}>
+                        Total: <strong style={{ color: "#818cf8" }}>{el.first_half + el.second_half} EL/year</strong>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Accrual config */}
+                  {el.credit_mode === "accrual" && (
+                    <div style={{ padding: "12px 16px", borderRadius: 10, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)" }}>
+                      <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#818cf8", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Accrual Settings</div>
+                      <NumInput label="Working days to earn 1 EL" value={el.accrual} onChange={(v: number) => setEl({ ...el, accrual: String(v) })} min={1}
+                        note={`After confirmation, employee earns 1 EL every ${el.accrual || "?"} working days, up to max ${el.days}/year`} />
+                      <div style={{ fontSize: "0.7rem", color: "#64748b", marginTop: 6, lineHeight: 1.5 }}>
+                        💡 Example: If set to 20, an employee confirmed on Month 4 earns 1 EL after every 20 working days, capped at {el.days} EL/year.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Carry forward */}
                   <Toggle label="Allow carry forward" checked={el.carry} onChange={v => setEl({ ...el, carry: v })} />
                   {el.carry && (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, paddingLeft: 48 }}>
-                      <NumInput label="Carry forward %" value={el.carry_pct} onChange={(v: number) => setEl({ ...el, carry_pct: v })} min={0} max={100} />
+                      <NumInput label="Carry forward %" value={el.carry_pct} onChange={(v: number) => setEl({ ...el, carry_pct: v })} min={0} max={100}
+                        note="Default: 50% of unused EL carries to next year" />
                       <NumInput label="Max carry forward days" value={el.carry_max} onChange={(v: number) => setEl({ ...el, carry_max: v })} min={0} />
                     </div>
                   )}
+
+                  {/* Half day / short leave */}
                   <Toggle label="Allow half day EL" checked={el.half} onChange={v => setEl({ ...el, half: v })} />
                   {el.half && <NumInput label="Half days = 1 EL" value={el.half_per} onChange={(v: number) => setEl({ ...el, half_per: v })} min={1} note="e.g. 2 means 2 half days consume 1 EL" />}
                   <Toggle label="Allow short leave against EL" checked={el.short} onChange={v => setEl({ ...el, short: v })} />
                   {el.short && <NumInput label="Short leaves = 1 EL" value={el.short_per} onChange={(v: number) => setEl({ ...el, short_per: v })} min={1} />}
+
+                  {/* Superadmin override note */}
+                  <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)", fontSize: "0.75rem", color: "#94a3b8", lineHeight: 1.5 }}>
+                    👑 <strong style={{ color: "#f59e0b" }}>Superadmin Override:</strong> Superadmins can credit EL to any employee at any time from their profile, overriding the accrual/credit rules above.
+                  </div>
                 </LeaveCard>
 
                 {/* SL */}
