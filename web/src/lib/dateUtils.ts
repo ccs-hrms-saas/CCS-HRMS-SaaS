@@ -1,4 +1,25 @@
 /**
+ * WeekOffRule — defines when a specific day-of-week is off.
+ *
+ * Examples:
+ *   { day: 0, mode: "all" }                  → Every Sunday off
+ *   { day: 6, mode: "specific", weeks: [1,3] } → 1st & 3rd Saturday off
+ *   { day: 5, mode: "specific", weeks: [2,4] } → 2nd & 4th Friday off
+ *
+ * The week number is computed as: Math.ceil(dayOfMonth / 7)
+ *   Day 1-7   → Week 1
+ *   Day 8-14  → Week 2
+ *   Day 15-21 → Week 3
+ *   Day 22-28 → Week 4
+ *   Day 29-31 → Week 5
+ */
+export interface WeekOffRule {
+  day:    number;              // 0=Sun, 1=Mon, ..., 6=Sat
+  mode:   "all" | "specific";  // "all" = every week, "specific" = only listed weeks
+  weeks?: number[];            // [1,3] = 1st and 3rd week of month (only when mode="specific")
+}
+
+/**
  * WorkSchedule — passed to isWorkingDay / getWorkingDaysInMonth so that
  * every tenant's unique schedule is respected instead of using a hardcoded
  * CCSPL-specific schedule.
@@ -19,6 +40,15 @@ export interface WorkSchedule {
   /** The specific employee's off day (rotating mode).                         */
   /** 0–6 as above. NULL/undefined = treat the day as a working day.           */
   employee_off_day?: number | null;
+
+  /**
+   * Advanced off-day rules. When present, these OVERRIDE week_off_days for
+   * the fixed mode. This allows patterns like "1st & 3rd Saturday off" or
+   * "alternate Friday off" that a simple day-of-week array cannot express.
+   *
+   * When absent or empty, the system falls back to flat week_off_days.
+   */
+  week_off_rules?: WeekOffRule[];
 }
 
 /**
@@ -49,6 +79,26 @@ export function isWorkingDay(
 
   // 2. Week off — schedule-driven
   if (schedule) {
+    // 2a. If advanced rules exist, use them (they override flat week_off_days)
+    if (schedule.week_off_rules && schedule.week_off_rules.length > 0) {
+      const weekNum = Math.ceil(date.getDate() / 7); // 1–5
+      for (const rule of schedule.week_off_rules) {
+        if (rule.day !== dow) continue;
+        if (rule.mode === "all") return false; // every week → off
+        if (rule.mode === "specific" && rule.weeks?.includes(weekNum)) return false;
+      }
+      // No rule matched for this day-of-week → working day
+      // BUT also check employee_off_day for rotating mode
+      if (schedule.week_off_type === "rotating" &&
+          schedule.employee_off_day !== null &&
+          schedule.employee_off_day !== undefined &&
+          dow === schedule.employee_off_day) {
+        return false;
+      }
+      return true;
+    }
+
+    // 2b. Flat mode — original logic
     if (schedule.week_off_type === "fixed") {
       return !schedule.week_off_days.includes(dow);
     }
@@ -149,13 +199,14 @@ export function getCurrentFinancialYear(): number {
  * @param profile   Row from profiles (needs weekly_off_day) — optional
  */
 export function buildWorkSchedule(
-  settings: { week_off_type?: string; week_off_days?: number[] } | null,
+  settings: { week_off_type?: string; week_off_days?: number[]; week_off_rules?: WeekOffRule[] } | null,
   profile?: { weekly_off_day?: number | null } | null
 ): WorkSchedule {
   return {
-    week_off_type:   (settings?.week_off_type as "fixed" | "rotating") ?? "fixed",
-    week_off_days:   settings?.week_off_days ?? [0],
+    week_off_type:    (settings?.week_off_type as "fixed" | "rotating") ?? "fixed",
+    week_off_days:    settings?.week_off_days ?? [0],
     employee_off_day: profile?.weekly_off_day ?? null,
+    week_off_rules:   settings?.week_off_rules ?? undefined,
   };
 }
 

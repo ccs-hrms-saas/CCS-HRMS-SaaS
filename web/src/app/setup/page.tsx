@@ -4,7 +4,43 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Plus, ArrowRight, Check } from "lucide-react";
+import type { WeekOffRule } from "@/lib/dateUtils";
 import s from "./setup.module.css";
+
+// ── Per-day schedule config ─────────────────────────────────────────────────
+type DayMode = "working" | "off" | "partial";
+interface DayConfig {
+  mode: DayMode;
+  weeks: number[]; // which weeks of the month are OFF (only when mode=partial)
+}
+const ORDINAL_LABELS = ["1st", "2nd", "3rd", "4th", "5th"];
+
+/** Convert 7 DayConfig objects into the flat/rules format for the DB */
+function buildWeekOffData(configs: DayConfig[]) {
+  const rules: WeekOffRule[] = [];
+  const flatOffDays: number[] = [];
+  let hasPartial = false;
+
+  configs.forEach((cfg, dow) => {
+    if (cfg.mode === "off") {
+      rules.push({ day: dow, mode: "all" });
+      flatOffDays.push(dow);
+    } else if (cfg.mode === "partial" && cfg.weeks.length > 0) {
+      rules.push({ day: dow, mode: "specific", weeks: [...cfg.weeks] });
+      hasPartial = true;
+    }
+  });
+
+  return { rules, flatOffDays, hasPartial };
+}
+
+/** Derive which days are "working days" from configs (for the workDays label array) */
+function deriveWorkDayLabels(configs: DayConfig[]): string[] {
+  const labels = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  return configs
+    .map((cfg, i) => cfg.mode !== "off" ? labels[i] : null)
+    .filter(Boolean) as string[];
+}
 
 // ── Step definitions ───────────────────────────────────────────────────────
 const STEPS = [
@@ -42,6 +78,17 @@ export default function SetupWizard() {
   const [weekOffType,    setWeekOffType]    = useState<"fixed"|"rotating">("fixed");
   const [fixedOffDays,   setFixedOffDays]   = useState<number[]>([0]); // 0=Sun
   const [overtimeTrack,  setOvertimeTrack]  = useState(false);
+
+  // Per-day configurator (Sun=0..Sat=6)
+  const [dayConfigs, setDayConfigs] = useState<DayConfig[]>([
+    { mode: "off",     weeks: [] }, // Sun — off every week
+    { mode: "working", weeks: [] }, // Mon
+    { mode: "working", weeks: [] }, // Tue
+    { mode: "working", weeks: [] }, // Wed
+    { mode: "working", weeks: [] }, // Thu
+    { mode: "working", weeks: [] }, // Fri
+    { mode: "off",     weeks: [] }, // Sat — off every week by default
+  ]);
   // Derived daily working hours — auto-computed when times change, manually overrideable
   const derivedHours = (t1: string, t2: string) => {
     const [h1, m1] = t1.split(":").map(Number);
@@ -94,6 +141,18 @@ export default function SetupWizard() {
   function toggleFixedOffDay(dow: number) {
     setFixedOffDays(prev => prev.includes(dow) ? prev.filter(d => d !== dow) : [...prev, dow]);
   }
+  function updateDayConfig(dow: number, update: Partial<DayConfig>) {
+    setDayConfigs(prev => prev.map((c, i) => i === dow ? { ...c, ...update } : c));
+  }
+  function togglePartialWeek(dow: number, weekNum: number) {
+    setDayConfigs(prev => prev.map((c, i) => {
+      if (i !== dow) return c;
+      const weeks = c.weeks.includes(weekNum)
+        ? c.weeks.filter(w => w !== weekNum)
+        : [...c.weeks, weekNum].sort();
+      return { ...c, weeks };
+    }));
+  }
 
   // ── Helpers — departments ─────────────────────────────────────────────────
   const addDept    = () => setDepartments(prev => [...prev, { name: "" }]);
@@ -103,14 +162,17 @@ export default function SetupWizard() {
   // ── Save Step 2 ────────────────────────────────────────────────────────────
   async function saveSchedule() {
     if (!company) return;
+    const { rules, flatOffDays, hasPartial } = buildWeekOffData(dayConfigs);
+    const derivedWorkDays = deriveWorkDayLabels(dayConfigs);
     await supabase.from("app_settings").upsert({
       company_id:            company.id,
-      work_days:             workDays,
+      work_days:             derivedWorkDays,
       work_start:            startTime,
       work_end:              endTime,
       grace_minutes:         parseInt(graceMinutes) || 15,
       week_off_type:         weekOffType,
-      week_off_days:         weekOffType === "fixed" ? fixedOffDays : [],
+      week_off_days:         flatOffDays,
+      week_off_rules:        rules,
       overtime_tracking:     overtimeTrack,
       hours_per_day:         hoursPerDay,
       hours_per_day_set_at:  new Date().toISOString(),
@@ -371,16 +433,97 @@ export default function SetupWizard() {
           <hr className={s.cardDivider} />
           <div className={s.cardBody}>
 
-            {/* Working Days */}
-            <SectionLabel>Working Days</SectionLabel>
-            <div className={s.dayGrid}>
-              {WORK_DAYS.map(day => (
-                <div key={day} className={`${s.dayChip} ${workDays.includes(day) ? s.selected : ""}`} onClick={() => toggleWorkDay(day)}>{day}</div>
-              ))}
+            {/* ── Per-Day Schedule Configurator ────────────────────────── */}
+            <SectionLabel>Weekly Schedule</SectionLabel>
+            <div style={{ fontSize: "0.78rem", color: "#64748b", marginBottom: 12, lineHeight: 1.5 }}>
+              Configure each day of the week. For each day, choose:<br />
+              <strong style={{ color: "#818cf8" }}>Working</strong> = open every week &nbsp;|&nbsp;
+              <strong style={{ color: "#f87171" }}>Off</strong> = closed every week &nbsp;|&nbsp;
+              <strong style={{ color: "#f59e0b" }}>Partial</strong> = off only on specific weeks of the month
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
+              {DAYS_LONG.map((dayName, dow) => {
+                const cfg = dayConfigs[dow];
+                const shortName = DAYS_SHORT[dow];
+                return (
+                  <div key={dow} style={{
+                    padding: "10px 14px", borderRadius: 12,
+                    border: `1px solid ${cfg.mode === "off" ? "rgba(248,113,113,0.25)" : cfg.mode === "partial" ? "rgba(245,158,11,0.25)" : "rgba(99,102,241,0.2)"}`,
+                    background: cfg.mode === "off" ? "rgba(248,113,113,0.05)" : cfg.mode === "partial" ? "rgba(245,158,11,0.05)" : "rgba(99,102,241,0.04)",
+                    transition: "all 0.2s",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      {/* Day name */}
+                      <div style={{
+                        minWidth: 90, fontWeight: 700, fontSize: "0.88rem",
+                        color: cfg.mode === "off" ? "#f87171" : cfg.mode === "partial" ? "#f59e0b" : "#818cf8"
+                      }}>
+                        {dayName}
+                      </div>
+
+                      {/* Mode toggles */}
+                      <div style={{ display: "flex", gap: 6, flex: 1 }}>
+                        {(["working", "off", "partial"] as DayMode[]).map(mode => {
+                          const isActive = cfg.mode === mode;
+                          const label = mode === "working" ? "✓ Working" : mode === "off" ? "✗ Off" : "⊕ Partial";
+                          const colors: Record<string, { bg: string; border: string; text: string }> = {
+                            working: { bg: "rgba(99,102,241,0.15)", border: "rgba(99,102,241,0.5)", text: "#818cf8" },
+                            off:     { bg: "rgba(248,113,113,0.15)", border: "rgba(248,113,113,0.5)", text: "#f87171" },
+                            partial: { bg: "rgba(245,158,11,0.15)", border: "rgba(245,158,11,0.5)", text: "#f59e0b" },
+                          };
+                          const c = colors[mode];
+                          return (
+                            <div key={mode} onClick={() => updateDayConfig(dow, { mode, weeks: mode === "off" ? [] : cfg.weeks })} style={{
+                              padding: "4px 12px", borderRadius: 8, cursor: "pointer", fontSize: "0.75rem", fontWeight: 600,
+                              transition: "all 0.2s", whiteSpace: "nowrap",
+                              border: `1px solid ${isActive ? c.border : "rgba(255,255,255,0.06)"}`,
+                              background: isActive ? c.bg : "transparent",
+                              color: isActive ? c.text : "#475569",
+                            }}>
+                              {label}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Summary badge */}
+                      <div style={{ fontSize: "0.7rem", color: "#64748b", minWidth: 100, textAlign: "right" }}>
+                        {cfg.mode === "working" && "Every week"}
+                        {cfg.mode === "off" && "Every week off"}
+                        {cfg.mode === "partial" && cfg.weeks.length > 0 && `${cfg.weeks.map(w => ORDINAL_LABELS[w-1]).join(", ")} off`}
+                        {cfg.mode === "partial" && cfg.weeks.length === 0 && <span style={{ color: "#f59e0b" }}>Select weeks ↓</span>}
+                      </div>
+                    </div>
+
+                    {/* Partial — week selector */}
+                    {cfg.mode === "partial" && (
+                      <div style={{ marginTop: 8, paddingLeft: 100, display: "flex", gap: 6, alignItems: "center" }}>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", marginRight: 4 }}>Off on:</span>
+                        {ORDINAL_LABELS.map((label, idx) => {
+                          const weekNum = idx + 1;
+                          const selected = cfg.weeks.includes(weekNum);
+                          return (
+                            <div key={weekNum} onClick={() => togglePartialWeek(dow, weekNum)} style={{
+                              padding: "3px 10px", borderRadius: 6, cursor: "pointer", fontSize: "0.72rem", fontWeight: 600,
+                              transition: "all 0.15s",
+                              border: `1px solid ${selected ? "rgba(245,158,11,0.5)" : "rgba(255,255,255,0.08)"}`,
+                              background: selected ? "rgba(245,158,11,0.15)" : "transparent",
+                              color: selected ? "#f59e0b" : "#475569",
+                            }}>
+                              {label} {shortName}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Hours + Grace */}
-            <div className={s.formRow} style={{ marginTop: 16 }}>
+            <SectionLabel>Office Timing</SectionLabel>
+            <div className={s.formRow} style={{ marginTop: 4 }}>
               <div className={s.fieldGroup}>
                 <label className={s.label}>Office Start Time</label>
                 <input type="time" className={s.input} value={startTime} onChange={e => {
@@ -417,8 +560,8 @@ export default function SetupWizard() {
               </div>
             </div>
 
-            {/* Week Off */}
-            <SectionLabel>Week Off Policy</SectionLabel>
+            {/* Week Off Mode — Fixed vs Rotating */}
+            <SectionLabel>Employee Week-Off Assignment</SectionLabel>
             <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
               {(["fixed", "rotating"] as const).map(type => (
                 <div key={type} onClick={() => setWeekOffType(type)} style={{
@@ -427,33 +570,17 @@ export default function SetupWizard() {
                   background: weekOffType === type ? "rgba(99,102,241,0.1)" : "transparent",
                   color: weekOffType === type ? "#818cf8" : "#64748b", fontWeight: 600, fontSize: "0.85rem",
                 }}>
-                  {type === "fixed" ? "🗓️ Fixed" : "🔄 Rotating"}
+                  {type === "fixed" ? "🗓️ Same for All" : "🔄 Per Employee"}
                   <div style={{ fontSize: "0.7rem", fontWeight: 400, marginTop: 4, color: "#475569" }}>
-                    {type === "fixed" ? "All employees share the same off day" : "Each employee has their own off day"}
+                    {type === "fixed" ? "The schedule above applies to everyone" : "Each employee can have a different off day"}
                   </div>
                 </div>
               ))}
             </div>
 
-            {weekOffType === "fixed" && (
-              <>
-                <div style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: 8 }}>Select which day(s) are off:</div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {DAYS_SHORT.map((d, i) => (
-                    <div key={d} onClick={() => toggleFixedOffDay(i)} style={{
-                      padding: "6px 14px", borderRadius: 20, cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, transition: "all 0.2s",
-                      border: `1px solid ${fixedOffDays.includes(i) ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.08)"}`,
-                      background: fixedOffDays.includes(i) ? "rgba(99,102,241,0.15)" : "transparent",
-                      color: fixedOffDays.includes(i) ? "#818cf8" : "#64748b",
-                    }}>{d}</div>
-                  ))}
-                </div>
-              </>
-            )}
-
             {weekOffType === "rotating" && (
               <div style={{ padding: "12px 16px", borderRadius: 12, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)", fontSize: "0.83rem", color: "#94a3b8", lineHeight: 1.6 }}>
-                ℹ️ In rotating mode, you assign each employee's off day when you create them, and you can change it anytime from their profile card.
+                ℹ️ The weekly schedule above sets the <strong>default</strong>. For rotating off days, you assign each employee&apos;s personal off day when you create them. You can change it anytime from their profile.
               </div>
             )}
 
@@ -472,7 +599,7 @@ export default function SetupWizard() {
           </div>
           <div className={s.cardFoot}>
             <button className={s.backBtn} onClick={() => setStep(1)}>Back</button>
-            <button className={s.nextBtn} onClick={handleNext} disabled={saving || workDays.length === 0 || (weekOffType === "fixed" && fixedOffDays.length === 0)}>
+            <button className={s.nextBtn} onClick={handleNext} disabled={saving || dayConfigs.every(c => c.mode === "off")}>
               {saving ? "Saving…" : <><span>Save & Continue</span> <ArrowRight size={16} /></>}
             </button>
           </div>

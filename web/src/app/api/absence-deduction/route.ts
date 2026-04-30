@@ -150,7 +150,7 @@ export async function POST(req: Request) {
     // Fetch the tenant's work schedule so we honour their week-off days
     const { data: appSettings } = await admin
       .from('app_settings')
-      .select('week_off_type, week_off_days')
+      .select('week_off_type, week_off_days, week_off_rules')
       .eq('company_id', companyId)
       .single();
     // Default: Sunday off only (safe fallback)

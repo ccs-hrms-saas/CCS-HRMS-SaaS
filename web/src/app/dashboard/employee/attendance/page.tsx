@@ -34,7 +34,7 @@ export default function EmployeeAttendance() {
   // Load app_settings once to build the schedule context for this employee
   useEffect(() => {
     if (!profile) return;
-    supabase.from("app_settings").select("week_off_type, week_off_days").single()
+    supabase.from("app_settings").select("week_off_type, week_off_days, week_off_rules").single()
       .then(({ data }) => {
         setSchedule(buildWorkSchedule(data, profile));
       });
