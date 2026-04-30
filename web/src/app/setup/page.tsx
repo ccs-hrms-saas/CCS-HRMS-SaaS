@@ -809,7 +809,8 @@ export default function SetupWizard() {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, paddingLeft: 48 }}>
                       <NumInput label="Carry forward %" value={el.carry_pct} onChange={(v: number) => setEl({ ...el, carry_pct: v })} min={0} max={100}
                         note="Default: 50% of unused EL carries to next year" />
-                      <NumInput label="Max carry forward days" value={el.carry_max} onChange={(v: number) => setEl({ ...el, carry_max: v })} min={0} />
+                      <NumInput label="Max EL accumulation cap" value={el.carry_max} onChange={(v: number) => setEl({ ...el, carry_max: v })} min={0}
+                        note="Maximum total EL balance an employee can hold. 0 = no cap." />
                     </div>
                   )}
 
