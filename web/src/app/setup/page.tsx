@@ -637,14 +637,14 @@ export default function SetupWizard() {
 
       {/* ── STEP 4: Leave Policy ───────────────────────────────────────────── */}
       {step === 4 && (
-        <div className={s.card} style={{ maxWidth: 660 }}>
+        <div className={s.card} style={{ maxWidth: 780 }}>
           <div className={s.cardHead}>
             <div className={s.stepNumber}>Step 4 of 4</div>
             <h1 className={s.stepTitle}>Leave Policy 📋</h1>
             <p className={s.stepDesc}>Configure exactly what you offer. Enable only the leave types that apply to your organisation.</p>
           </div>
           <hr className={s.cardDivider} />
-          <div className={s.cardBody} style={{ maxHeight: 520, overflowY: "auto", paddingRight: 4 }}>
+          <div className={s.cardBody}>
 
             {/* ── Phase 4a: What to configure ─────────────────────────────── */}
             <SectionLabel>What does your organisation offer?</SectionLabel>
