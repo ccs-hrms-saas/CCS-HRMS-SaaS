@@ -72,7 +72,7 @@ export default function DeveloperOverview() {
   const [deployErr,  setDeployErr]  = useState("");
   const [createdCreds, setCreatedCreds] = useState<{ email: string; password: string; subdomain: string; name: string } | null>(null);
   const [form, setForm] = useState({
-    name: "", subdomain: "", email: "", password: "",
+    name: "", subdomain: "", email: "", password: "", tier: "starter" as "starter" | "professional" | "enterprise",
   });
 
   useEffect(() => {
@@ -115,13 +115,14 @@ export default function DeveloperOverview() {
           subdomain:     form.subdomain,
           adminEmail:    form.email,
           adminPassword: form.password,
+          tier:          form.tier,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Deployment failed");
       // Show credentials card instead of closing
       setCreatedCreds({ email: form.email, password: form.password, subdomain: form.subdomain, name: form.name });
-      setForm({ name: "", subdomain: "", email: "", password: "" });
+      setForm({ name: "", subdomain: "", email: "", password: "", tier: "starter" });
       loadAll();
     } catch (err: any) {
       setDeployErr(err.message);
@@ -411,6 +412,30 @@ export default function DeveloperOverview() {
                         value={form.subdomain} onChange={e => setForm({...form, subdomain: e.target.value.toLowerCase()})}
                       />
                     </div>
+                  </div>
+
+                  {/* ── Subscription Tier ── */}
+                  <hr className={styles.divider} />
+                  <p className={styles.sectionLabel}>Subscription Tier</p>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                    {(["starter", "professional", "enterprise"] as const).map(t => (
+                      <button key={t} type="button" onClick={() => setForm({ ...form, tier: t })}
+                        style={{
+                          flex: 1, padding: "10px 8px", borderRadius: 10, cursor: "pointer",
+                          fontFamily: "inherit", fontWeight: 700, fontSize: "0.82rem",
+                          border: form.tier === t ? "2px solid #6366f1" : "1px solid rgba(255,255,255,0.1)",
+                          background: form.tier === t ? "rgba(99,102,241,0.18)" : "rgba(255,255,255,0.04)",
+                          color: form.tier === t ? "#818cf8" : "#64748b",
+                          transition: "all 0.2s",
+                        }}>
+                        {t === "starter" ? "🟢 Starter" : t === "professional" ? "🔵 Professional" : "🟣 Enterprise"}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: "0.77rem", color: "#475569", marginBottom: 8, lineHeight: 1.5 }}>
+                    {form.tier === "starter" && "Basic modules, 2 leave types, no payroll. ₹999/mo"}
+                    {form.tier === "professional" && "Standard modules, unlimited leaves, payroll + reimbursements. ₹1,999/mo"}
+                    {form.tier === "enterprise" && "All modules unlocked, advanced ML, incentives, custom workflows. Custom pricing."}
                   </div>
 
                   <hr className={styles.divider} />

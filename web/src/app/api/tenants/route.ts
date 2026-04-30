@@ -222,7 +222,8 @@ const DEFAULT_TENANT_MODULES = [
 
 export async function POST(req: Request) {
   try {
-    const { name, subdomain, adminEmail, adminPassword } = await req.json();
+    const { name, subdomain, adminEmail, adminPassword, tier } = await req.json();
+    const deployTier = tier || 'starter'; // starter | professional | enterprise
 
     if (!name || !subdomain || !adminEmail || !adminPassword) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -321,10 +322,55 @@ export async function POST(req: Request) {
       attendance_grace_days:       pd['attendance_grace_days']        ?? 0,
     });
 
-    // 6. Seed company_modules (all 18 modules with sensible defaults)
-    await supabaseAdmin.from('company_modules').insert(
-      DEFAULT_TENANT_MODULES.map(m => ({ ...m, company_id: companyId }))
-    );
+    // 6. Seed company_modules — apply tier upgrades based on selected plan
+    const TIER_MAP: Record<string, string> = {
+      starter: 'basic',
+      professional: 'standard',
+      enterprise: 'advanced',
+    };
+    const moduleTier = TIER_MAP[deployTier] || 'basic';
+
+    // Modules that have tier-aware properties
+    const TIERED_MODULES = ['leave_settings', 'payroll', 'reimbursements', 'profiles', 'incentives'];
+
+    // Professional: enable payroll + reimbursements
+    // Enterprise: enable payroll + reimbursements + incentives
+    const PRO_ENABLE   = ['payroll', 'reimbursements', 'overrides'];
+    const ENTER_ENABLE = [...PRO_ENABLE, 'incentives', 'appraisals', 'approvals', 'kiosk_attendance', 'employee_mobile_app'];
+    const autoEnable = deployTier === 'enterprise' ? ENTER_ENABLE : deployTier === 'professional' ? PRO_ENABLE : [];
+
+    const seededModules = DEFAULT_TENANT_MODULES.map(m => {
+      const mod: any = { ...m, company_id: companyId };
+      // Upgrade tier on tiered modules
+      if (TIERED_MODULES.includes(m.module_key)) {
+        mod.properties = { ...m.properties, tier: moduleTier };
+      }
+      // Auto-enable modules for higher tiers
+      if (autoEnable.includes(m.module_key)) {
+        mod.is_enabled = true;
+      }
+      // Professional+ leave settings upgrades
+      if (m.module_key === 'leave_settings' && deployTier !== 'starter') {
+        mod.properties = {
+          ...mod.properties,
+          max_leave_types: deployTier === 'enterprise' ? 20 : 10,
+          allow_carryforward: true,
+          partial_day_support: true,
+          compoff_enabled: true,
+          cl_consecutive_limit_enabled: true,
+        };
+        if (deployTier === 'enterprise') {
+          mod.properties.ml_leave_enabled = true;
+          mod.properties.short_leave_enabled = true;
+          mod.properties.week_off_customization = true;
+          mod.properties.lwp_payroll_link = true;
+          mod.properties.deficit_adjustment_enabled = true;
+        }
+      }
+      return mod;
+    });
+
+    await supabaseAdmin.from('company_modules').insert(seededModules);
 
     // 7. Write audit log
     await supabaseAdmin.from('platform_audit_log').insert({

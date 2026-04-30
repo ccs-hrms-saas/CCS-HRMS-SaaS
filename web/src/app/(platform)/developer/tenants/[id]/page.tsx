@@ -85,6 +85,7 @@ export default function TenantDetailPage() {
   const [loading,  setLoading]  = useState(true);
   const [tab,      setTab]      = useState("overview");
   const [saving,   setSaving]   = useState(false);
+  const [deleting,  setDeleting]  = useState(false);
 
   // Local edit state for Overview tab
   const [editName,      setEditName]      = useState("");
@@ -235,10 +236,13 @@ export default function TenantDetailPage() {
 
   // ── Delete tenant ──────────────────────────────────────────────────────
   async function deleteTenant() {
+    if (deleting) return;
     const confirmed = confirm(
       `⚠️ PERMANENT DELETE\n\nThis will permanently delete "${company?.name}" and ALL their data including every employee account.\n\nAll email addresses will be freed immediately.\n\nThis CANNOT be undone. Continue?`
     );
     if (!confirmed) return;
+
+    setDeleting(true);
 
     await logAudit({
       action:      "TENANT_DELETED",
@@ -254,6 +258,7 @@ export default function TenantDetailPage() {
 
     if (!res.ok) {
       alert(`Delete failed: ${json.error}`);
+      setDeleting(false);
       return;
     }
 
@@ -729,8 +734,8 @@ export default function TenantDetailPage() {
                 </p>
               </div>
               <div className={s.dangerAction}>
-                <button className={s.deleteBtn} onClick={deleteTenant}>
-                  <Trash2 size={14} style={{ display: "inline", marginRight: 6 }} /> Delete Permanently
+                <button className={s.deleteBtn} onClick={deleteTenant} disabled={deleting}>
+                  <Trash2 size={14} style={{ display: "inline", marginRight: 6 }} /> {deleting ? "Deleting…" : "Delete Permanently"}
                 </button>
               </div>
             </div>
