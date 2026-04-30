@@ -194,7 +194,8 @@ export default function SetupWizard() {
   // ── Save Step 4 ────────────────────────────────────────────────────────────
   async function saveLeaveTypes() {
     if (!company) return;
-    await supabase.from("leave_types").delete().eq("company_id", company.id);
+    const { error: delErr } = await supabase.from("leave_types").delete().eq("company_id", company.id);
+    if (delErr) console.error("❌ leave_types delete error:", delErr);
 
     const rows: any[] = [];
 
@@ -298,7 +299,13 @@ export default function SetupWizard() {
       is_ml_type:                false,
     });
 
-    if (rows.length > 0) await supabase.from("leave_types").insert(rows);
+    if (rows.length > 0) {
+      const { error: insErr } = await supabase.from("leave_types").insert(rows);
+      if (insErr) {
+        console.error("❌ leave_types insert error:", insErr);
+        alert(`Failed to save leave types: ${insErr.message}`);
+      }
+    }
   }
 
   // ── Next handler ───────────────────────────────────────────────────────────
