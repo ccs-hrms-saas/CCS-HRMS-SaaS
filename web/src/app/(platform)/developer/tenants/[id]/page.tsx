@@ -86,6 +86,7 @@ export default function TenantDetailPage() {
   const [tab,      setTab]      = useState("overview");
   const [saving,   setSaving]   = useState(false);
   const [deleting,  setDeleting]  = useState(false);
+  const [deleteConfirmStep, setDeleteConfirmStep] = useState(0); // 0=idle, 1=confirm shown, 2=type to confirm
 
   // Local edit state for Overview tab
   const [editName,      setEditName]      = useState("");
@@ -235,13 +236,8 @@ export default function TenantDetailPage() {
   }
 
   // ── Delete tenant ──────────────────────────────────────────────────────
-  async function deleteTenant() {
+  async function executeDeletion() {
     if (deleting) return;
-    const confirmed = confirm(
-      `⚠️ PERMANENT DELETE\n\nThis will permanently delete "${company?.name}" and ALL their data including every employee account.\n\nAll email addresses will be freed immediately.\n\nThis CANNOT be undone. Continue?`
-    );
-    if (!confirmed) return;
-
     setDeleting(true);
 
     await logAudit({
@@ -251,14 +247,13 @@ export default function TenantDetailPage() {
       old_value:   { name: company?.name, subdomain: company?.subdomain },
     });
 
-    // Server-side route: deletes all auth.users for the company first,
-    // then deletes the company row (cascades to all data).
     const res = await fetch(`/api/tenants/${id}`, { method: "DELETE" });
     const json = await res.json();
 
     if (!res.ok) {
-      alert(`Delete failed: ${json.error}`);
       setDeleting(false);
+      setDeleteConfirmStep(0);
+      alert(`Delete failed: ${json.error}`);
       return;
     }
 
@@ -725,19 +720,54 @@ export default function TenantDetailPage() {
               </div>
             </div>
 
-            <div className={s.dangerRow}>
-              <div className={s.dangerInfo}>
-                <h4>Delete Tenant</h4>
-                <p>
-                  Permanently deletes this company and ALL associated data — employees, attendance, leaves, payroll.
-                  This action is irreversible.
-                </p>
+            <div className={s.dangerRow} style={{ flexDirection: "column", alignItems: "stretch" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div className={s.dangerInfo}>
+                  <h4>Delete Tenant</h4>
+                  <p>
+                    Permanently deletes this company and ALL associated data — employees, attendance, leaves, payroll.
+                    This action is irreversible.
+                  </p>
+                </div>
+                <div className={s.dangerAction}>
+                  {deleteConfirmStep === 0 && (
+                    <button className={s.deleteBtn} onClick={() => setDeleteConfirmStep(1)}>
+                      <Trash2 size={14} style={{ display: "inline", marginRight: 6 }} /> Delete Permanently
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className={s.dangerAction}>
-                <button className={s.deleteBtn} onClick={deleteTenant} disabled={deleting}>
-                  <Trash2 size={14} style={{ display: "inline", marginRight: 6 }} /> {deleting ? "Deleting…" : "Delete Permanently"}
-                </button>
-              </div>
+
+              {/* Step 1: Inline confirmation */}
+              {deleteConfirmStep >= 1 && !deleting && (
+                <div style={{ marginTop: 14, padding: "16px 20px", borderRadius: 12, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)" }}>
+                  <div style={{ fontWeight: 700, color: "#f87171", marginBottom: 8, fontSize: "0.9rem" }}>
+                    ⚠️ Are you absolutely sure?
+                  </div>
+                  <div style={{ fontSize: "0.82rem", color: "#94a3b8", lineHeight: 1.6, marginBottom: 14 }}>
+                    This will permanently delete <strong style={{ color: "#f1f5f9" }}>&quot;{company?.name}&quot;</strong> and ALL their data including every employee account.
+                    All email addresses will be freed immediately. This CANNOT be undone.
+                  </div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={() => setDeleteConfirmStep(0)}
+                      style={{ padding: "9px 20px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#94a3b8", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, fontSize: "0.85rem" }}>
+                      Cancel
+                    </button>
+                    <button onClick={executeDeletion}
+                      style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #ef4444, #dc2626)", color: "#fff", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: "0.85rem" }}>
+                      🗑️ Yes, Delete Everything
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Deleting spinner */}
+              {deleting && (
+                <div style={{ marginTop: 14, padding: "16px 20px", borderRadius: 12, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.9rem", color: "#f87171", fontWeight: 700 }}>🗑️ Deleting tenant and all data…</div>
+                  <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: 6 }}>This may take a moment. Do not close this page.</div>
+                </div>
+              )}
             </div>
           </div>
         </div>
