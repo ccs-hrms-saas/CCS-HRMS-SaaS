@@ -478,6 +478,17 @@ export default function AdminUsers() {
         </div>
       )}
 
+      {/* ── View Full Profile link ── */}
+      {!inactive && (
+        <a href={`/dashboard/admin/users/${u.id}`}
+          style={{ display: "block", textAlign: "center", padding: "8px 12px", borderRadius: 8,
+            background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)",
+            color: "var(--accent-primary)", fontWeight: 600, fontSize: "0.8rem", textDecoration: "none",
+            marginBottom: 12, fontFamily: "Outfit,sans-serif", transition: "background 0.2s" }}>
+          👤 View Full Profile & Attendance
+        </a>
+      )}
+
       {/* ── Role + Manager (for active employees) ── */}
       {!inactive && (
         <div className={userStyles.userCardBody}>
