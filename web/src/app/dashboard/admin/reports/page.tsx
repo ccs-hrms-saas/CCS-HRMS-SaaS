@@ -86,7 +86,6 @@ export default function AdminReports() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [search, setSearch] = useState("");
   const [expandedEmp, setExpandedEmp] = useState<string | null>(null);
-  const [expandedEmp, setExpandedEmp] = useState<string | null>(null);
   const [appSettings, setAppSettings] = useState<any>(null);
   const [holidays, setHolidays] = useState<Set<string>>(new Set());
 
