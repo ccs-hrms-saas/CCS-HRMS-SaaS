@@ -330,11 +330,11 @@ export default function AdminReports() {
     const total = displayData.length;
     const avgAtt = displayData.reduce((s, r) => s + r.attendance, 0) / total;
     const totalActualHrs = displayData.reduce((s, r) => s + r.totalHrs, 0);
-    const totalTargetHrs = displayData.reduce((s, r) => s + r.monthTarget, 0) / (workingDaysInFullMonth || 1) * workingDaysInRange;
+    const totalTargetHrs = displayData.reduce((s, r) => s + (r.monthTarget / (r.workingDaysInFullMonth || 1) * r.workingDaysInRange), 0);
     const perfect = displayData.filter(r => r.daysPresent >= r.workingDaysInRange).length;
     const lateCount = displayData.reduce((s, r) => s + r.lateArrivals, 0);
     return { total, avgAtt, totalActualHrs, totalTargetHrs, perfect, lateCount };
-  }, [displayData, workingDaysInRange]);
+  }, [displayData]);
 
   /* ── Leave summary grouped by employee ── */
   const balancesGrouped = useMemo(() => {
