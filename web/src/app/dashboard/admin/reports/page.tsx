@@ -868,6 +868,13 @@ export default function AdminReports() {
               let mlPenalty = 0;
               const empP = employees.find(e => e.id === id);
               const empHPDLocal = resolveHoursPerDay(empP?.hours_per_day ?? null, orgHoursPerDay);
+              const empSchedule = {
+                week_off_type: appSettings?.week_off_type ?? "fixed",
+                week_off_days: appSettings?.week_off_days ?? [0],
+                employee_off_day: empP?.weekly_off_day ?? null,
+                week_off_rules: appSettings?.week_off_rules ?? [],
+              };
+              const empWorkingDaysInRange = countWorkingDays(fromDate, toDate, holidays, empSchedule);
               const lvDeduction = lvRows.reduce((s, l) => {
                 const t = leaveTypes.find(x => x.name === l.type);
                 const count = getLeaveDaysCount(l.start_date, l.end_date, t?.count_holidays ?? false);
@@ -879,15 +886,15 @@ export default function AdminReports() {
               }, 0);
               
               const totalHrs = totalHrsWithoutPenalty - mlPenalty;
-              const target = Math.max(0, workingDaysInRange * empHPDLocal - lvDeduction);
+              const target = Math.max(0, empWorkingDaysInRange * empHPDLocal - lvDeduction);
               const deficit = totalHrs - target;
 
               return (
                 <div key={id} className="glass-panel" style={{ padding: 20 }}>
                   <h3 style={{ marginBottom: 12, fontSize: "1.1rem", borderBottom: "1px solid var(--glass-border)", paddingBottom: 8 }}>{name}</h3>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: "0.88rem" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-secondary)" }}>Days Present</span><span style={{ fontWeight: 600 }}>{atRows.length} / {workingDaysInRange}</span></div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-secondary)" }}>Base Target</span><span>{(workingDaysInRange * empHPDLocal).toFixed(2)}h</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-secondary)" }}>Days Present</span><span style={{ fontWeight: 600 }}>{atRows.length} / {empWorkingDaysInRange}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-secondary)" }}>Base Target</span><span>{(empWorkingDaysInRange * empHPDLocal).toFixed(2)}h</span></div>
                     {lvDeduction > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: "var(--warning)" }}><span>Leave Deduction</span><span>-{lvDeduction.toFixed(2)}h</span></div>}
                     <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600 }}><span>Adjusted Target</span><span>{target.toFixed(2)}h</span></div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: "var(--accent-primary)" }}><span>Actual Clocked</span><span>{totalHrs.toFixed(2)}h</span></div>
