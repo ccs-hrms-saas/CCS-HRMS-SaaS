@@ -199,13 +199,39 @@ export default function SetupWizard() {
 
     const rows: any[] = [];
 
+    const baseLeave = {
+      company_id: company.id,
+      name: "",
+      max_days_per_year: 0,
+      frequency: "yearly",
+      is_paid: true,
+      deduction_hours: hoursPerDay,
+      allow_carry_forward: false,
+      carry_forward_percent: 0,
+      max_carry_forward: 0,
+      half_day_allowed: false,
+      half_days_per_leave: 2,
+      short_leave_allowed: false,
+      short_leaves_per_leave: 4,
+      max_consecutive_days: null,
+      eligible_for_deficit_adj: false,
+      counts_as_lwp_for_payroll: false,
+      is_ml_type: false,
+      requires_attachment: false,
+      requires_attachment_after_days: 0,
+      accrual_rate: null,
+      permanent_only: false,
+      credit_mode: 'upfront',
+      first_half_credit: null,
+      second_half_credit: null,
+      expires_in_days: null,
+      co_employee_can_split: false,
+    };
+
     if (cl.enabled) rows.push({
-      company_id:             company.id,
+      ...baseLeave,
       name:                   "Casual Leave",
       max_days_per_year:      cl.days,
-      frequency:              "yearly",
-      is_paid:                true,
-      deduction_hours:        hoursPerDay,
       allow_carry_forward:    cl.carry,
       carry_forward_percent:  cl.carry_pct,
       max_carry_forward:      cl.carry_max,
@@ -215,17 +241,12 @@ export default function SetupWizard() {
       short_leaves_per_leave: cl.short_per,
       max_consecutive_days:   cl.consec ? cl.consec_limit : null,
       eligible_for_deficit_adj: true,
-      counts_as_lwp_for_payroll: false,
-      is_ml_type:             false,
     });
 
     if (el.enabled) rows.push({
-      company_id:             company.id,
+      ...baseLeave,
       name:                   "Earned Leave",
       max_days_per_year:      el.days,
-      frequency:              "yearly",
-      is_paid:                true,
-      deduction_hours:        hoursPerDay,
       allow_carry_forward:    el.carry,
       carry_forward_percent:  el.carry_pct,
       max_carry_forward:      el.carry_max,
@@ -240,63 +261,40 @@ export default function SetupWizard() {
       first_half_credit:      el.credit_mode === "half_yearly" ? el.first_half : null,
       second_half_credit:     el.credit_mode === "half_yearly" ? el.second_half : null,
       eligible_for_deficit_adj: true,
-      counts_as_lwp_for_payroll: false,
-      is_ml_type:             false,
     });
 
     if (sl.enabled) rows.push({
-      company_id:                    company.id,
+      ...baseLeave,
       name:                          "Sick Leave",
       max_days_per_year:             sl.days,
-      frequency:                     "yearly",
-      is_paid:                       true,
-      deduction_hours:               hoursPerDay,
       requires_attachment:           sl.proof_after > 0,
       requires_attachment_after_days: sl.proof_after,
-      eligible_for_deficit_adj:      false,
-      counts_as_lwp_for_payroll:     false,
-      is_ml_type:                    false,
     });
 
     if (ml.enabled) rows.push({
-      company_id:             company.id,
+      ...baseLeave,
       name:                   "Menstruation Leave",
       max_days_per_year:      ml.per_month,
       frequency:              "monthly",
-      is_paid:                true,
       deduction_hours:        1.0,
       is_ml_type:             true,
-      eligible_for_deficit_adj: false,
-      counts_as_lwp_for_payroll: false,
     });
 
     if (co.enabled) rows.push({
-      company_id:           company.id,
+      ...baseLeave,
       name:                 "Comp-Off",
-      max_days_per_year:    0,
-      frequency:            "yearly",
-      is_paid:              true,
-      deduction_hours:      hoursPerDay,
       expires_in_days:      co.expiry,
       co_employee_can_split: co.employee_split,
       half_day_allowed:     co.employee_split,
-      half_days_per_leave:  2,
-      eligible_for_deficit_adj: false,
-      counts_as_lwp_for_payroll: false,
-      is_ml_type:           false,
     });
 
     // LWP — always created
     rows.push({
-      company_id:                company.id,
+      ...baseLeave,
       name:                      "Leave Without Pay",
       max_days_per_year:         365,
-      frequency:                 "yearly",
       is_paid:                   false,
-      deduction_hours:           hoursPerDay,
       counts_as_lwp_for_payroll: true,
-      eligible_for_deficit_adj:  false,
-      is_ml_type:                false,
     });
 
     if (rows.length > 0) {
@@ -397,7 +395,11 @@ export default function SetupWizard() {
       {/* Stepper */}
       <div className={s.stepper}>
         {STEPS.map(st => (
-          <div key={st.id} className={`${s.stepItem} ${st.id === step ? s.active : ""} ${st.id < step ? s.done : ""}`}>
+          <div key={st.id} 
+            className={`${s.stepItem} ${st.id === step ? s.active : ""} ${st.id < step ? s.done : ""}`}
+            onClick={() => { if (st.id < step) setStep(st.id); }}
+            style={{ cursor: st.id < step ? "pointer" : "default" }}
+          >
             <div className={s.stepDot}>{st.id < step ? <Check size={14} /> : st.emoji}</div>
             <div className={s.stepLabel}>{st.label}</div>
           </div>
