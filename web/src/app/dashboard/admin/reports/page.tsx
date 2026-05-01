@@ -10,7 +10,7 @@ import { getLeaveDaysCount, isWorkingDay, isLateArrival, formatShiftTime, resolv
 
 type Tab = "attendance" | "leaves" | "employee" | "balances";
 type SortDir = "asc" | "desc";
-type Period = "today" | "week" | "month" | "quarter" | "year" | "custom";
+type Period = "today" | "week" | "month" | "last_month" | "quarter" | "year" | "custom";
 
 /* ── IST date helpers (UTC+5:30) ── */
 // All date calculations MUST use IST. new Date() in JS returns UTC on servers;
@@ -36,6 +36,11 @@ function periodDates(p: Period): { from: string; to: string } {
   if (p === "month") {
     const m1 = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
     return { from: isoDate(m1), to };
+  }
+  if (p === "last_month") {
+    const m1 = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
+    const mEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 0));
+    return { from: isoDate(m1), to: isoDate(mEnd) };
   }
   if (p === "quarter") {
     const qStart = new Date(Date.UTC(today.getUTCFullYear(), Math.floor(today.getUTCMonth() / 3) * 3, 1));
@@ -421,6 +426,7 @@ export default function AdminReports() {
     { key: "today", label: "Today" },
     { key: "week", label: "This Week" },
     { key: "month", label: "This Month" },
+    { key: "last_month", label: "Last Month" },
     { key: "quarter", label: "This Quarter" },
     { key: "year", label: "This Year" },
     { key: "custom", label: "Custom" },

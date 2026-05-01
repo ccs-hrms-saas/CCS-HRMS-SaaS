@@ -55,7 +55,7 @@ export async function POST(req: Request) {
 
     const kioskProps = moduleRow.properties as Record<string, any>;
 
-    if (!kioskProps.setup_pin || kioskProps.setup_pin !== setup_pin) {
+    if (!kioskProps.setup_pin || String(kioskProps.setup_pin) !== String(setup_pin)) {
       return NextResponse.json({ error: 'Invalid setup PIN' }, { status: 401 });
     }
 

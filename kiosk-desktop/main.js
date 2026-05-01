@@ -15,10 +15,10 @@ function createWindow() {
     width,
     height,
     fullscreen: !isDev,
-    kiosk: !isDev,          // OS-level kiosk mode (blocks Alt+F4 on Windows)
-    frame: false,
-    resizable: isDev,
-    movable: false,
+    kiosk: false,          // Allow OS-level shortcuts like Alt+Tab and task manager
+    frame: true,           // Show standard window controls
+    resizable: true,
+    movable: true,
     backgroundColor: '#0a0a1a',
     show: false,
     webPreferences: {
@@ -35,14 +35,11 @@ function createWindow() {
   // Show when ready — prevents white flash on startup
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    if (!isDev) mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    // Removed alwaysOnTop to prevent blocking Task Manager
   });
 
-  // Block close unless admin has unlocked
-  mainWindow.on('close', (e) => {
-    if (!canClose) e.preventDefault();
-  });
-
+  // Removed close blocker so users can click the standard X button
+  
   if (isDev) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
@@ -51,20 +48,6 @@ function createWindow() {
 // ── App Lifecycle ─────────────────────────────────────────────────────────────
 app.on('ready', () => {
   createWindow();
-
-  if (!isDev) {
-    // Block all dangerous keyboard shortcuts in kiosk mode
-    const blocked = [
-      'Alt+F4', 'CommandOrControl+W', 'CommandOrControl+Q',
-      'CommandOrControl+R', 'CommandOrControl+Shift+R',
-      'F5', 'F11', 'F12',
-      'CommandOrControl+Shift+I', 'CommandOrControl+Shift+J',
-      'Alt+Tab', 'Meta+Tab', 'Meta+D',
-    ];
-    blocked.forEach(k => {
-      try { globalShortcut.register(k, () => {}); } catch (_) {}
-    });
-  }
 });
 
 app.on('window-all-closed', () => app.quit());
