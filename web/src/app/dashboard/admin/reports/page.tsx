@@ -49,16 +49,16 @@ function periodDates(p: Period): { from: string; to: string } {
   return { from: isoDate(m1), to };
 }
 
-function countWorkingDays(from: string, to: string): number {
+function countWorkingDays(from: string, to: string, holidays?: Set<string>, schedule?: any): number {
   let count = 0; const cur = new Date(from);
-  while (cur <= new Date(to)) { if (isWorkingDay(cur)) count++; cur.setDate(cur.getDate() + 1); }
+  while (cur <= new Date(to)) { if (isWorkingDay(cur, holidays, schedule)) count++; cur.setDate(cur.getDate() + 1); }
   return count;
 }
-function fullMonthWorkingDays(from: string, to: string): number {
+function fullMonthWorkingDays(from: string, to: string, holidays?: Set<string>, schedule?: any): number {
   const s = new Date(from), e = new Date(to);
   const mStart = new Date(s.getFullYear(), s.getMonth(), 1);
   const mEnd   = new Date(e.getFullYear(), e.getMonth() + 1, 0);
-  return countWorkingDays(isoDate(mStart), isoDate(mEnd));
+  return countWorkingDays(isoDate(mStart), isoDate(mEnd), holidays, schedule);
 }
 
 /* ── sort indicator ── */
