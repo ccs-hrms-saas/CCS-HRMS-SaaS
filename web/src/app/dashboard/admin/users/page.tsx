@@ -58,7 +58,7 @@ export default function AdminUsers() {
   const [compOffTarget, setCompOffTarget]       = useState<Profile | null>(null);
   const [compOffForm, setCompOffForm]           = useState({ days: 1, expires_in: 30, reason: "Weekend Support" });
   const [creditTarget, setCreditTarget]         = useState<Profile | null>(null);
-  const [creditForm, setCreditForm]             = useState({ type_name: "", days: 1, add_to_used: false });
+  const [creditForm, setCreditForm]             = useState({ type_name: "", days: 1, action_type: "add_accrued" });
   const [companyLeaveTypes, setCompanyLeaveTypes] = useState<{id: string; name: string}[]>([]);
   const [actionLoading, setActionLoading]       = useState(false);
 
@@ -313,20 +313,28 @@ export default function AdminUsers() {
       .select("*").eq("user_id", creditTarget.id).eq("leave_type_id", lt.id).eq("financial_year", fy).single();
 
     if (existing) {
-      const updatePayload: any = creditForm.add_to_used 
-        ? { used: existing.used + creditForm.days }
-        : { accrued: existing.accrued + creditForm.days };
+      const isSubtract = creditForm.action_type.startsWith("subtract_");
+      const isUsed = creditForm.action_type.endsWith("_used");
+      const change = isSubtract ? -creditForm.days : creditForm.days;
+      
+      const updatePayload: any = isUsed 
+        ? { used: existing.used + change }
+        : { accrued: existing.accrued + change };
       await supabase.from("leave_balances").update(updatePayload).eq("id", existing.id);
     } else {
+       const isSubtract = creditForm.action_type.startsWith("subtract_");
+       const isUsed = creditForm.action_type.endsWith("_used");
+       const change = isSubtract ? -creditForm.days : creditForm.days;
+
        const insertPayload: any = {
          user_id: creditTarget.id, leave_type_id: lt.id, financial_year: fy,
-         accrued: creditForm.add_to_used ? 0 : creditForm.days,
-         used: creditForm.add_to_used ? creditForm.days : 0
+         accrued: isUsed ? 0 : change,
+         used: isUsed ? change : 0
        };
        await supabase.from("leave_balances").insert(insertPayload);
     }
 
-    setSuccess(`💳 Credited ${creditForm.days} ${creditForm.type_name}(s) to ${creditTarget.full_name}.`);
+    setSuccess(`💳 Successfully updated ${creditForm.type_name} ledger for ${creditTarget.full_name}.`);
     setCreditTarget(null); setActionLoading(false);
     setTimeout(() => setSuccess(""), 4000);
   };
@@ -1034,9 +1042,11 @@ export default function AdminUsers() {
               </div>
               <div className={styles.formGroup}>
                 <label>Action</label>
-                <select className="premium-input" value={creditForm.add_to_used ? "used" : "accrued"} onChange={e => setCreditForm({...creditForm, add_to_used: e.target.value === "used"})}>
-                  <option value="accrued">Adding to Accrued (Giving them leaves)</option>
-                  <option value="used">Adding to Used (Deducting leaves manually)</option>
+                <select className="premium-input" value={creditForm.action_type} onChange={e => setCreditForm({...creditForm, action_type: e.target.value})}>
+                  <option value="add_accrued">Adding to Accrued (Giving them leaves)</option>
+                  <option value="subtract_accrued">Removing from Accrued (Correcting accidental credit)</option>
+                  <option value="add_used">Adding to Used (Deducting leaves manually)</option>
+                  <option value="subtract_used">Removing from Used (Correcting accidental deduction)</option>
                 </select>
               </div>
               <div className={styles.formGroup}>
