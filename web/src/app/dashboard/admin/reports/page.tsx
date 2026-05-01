@@ -86,7 +86,9 @@ export default function AdminReports() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [search, setSearch] = useState("");
   const [expandedEmp, setExpandedEmp] = useState<string | null>(null);
-  const [orgHoursPerDay, setOrgHoursPerDay] = useState<number>(8.5); // from app_settings
+  const [expandedEmp, setExpandedEmp] = useState<string | null>(null);
+  const [appSettings, setAppSettings] = useState<any>(null);
+  const [holidays, setHolidays] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const companyId = profile?.company_id;
@@ -100,9 +102,13 @@ export default function AdminReports() {
       .order("full_name")
       .then(({ data }) => setEmployees(data ?? []));
     supabase.from("leave_types").select("*").eq("company_id", companyId).then(({ data }) => setLeaveTypes(data ?? []));
-    // Fetch org-level working hours for target calculation
-    supabase.from("app_settings").select("hours_per_day").eq("company_id", companyId).single()
-      .then(({ data }) => { if (data?.hours_per_day) setOrgHoursPerDay(Number(data.hours_per_day)); });
+    supabase.from("app_settings").select("*").eq("company_id", companyId).single()
+      .then(({ data }) => { if (data) setAppSettings(data); });
+
+    supabase.from("company_holidays").select("date").eq("company_id", companyId)
+      .then(({ data }) => {
+        if (data) setHolidays(new Set(data.map((h: any) => h.date)));
+      });
 
     // ── Auto absence deduction: silently run for the previous completed month ──
     const now = new Date();
@@ -202,8 +208,7 @@ export default function AdminReports() {
   useEffect(() => { load(); }, [tab, selected]);
 
   /* ── Consolidated attendance summary ── */
-  const workingDaysInRange    = useMemo(() => countWorkingDays(fromDate, toDate),     [fromDate, toDate]);
-  const workingDaysInFullMonth = useMemo(() => fullMonthWorkingDays(fromDate, toDate), [fromDate, toDate]);
+  const orgHoursPerDay = appSettings?.hours_per_day ? Number(appSettings.hours_per_day) : 8.5;
 
   const summary = useMemo(() => {
     if (tab !== "attendance") return [];
@@ -236,12 +241,23 @@ export default function AdminReports() {
         }
       });
 
-      // Exclude punch records on leave dates — leave override is final
+      // Employee specific schedule
+      const emp = employees.find(e => e.id === id);
+      const empSchedule = {
+        week_off_type: appSettings?.week_off_type ?? "fixed",
+        week_off_days: appSettings?.week_off_days ?? [0],
+        employee_off_day: emp?.weekly_off_day ?? null,
+        week_off_rules: appSettings?.week_off_rules ?? [],
+      };
+
+      const empWorkingDaysInRange = countWorkingDays(fromDate, toDate, holidays, empSchedule);
+      const empWorkingDaysInFullMonth = fullMonthWorkingDays(fromDate, toDate, holidays, empSchedule);
+      
       const punchRows = rows.filter(r => !leaveMap.has(r.date));
       const daysPresent = punchRows.length + leaveMap.size; // punches + paid leave days
       const totalHrs = punchRows.reduce((s, r) => s + diffHrs(r.check_in, r.check_out), 0);
       const avgHrs = punchRows.length ? totalHrs / punchRows.length : 0;
-      const attendance = workingDaysInRange > 0 ? (daysPresent / workingDaysInRange) * 100 : 0;
+      const attendance = empWorkingDaysInRange > 0 ? (daysPresent / empWorkingDaysInRange) * 100 : 0;
 
       // Late arrivals — only count actual punch days (not leave days)
       const lateArrivals = punchRows.filter(r => {
@@ -283,13 +299,13 @@ export default function AdminReports() {
       // Resolve per-employee hours: profile override → org default → 8.5
       const empProfile = employees.find(e => e.id === id);
       const empHPD = resolveHoursPerDay(empProfile?.hours_per_day ?? null, orgHoursPerDay);
-      const adjustedTarget = Math.max(0, workingDaysInRange - leaveDaysTaken) * empHPD;
+      const adjustedTarget = Math.max(0, empWorkingDaysInRange - leaveDaysTaken) * empHPD;
       const deficit = finalTotalHrs - adjustedTarget;
-      const monthTarget = workingDaysInFullMonth * empHPD;
+      const monthTarget = empWorkingDaysInFullMonth * empHPD;
 
-      return { id, name, daysPresent, totalHrs: finalTotalHrs, avgHrs, attendance, lateArrivals, overtimeDays, overtimeHrs, leaveDaysTaken, workingDaysInRange, workingDaysInFullMonth, monthTarget, deficit, rows, leaveMap };
+      return { id, name, daysPresent, totalHrs: finalTotalHrs, avgHrs, attendance, lateArrivals, overtimeDays, overtimeHrs, leaveDaysTaken, workingDaysInRange: empWorkingDaysInRange, workingDaysInFullMonth: empWorkingDaysInFullMonth, monthTarget, deficit, rows, leaveMap };
     });
-  }, [rawRecords, leaveRecords, tab, workingDaysInRange, workingDaysInFullMonth, selectedIds, employees, orgHoursPerDay]);
+  }, [rawRecords, leaveRecords, tab, holidays, selectedIds, employees, orgHoursPerDay, appSettings, fromDate, toDate]);
 
   /* ── Sorted + filtered summary ── */
   const displayData = useMemo(() => {
@@ -547,8 +563,8 @@ export default function AdminReports() {
               </div>
               <div className="glass-panel" style={{ padding: "16px 18px", borderLeft: "3px solid #64748b" }}>
                 <div style={{ fontSize: "1.3rem", marginBottom: 6 }}>📅</div>
-                <div style={{ fontSize: "1.15rem", fontWeight: 700, color: "#64748b" }}>{workingDaysInFullMonth} days</div>
-                <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)", marginTop: 2 }}>Full Month Working Days<br/>({(workingDaysInFullMonth * orgHoursPerDay).toFixed(0)}h / emp @ {orgHoursPerDay}h/day)</div>
+                <div style={{ fontSize: "1.15rem", fontWeight: 700, color: "#64748b" }}>{displayData.length > 0 ? displayData[0].workingDaysInFullMonth : 0} days</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)", marginTop: 2 }}>Full Month Working Days<br/>({((displayData.length > 0 ? displayData[0].workingDaysInFullMonth : 0) * orgHoursPerDay).toFixed(0)}h / emp @ {orgHoursPerDay}h/day)</div>
               </div>
             </div>
           )}
@@ -556,7 +572,7 @@ export default function AdminReports() {
           {/* Search + period label */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
             <div style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-              {!loading && `Showing ${displayData.length} employees · ${fmtDate(fromDate)} – ${fmtDate(toDate)} · ${workingDaysInRange} working days in range · ${workingDaysInFullMonth} full month working days`}
+              {!loading && `Showing ${displayData.length} employees · ${fmtDate(fromDate)} – ${fmtDate(toDate)}`}
             </div>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search employee..." className="premium-input"
               style={{ width: 220, padding: "8px 14px", fontSize: "0.85rem" }} />
@@ -669,7 +685,14 @@ export default function AdminReports() {
                         const ds = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,"0")}-${String(cursor.getDate()).padStart(2,"0")}`;
                         const punch = punchByDate.get(ds);
                         const leave = leaveByDate.get(ds);
-                        const working = isWorkingDay(cursor);
+                        const emp = employees.find(e => e.id === r.id);
+                        const empSchedule = {
+                          week_off_type: appSettings?.week_off_type ?? "fixed",
+                          week_off_days: appSettings?.week_off_days ?? [0],
+                          employee_off_day: emp?.weekly_off_day ?? null,
+                          week_off_rules: appSettings?.week_off_rules ?? [],
+                        };
+                        const working = isWorkingDay(cursor, holidays, empSchedule);
 
                         if (leave) {
                           // Leave takes priority — admin's override is final
